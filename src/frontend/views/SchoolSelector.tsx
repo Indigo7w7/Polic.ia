@@ -81,6 +81,11 @@ export const SchoolSelector: React.FC = () => {
       >
         {/* Header */}
         <div className="text-center space-y-3">
+          {modalidad_postulacion && (
+            <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-500 text-xs font-black uppercase tracking-widest animate-bounce">
+              🔒 Selección de Escuela Bloqueada Permanentemente
+            </div>
+          )}
           <motion.div
             initial={{ scale: 0 }}
             animate={{ scale: 1 }}
