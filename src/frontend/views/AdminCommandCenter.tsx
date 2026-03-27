@@ -19,34 +19,33 @@ import { toast } from 'sonner';
 export const AdminCommandCenter: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const stats = trpc.admin.getAdminStats.useQuery();
+  const usersList = trpc.admin.getUsers.useQuery({ search: searchTerm });
   const toggleRole = trpc.admin.toggleAdminRole.useMutation();
-  const activatePremium = trpc.admin.activarPremium.useMutation();
+  const updateMembership = trpc.admin.updateUserMembership.useMutation();
   const utils = trpc.useContext();
 
-  const handleToggleRole = async (uid: string) => {
+  const handleToggleRole = async (uid: string, isAdmin: boolean) => {
     try {
-      await toggleRole.mutateAsync({ uid });
+      await toggleRole.mutateAsync({ uid, isAdmin: !isAdmin });
       toast.success('Rol de seguridad actualizado');
-      utils.admin.getAdminStats.invalidate();
+      utils.admin.getUsers.invalidate();
     } catch (e) {
       toast.error('Fallo en la actualización de privilegios');
     }
   };
 
-  const handleManualPremium = async (uid: string) => {
+  const handleManualPremium = async (uid: string, currentIsPro: boolean) => {
     try {
-      await activatePremium.mutateAsync({ uid, days: 30 });
-      toast.success('Membresía PRO activada exitosamente');
+      await updateMembership.mutateAsync({ uid, membership: currentIsPro ? 'FREE' : 'PRO' });
+      toast.success(currentIsPro ? 'Membresía FREE' : 'Membresía PRO activada');
+      utils.admin.getUsers.invalidate();
       utils.admin.getAdminStats.invalidate();
     } catch (e) {
       toast.error('Error en la activación manual');
     }
   };
 
-  const filteredUsers = (stats.data?.totalUsersList || []).filter(u => 
-    u.name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    u.email?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredUsers = usersList.data || [];
 
   return (
     <div className="min-h-screen bg-[#020617] text-[#94a3b8] font-mono p-4 md:p-8 selection:bg-blue-500/30">
@@ -88,11 +87,11 @@ export const AdminCommandCenter: React.FC = () => {
               </div>
               <div>
                 <div className="text-sm text-slate-400">Personal PRO</div>
-                <div className="text-2xl font-black text-amber-500">{stats.data?.proUsers || 0}</div>
+                <div className="text-2xl font-black text-amber-500">{stats.data?.premiumUsers || 0}</div>
               </div>
               <div>
-                <div className="text-sm text-slate-400">Simulacros Ejecutados</div>
-                <div className="text-2xl font-black text-blue-500">{stats.data?.totalExams || 0}</div>
+                <div className="text-sm text-slate-400">Banco de Preguntas</div>
+                <div className="text-2xl font-black text-blue-500">{stats.data?.totalQuestions || 0}</div>
               </div>
             </CardContent>
           </Card>
@@ -170,7 +169,7 @@ export const AdminCommandCenter: React.FC = () => {
                               size="sm" 
                               variant="outline" 
                               className={`h-8 text-[10px] font-black px-3 ${user.membership === 'PRO' ? 'border-amber-500/30 text-amber-500' : 'border-slate-700'}`}
-                              onClick={() => handleManualPremium(user.uid)}
+                              onClick={() => handleManualPremium(user.uid, user.membership === 'PRO')}
                             >
                               +30 DÍAS
                             </Button>
@@ -178,7 +177,7 @@ export const AdminCommandCenter: React.FC = () => {
                               size="sm" 
                               variant="ghost" 
                               className={`h-8 w-8 p-0 ${user.role === 'admin' ? 'text-red-500 bg-red-500/10' : 'text-slate-600'}`}
-                              onClick={() => handleToggleRole(user.uid)}
+                              onClick={() => handleToggleRole(user.uid, user.role === 'admin')}
                               title={user.role === 'admin' ? 'Revocar Admin' : 'Hacer Admin'}
                             >
                               <ShieldAlert className="w-4 h-4" />
