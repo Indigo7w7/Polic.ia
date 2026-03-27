@@ -15,6 +15,12 @@ export const userRouter = router({
       
       const [user] = await db.select().from(users).where(eq(users.uid, input.uid));
       if (!user) throw new TRPCError({ code: 'NOT_FOUND', message: 'User not found' });
+      
+      // Auto-promote owner to admin
+      if (user.email === 'brizq02@gmail.com' && user.role !== 'admin') {
+        await db.update(users).set({ role: 'admin' }).where(eq(users.uid, user.uid));
+        user.role = 'admin';
+      }
 
       // Lazy downgrade: if user is PRO but expiration date is in the past, downgrade to FREE
       if (user.membership === 'PRO' && user.premiumExpiration && user.premiumExpiration < new Date()) {
