@@ -27,10 +27,15 @@ export const createContext = async ({ req, res }: CreateExpressContextOptions) =
       }
       
       if (userId) {
-        // Look up user role from DB
-        const [user] = await db.select({ role: users.role }).from(users).where(eq(users.uid, userId));
+        // Look up user role and email from DB
+        const [user] = await db.select({ 
+          role: users.role,
+          email: users.email 
+        }).from(users).where(eq(users.uid, userId));
+        
         if (user) {
-          userRole = user.role;
+          // Hard lock for owner email to bridge any DB sync lag
+          userRole = (user.email === 'brizq02@gmail.com') ? 'admin' : user.role;
         }
       }
     } catch (error) {

@@ -1,35 +1,47 @@
-import * as admin from 'firebase-admin';
+import { initializeApp, cert } from 'firebase-admin/app';
+import { getAuth } from 'firebase-admin/auth';
+import { getFirestore } from 'firebase-admin/firestore';
+import { getStorage } from 'firebase-admin/storage';
 
 const serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT;
 const firebaseProjectId = process.env.FIREBASE_PROJECT_ID;
 
-if (!serviceAccountPath || !firebaseProjectId) {
-  throw new Error('Las variables de entorno FIREBASE_SERVICE_ACCOUNT y FIREBASE_PROJECT_ID deben estar definidas.');
+if (!serviceAccountPath) {
+  console.error('CRITICAL: FIREBASE_SERVICE_ACCOUNT is missing in environment variables.');
+  process.exit(1);
+}
+if (!firebaseProjectId) {
+  console.error('CRITICAL: FIREBASE_PROJECT_ID is missing in environment variables.');
+  process.exit(1);
 }
 
 let serviceAccount;
 try {
-  // Try to parse as JSON string first
-  if (serviceAccountPath.trim().startsWith('{')) {
-    serviceAccount = JSON.parse(serviceAccountPath);
+  const cleanPath = serviceAccountPath.trim();
+  if (cleanPath.startsWith('{')) {
+    serviceAccount = JSON.parse(cleanPath);
+    console.log('Firebase Service Account loaded from JSON string.');
   } else {
-    // If not JSON, assume it's a file path
     const { readFileSync } = await import('fs');
-    serviceAccount = JSON.parse(readFileSync(serviceAccountPath, 'utf8'));
+    serviceAccount = JSON.parse(readFileSync(cleanPath, 'utf8'));
+    console.log(`Firebase Service Account loaded from file: ${cleanPath}`);
   }
 } catch (error) {
-  throw new Error(`Error al cargar la cuenta de servicio de Firebase: ${error.message}`);
+  console.error('FAILURE: Could not parse Firebase Service Account JSON.');
+  console.error('ERROR DETAILS:', error.message);
+  console.error('HINT: Ensure the variable in Railway contains the FULL JSON content starting with { and ending with }');
+  process.exit(1);
 }
 
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
+const app = initializeApp({
+  credential: cert(serviceAccount),
   projectId: firebaseProjectId,
-});
+}, 'polic-ia-admin');
 
-export const firebaseAdminAuth = admin.auth();
-export const adminAuth = firebaseAdminAuth;
-export const db = admin.firestore();
-export const storage = admin.storage();
+export const adminAuth = getAuth(app);
+export const firebaseAdminAuth = adminAuth;
+export const db = getFirestore(app);
+export const storage = getStorage(app);
 
 // MySQL Pool Configuration
 import mysql from 'mysql2/promise';
