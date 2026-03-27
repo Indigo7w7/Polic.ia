@@ -1,0 +1,81 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "Perfil de Usuario",
+      "description": "Información del postulante y su estado de suscripción.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "ID único de Firebase Auth" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "estado_financiero": { "type": "string", "enum": ["GRATUITO", "PENDIENTE", "PREMIUM"] },
+        "fecha_expiracion_premium": { "type": "string", "format": "date-time" },
+        "role": { "type": "string", "enum": ["user", "admin"] }
+      },
+      "required": ["uid", "email", "estado_financiero"]
+    },
+    "Pregunta": {
+      "title": "Pregunta de Examen",
+      "description": "Pregunta del banco maestro.",
+      "type": "object",
+      "properties": {
+        "id_pregunta": { "type": "string" },
+        "tipo_examen": { "type": "string" },
+        "categoria_disciplina": { "type": "string" },
+        "enunciado_base": { "type": "string" },
+        "matriz_alternativas": { "type": "array", "items": { "type": "string" } },
+        "vector_solucion": { "type": "integer" },
+        "fundamentacion_doctrinal": { "type": "string" },
+        "fecha_carga": { "type": "integer" },
+        "vistas": { "type": "integer" }
+      },
+      "required": ["id_pregunta", "enunciado_base", "matriz_alternativas", "vector_solucion"]
+    },
+    "RegistroLeitner": {
+      "title": "Registro Leitner Activo",
+      "description": "Seguimiento de retención para una pregunta específica.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "pregunta_id": { "type": "string" },
+        "pregunta_texto": { "type": "string" },
+        "respuesta_correcta": { "type": "string" },
+        "nivel_retencion": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "proximo_repaso": { "type": "string", "format": "date-time" },
+        "ultima_revision": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "pregunta_id", "nivel_retencion", "proximo_repaso"]
+    },
+    "AuditoriaYape": {
+      "title": "Auditoría Yape",
+      "description": "Registro de pago pendiente de validación.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "voucherUrl": { "type": "string", "format": "uri" },
+        "monto": { "type": "number" },
+        "status": { "type": "string", "enum": ["PENDIENTE", "APROBADO", "RECHAZADO"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "voucherUrl", "monto", "status"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Perfiles de usuario."
+    },
+    "/Banco_Preguntas_Maestro/{questionId}": {
+      "schema": "Pregunta",
+      "description": "Banco de preguntas premium."
+    },
+    "/Registro_Leitner_Activo/{recordId}": {
+      "schema": "RegistroLeitner",
+      "description": "Seguimiento de flashcards Leitner."
+    },
+    "/auditorias_yape/{auditId}": {
+      "schema": "AuditoriaYape",
+      "description": "Vouchers de pago pendientes."
+    }
+  }
+}

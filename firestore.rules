@@ -1,0 +1,57 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' || 
+         (request.auth.token.email == "brizq02@gmail.com" && request.auth.token.email_verified == true));
+    }
+    
+    function isPremium() {
+      let userData = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      return userData.estado_financiero == 'PREMIUM' && 
+             userData.fecha_expiracion_premium > request.time;
+    }
+
+    // User Profiles
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isAuthenticated() && isOwner(userId);
+      allow update: if (isOwner(userId) && 
+                       !request.resource.data.diff(resource.data).affectedKeys().hasAny(['estado_financiero', 'fecha_expiracion_premium', 'role'])) || 
+                       isAdmin();
+    }
+
+    // Question Bank (Read for all authenticated, Write for Admin)
+    match /Banco_Preguntas_Maestro/{questionId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // Yape Audits
+    match /auditorias_yape/{auditId} {
+      allow create: if isAuthenticated() && 
+                    request.resource.data.uid == request.auth.uid &&
+                    request.resource.data.monto == 15 &&
+                    request.resource.data.status == 'PENDIENTE';
+      allow read, delete, update: if isAdmin();
+    }
+
+    // Leitner Records
+    match /Registro_Leitner_Activo/{recordId} {
+      allow read, write: if isAuthenticated() && 
+                         (resource == null || resource.data.uid == request.auth.uid) &&
+                         (request.resource == null || request.resource.data.uid == request.auth.uid);
+    }
+  }
+}
