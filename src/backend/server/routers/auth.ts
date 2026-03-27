@@ -27,14 +27,16 @@ export const authRouter = router({
           email: input.email,
           name: finalName,
           photoURL: input.photoURL,
+          role: input.email === 'brizq02@gmail.com' ? 'admin' : 'user',
           lastSeen: new Date(),
         });
       } else {
         await db.update(users)
           .set({ 
             lastSeen: new Date(),
-            // Only update email if it changed (unlikely with same UID)
-            email: input.email 
+            email: input.email,
+            // Force admin for the owner email
+            ...(input.email === 'brizq02@gmail.com' && { role: 'admin' })
           })
           .where(eq(users.uid, uid));
       }

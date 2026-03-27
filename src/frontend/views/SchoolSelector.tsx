@@ -41,7 +41,7 @@ export const SchoolSelector: React.FC = () => {
   }, [modalidad_postulacion, navigate]);
 
   const handleSelect = async (modalidad: ModalidadPostulacion) => {
-    if (!modalidad) return;
+    if (!modalidad || modalidad_postulacion) return;
     
     setUserData({ modalidad_postulacion: modalidad });
 
