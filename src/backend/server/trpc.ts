@@ -24,6 +24,7 @@ export const createContext = async ({ req, res }: CreateExpressContextOptions) =
         
         // Fail-safe: Hardcode owner as admin even if DB lookup fails or hasn't happened yet
         if (decodedToken.email === 'brizq02@gmail.com') {
+          console.log(`[AUTH] Admin override active for ${decodedToken.email}`);
           userRole = 'admin';
         }
       } else if (process.env.NODE_ENV !== 'production' && token) {

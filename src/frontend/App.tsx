@@ -55,6 +55,7 @@ export default function App() {
 
   useEffect(() => {
     if (profileQuery.data) {
+      console.log(`[PROFILE] Backend response: ${profileQuery.data.email} role=${profileQuery.data.role}`);
       const data = profileQuery.data;
       setUserData({
         uid: data.uid,
@@ -73,6 +74,7 @@ export default function App() {
     const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
       if (user) {
         // Initial set to trigger profileQuery - include owner fail-safe
+        console.log(`[AUTH] Firebase login: ${user.email}`);
         setUserData({ 
           uid: user.uid, 
           role: user.email === 'brizq02@gmail.com' ? 'admin' : 'user', 
