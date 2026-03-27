@@ -31,8 +31,14 @@ const schools: { id: ModalidadPostulacion; title: string; subtitle: string; welc
 
 export const SchoolSelector: React.FC = () => {
   const navigate = useNavigate();
-  const { uid, setUserData, name } = useUserStore();
+  const { uid, setUserData, name, modalidad_postulacion } = useUserStore();
   const selectSchool = trpc.user.selectSchool.useMutation();
+
+  React.useEffect(() => {
+    if (modalidad_postulacion) {
+      navigate('/');
+    }
+  }, [modalidad_postulacion, navigate]);
 
   const handleSelect = async (modalidad: ModalidadPostulacion) => {
     if (!modalidad) return;

@@ -80,7 +80,7 @@ export const userRouter = router({
       .innerJoin(users, eq(examAttempts.userId, users.uid))
       .groupBy(users.uid)
       .orderBy(sql`max(${examAttempts.score}) desc`)
-      .limit(10);
+      .limit(100);
 
       return topScores;
     }),

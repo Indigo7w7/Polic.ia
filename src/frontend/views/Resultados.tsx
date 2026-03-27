@@ -39,11 +39,12 @@ export const Resultados: React.FC = () => {
         const { answers, questions } = state;
         let correctCount = 0;
         const processedAnswers = questions.map((q) => {
-          const isCorrect = answers[q.id] === q.correctOptionIndex;
+          const userAnswer = answers[q.id];
+          const isCorrect = userAnswer !== undefined && userAnswer === q.correctOptionIndex;
           if (isCorrect) correctCount++;
           return {
             questionId: Number(q.id),
-            chosenOption: answers[q.id] || 0,
+            chosenOption: userAnswer !== undefined ? userAnswer : -1, // -1 means skipped
             isCorrect,
           };
         });
@@ -83,7 +84,8 @@ export const Resultados: React.FC = () => {
   const failedQuestions: Question[] = [];
 
   questions.forEach((q) => {
-    const isCorrect = answers[q.id] === q.correctOptionIndex;
+    const userAnswer = answers[q.id];
+    const isCorrect = userAnswer !== undefined && userAnswer === q.correctOptionIndex;
     if (isCorrect) {
       correctCount++;
     } else {
@@ -145,6 +147,11 @@ export const Resultados: React.FC = () => {
                 {failedQuestions.map((q, idx) => (
                   <div key={idx} className="p-4 bg-slate-900 rounded-lg border border-slate-800">
                     <p className="font-medium text-slate-200 mb-2">{q.text}</p>
+                    {answers[q.id] === undefined && (
+                      <div className="mb-3 p-2 bg-amber-950/20 border border-amber-900/30 rounded text-xs text-amber-400 font-bold flex items-center gap-2">
+                        ⚠️ Pregunta omitida (En blanco) - Repasa este tema con urgencia.
+                      </div>
+                    )}
                     <div className="flex items-start gap-2 text-sm text-emerald-400 bg-emerald-950/30 p-3 rounded border border-emerald-900/50">
                       <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" />
                       <div>

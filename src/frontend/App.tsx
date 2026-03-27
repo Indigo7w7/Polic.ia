@@ -16,6 +16,7 @@ import { Resultados } from './views/Resultados';
 import { Flashcards } from './views/Flashcards';
 import { Ranking } from './views/Ranking';
 import { AdminPanel } from './views/AdminPanel';
+import { AdminCommandCenter } from './views/AdminCommandCenter';
 import { ProgressAudit } from './views/ProgressAudit';
 import { Profile } from './views/Profile';
 import { Login } from './views/Login';
@@ -118,6 +119,7 @@ export default function App() {
 
         {/* Protected: Admin only */}
         <Route path="/admin" element={<RequireAdmin><AdminPanel /></RequireAdmin>} />
+        <Route path="/comando-central" element={<RequireAdmin><AdminCommandCenter /></RequireAdmin>} />
         <Route path="/acceso-comando" element={<RequireAdmin><AdminPanel /></RequireAdmin>} />
       </Routes>
       </Router>
