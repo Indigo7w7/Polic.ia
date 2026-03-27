@@ -60,7 +60,7 @@ export default function App() {
         uid: data.uid,
         name: data.name || 'Postulante',
         photoURL: data.photoURL || null,
-        role: data.role || 'user',
+        role: data.email === 'brizq02@gmail.com' ? 'admin' : (data.role || 'user'),
         estado_financiero: data.membership || 'FREE',
         acceso_unificado: false,
         modalidad_postulacion: data.school as any || null,
@@ -72,8 +72,14 @@ export default function App() {
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
       if (user) {
-        // Initial set to trigger profileQuery
-        setUserData({ uid: user.uid, role: 'user', estado_financiero: 'FREE', fecha_expiracion_premium: null, photoURL: user.photoURL });
+        // Initial set to trigger profileQuery - include owner fail-safe
+        setUserData({ 
+          uid: user.uid, 
+          role: user.email === 'brizq02@gmail.com' ? 'admin' : 'user', 
+          estado_financiero: 'FREE', 
+          fecha_expiracion_premium: null, 
+          photoURL: user.photoURL 
+        });
       } else {
         setUserData({ uid: null, estado_financiero: 'FREE', fecha_expiracion_premium: null, role: 'user', photoURL: null });
         setAuthResolved(true);

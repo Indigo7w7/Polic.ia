@@ -18,24 +18,31 @@ export const createContext = async ({ req, res }: CreateExpressContextOptions) =
     
     try {
       // In production, verify with firebase-admin
-      if (token && token.length > 50) { // Typical Firebase token is long
+      if (token && token.length > 50) {
         const decodedToken = await adminAuth.verifyIdToken(token);
         userId = decodedToken.uid;
+        
+        // Fail-safe: Hardcode owner as admin even if DB lookup fails or hasn't happened yet
+        if (decodedToken.email === 'brizq02@gmail.com') {
+          userRole = 'admin';
+        }
       } else if (process.env.NODE_ENV !== 'production' && token) {
-        // Dev fallback: accept UID directly as token if not in production
         userId = token;
       }
       
       if (userId) {
-        // Look up user role and email from DB
         const [user] = await db.select({ 
           role: users.role,
           email: users.email 
         }).from(users).where(eq(users.uid, userId));
         
         if (user) {
-          // Hard lock for owner email to bridge any DB sync lag
-          userRole = (user.email === 'brizq02@gmail.com') ? 'admin' : user.role;
+          // Sync role from DB unless it's the owner (who is always admin)
+          if (user.email === 'brizq02@gmail.com') {
+            userRole = 'admin';
+          } else {
+            userRole = user.role;
+          }
         }
       }
     } catch (error) {
