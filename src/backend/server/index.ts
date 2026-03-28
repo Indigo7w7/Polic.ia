@@ -92,6 +92,55 @@ async function ensureTablesExist() {
     }
     
     console.log('Database verification complete.');
+
+    // Auto-ingest initial levels if they exist and are missing from DB
+    try {
+      const fs = await import('fs');
+      const path = await import('path');
+      const examsDir = path.join(process.cwd(), 'data', 'exams');
+      
+      if (fs.existsSync(examsDir)) {
+        console.log('[AUTO-INGEST] Scanning for exam files...');
+        const files = fs.readdirSync(examsDir).filter(f => f.endsWith('.json'));
+        const { db, exams, examQuestions } = await import('../../database/db');
+        const { eq, and } = await import('drizzle-orm');
+
+        for (const file of files) {
+          const content = fs.readFileSync(path.join(examsDir, file), 'utf-8');
+          const data = JSON.parse(content);
+          const levelNum = file.includes('01') ? 1 : 2;
+
+          const existing = await db.select().from(exams).where(and(eq(exams.school, data.school), eq(exams.level, levelNum)));
+          if (existing.length === 0) {
+            console.log(`[AUTO-INGEST] Importing ${data.school} Level ${levelNum}...`);
+            const [newExam] = await db.insert(exams).values({
+              school: data.school,
+              level: levelNum,
+              title: data.title || `Nivel ${levelNum}`,
+              isDemo: levelNum === 1
+            });
+            const examId = newExam.insertId;
+
+            // Ingest questions
+            if (data.questions && data.questions.length > 0) {
+              const questionValues = data.questions.map((q: any) => ({
+                examId: Number(examId),
+                areaId: 1, // Fallback to general area
+                question: q.question,
+                options: q.options,
+                correctOption: q.correctOption,
+                difficulty: 'MEDIUM',
+                schoolType: data.school
+              }));
+              await db.insert(examQuestions).values(questionValues);
+              console.log(`[AUTO-INGEST] Successfully imported ${data.questions.length} questions for ${data.school} L${levelNum}.`);
+            }
+          }
+        }
+      }
+    } catch (ingestError) {
+      console.error('[AUTO-INGEST] Failed:', ingestError);
+    }
   } catch (error) {
     console.error('Database verification FAILED:', error);
   }
