@@ -5,6 +5,10 @@ import { appRouter } from './routers';
 import { createContext } from './trpc';
 import dotenv from 'dotenv';
 import './firebaseAdmin';
+import fs from 'fs';
+import path from 'path';
+import { db, exams, examQuestions } from '../../database/db';
+import { eq, and } from 'drizzle-orm';
 
 dotenv.config();
 
@@ -95,15 +99,11 @@ async function ensureTablesExist() {
 
     // Auto-ingest initial levels if they exist and are missing from DB
     try {
-      const fs = await import('fs');
-      const path = await import('path');
       const examsDir = path.join(process.cwd(), 'data', 'exams');
       
       if (fs.existsSync(examsDir)) {
         console.log('[AUTO-INGEST] Scanning for exam files...');
         const files = fs.readdirSync(examsDir).filter(f => f.endsWith('.json'));
-        const { db, exams, examQuestions } = await import('../../database/db');
-        const { eq, and } = await import('drizzle-orm');
 
         for (const file of files) {
           const content = fs.readFileSync(path.join(examsDir, file), 'utf-8');
