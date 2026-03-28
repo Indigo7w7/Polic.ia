@@ -29,64 +29,15 @@ export const membershipRouter = router({
 });
 
 export const adminRouter = router({
-  // ─── VOUCHER MANAGEMENT ───
-  getVouchers: adminProcedure.query(async () => {
-    return await db.select().from(yapeAudits).orderBy(sql`${yapeAudits.createdAt} desc`);
-  }),
-
-  updateVoucherStatus: adminProcedure
-    .input(z.object({
-      id: z.number(),
-      status: z.enum(['APROBADO', 'RECHAZADO']),
-      reason: z.string().optional(),
-    }))
-    .mutation(async ({ input }) => {
-      const [voucher] = await db.select().from(yapeAudits).where(eq(yapeAudits.id, input.id));
-      if (!voucher) throw new TRPCError({ code: 'NOT_FOUND', message: 'Voucher not found' });
-
-      await db.update(yapeAudits)
-        .set({ status: input.status })
-        .where(eq(yapeAudits.id, input.id));
-
-      if (input.status === 'APROBADO' && voucher.userId) {
-        const expiration = new Date();
-        expiration.setDate(expiration.getDate() + 30);
-
-        await db.update(users)
-          .set({ membership: 'PRO', premiumExpiration: expiration })
-          .where(eq(users.uid, voucher.userId));
-      }
-
-      await db.insert(adminLogs).values({
-        action: `${input.status === 'APROBADO' ? 'Approved' : 'Rejected'} voucher ${input.id}${input.reason ? ': ' + input.reason : ''} for ${voucher.userId}`,
-      });
-
-      return { success: true };
-    }),
+  // removed voucher management as per user request
 
   // ─── STATS ───
   getAdminStats: adminProcedure.query(async () => {
     const [userCounts] = await db.select({
       total: sql<number>`count(${users.uid})`,
       premium: sql<number>`sum(case when ${users.membership} = 'PRO' then 1 else 0 end)`,
+      free: sql<number>`sum(case when ${users.membership} = 'FREE' then 1 else 0 end)`,
     }).from(users);
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const [revenue] = await db.select({
-      daily: sql<number>`COALESCE(sum(${yapeAudits.amount}), 0)`,
-    })
-    .from(yapeAudits)
-    .where(and(eq(yapeAudits.status, 'APROBADO'), sql`${yapeAudits.createdAt} >= ${today}`));
-
-    const [questionCount] = await db.select({
-      total: sql<number>`count(${examQuestions.id})`,
-    }).from(examQuestions);
-
-    const [contentCount] = await db.select({
-      total: sql<number>`count(${learningContent.id})`,
-    }).from(learningContent);
 
     const [activeCount] = await db.select({
       count: sql<number>`count(${users.uid})`,
@@ -95,12 +46,10 @@ export const adminRouter = router({
     .where(sql`${users.lastSeen} >= ${new Date(Date.now() - 5 * 60 * 1000)}`);
 
     return {
-      totalUsers: userCounts.total || 0,
-      premiumUsers: userCounts.premium || 0,
-      activeUsers: activeCount.count || 0,
-      dailyRevenue: revenue.daily || 0,
-      totalQuestions: questionCount.total || 0,
-      totalContent: contentCount.total || 0,
+      totalUsers: Number(userCounts.total) || 0,
+      premiumUsers: Number(userCounts.premium) || 0,
+      freeUsers: Number(userCounts.free) || 0,
+      activeUsers: Number(activeCount.count) || 0,
     };
   }),
 
@@ -134,6 +83,7 @@ export const adminRouter = router({
       membership: z.enum(['FREE', 'PRO']),
     }))
     .mutation(async ({ input }) => {
+      console.log(`[ADMIN] Updating membership for ${input.uid} to ${input.membership}`);
       const expiration = input.membership === 'PRO' 
         ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) 
         : null;
@@ -146,9 +96,21 @@ export const adminRouter = router({
         .where(eq(users.uid, input.uid));
 
       await db.insert(adminLogs).values({
-        action: `Set ${input.uid} membership to ${input.membership}`,
+        action: `MANUAL_OVERRIDE: Set ${input.uid} to ${input.membership}`,
       });
 
+      return { success: true };
+    }),
+
+  deleteUser: adminProcedure
+    .input(z.object({ uid: z.string() }))
+    .mutation(async ({ input }) => {
+      console.log(`[ADMIN] DELETING USER: ${input.uid}`);
+      // In a real app we might want to delete related data, but for now we delete from users
+      await db.delete(users).where(eq(users.uid, input.uid));
+      await db.insert(adminLogs).values({
+        action: `DELETE_USER: Removed ${input.uid} from system`,
+      });
       return { success: true };
     }),
 

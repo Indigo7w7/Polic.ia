@@ -18,13 +18,7 @@ const GoogleIcon = () => (
 
 export const Login: React.FC = () => {
   const navigate = useNavigate();
-  const [mode, setMode] = useState<'login' | 'register'>('login');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
-  const [error, setError] = useState('');
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -45,10 +39,8 @@ export const Login: React.FC = () => {
     }
   };
 
-
   const handleGoogle = async () => {
     setGoogleLoading(true);
-    setError('');
     try {
       const provider = new GoogleAuthProvider();
       const result = await signInWithPopup(auth, provider);
@@ -56,133 +48,137 @@ export const Login: React.FC = () => {
       toast.success('Acceso concedido. Bienvenido, Postulante.');
       navigate('/');
     } catch (err: any) {
-      setError('Error al autenticar con Google. Intenta de nuevo.');
+      toast.error('Error al autenticar con Google. Intenta de nuevo.');
     } finally {
       setGoogleLoading(false);
     }
   };
 
-  const handleEmailAuth = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError('');
-    try {
-      if (mode === 'login') {
-        await signInWithEmailAndPassword(auth, email, password);
-        toast.success('Acceso concedido.');
-      } else {
-        const result = await createUserWithEmailAndPassword(auth, email, password);
-        await syncUserToMySQL(result.user.uid, null, email, null);
-        toast.success('Cuenta creada. Bienvenido al sistema.');
-      }
-      navigate('/');
-    } catch (err: any) {
-      const msgs: Record<string, string> = {
-        'auth/invalid-credential': 'Credenciales incorrectas.',
-        'auth/email-already-in-use': 'Este correo ya está registrado.',
-        'auth/weak-password': 'La contraseña debe tener al menos 6 caracteres.',
-        'auth/invalid-email': 'Correo electrónico inválido.',
-      };
-      setError(msgs[err.code] || 'Error de autenticación. Intenta de nuevo.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
-    <div className="min-h-screen bg-[#060d1a] flex items-center justify-center p-4 relative overflow-hidden">
+    <div className="min-h-screen bg-[#060d1a] flex items-center justify-center p-4 relative overflow-hidden font-sans">
       {/* Animated grid background */}
-      <div className="absolute inset-0 opacity-[0.03]" style={{
+      <div className="absolute inset-0 opacity-[0.05]" style={{
         backgroundImage: `linear-gradient(#2563eb 1px, transparent 1px), linear-gradient(90deg, #2563eb 1px, transparent 1px)`,
-        backgroundSize: '60px 60px'
+        backgroundSize: '40px 40px'
       }} />
 
       {/* Scanline overlay */}
-      <div className="absolute inset-0 pointer-events-none" style={{
-        background: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px)'
+      <div className="absolute inset-0 pointer-events-none opacity-20" style={{
+        background: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(59, 130, 246, 0.1) 2px, rgba(59, 130, 246, 0.1) 4px)'
       }} />
 
-      {/* Glowing orbs */}
-      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-600/10 rounded-full blur-3xl animate-pulse" />
-      <div className="absolute bottom-1/4 right-1/4 w-64 h-64 bg-red-600/8 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }} />
+      {/* Tactical Glows */}
+      <div className="absolute -top-24 -left-24 w-96 h-96 bg-blue-600/20 rounded-full blur-[120px] animate-pulse" />
+      <div className="absolute -bottom-24 -right-24 w-96 h-96 bg-emerald-600/10 rounded-full blur-[120px] animate-pulse" style={{ animationDelay: '2s' }} />
 
       <div
-        className="relative w-full max-w-md"
+        className="relative w-full max-w-sm"
         style={{
           opacity: mounted ? 1 : 0,
           transform: mounted ? 'translateY(0)' : 'translateY(24px)',
-          transition: 'opacity 0.6s ease, transform 0.6s ease',
+          transition: 'all 0.8s cubic-bezier(0.16, 1, 0.3, 1)',
         }}
       >
-        {/* Top security badge */}
-        <div className="flex justify-center mb-8">
-          <div className="flex items-center gap-2 px-4 py-2 bg-blue-600/10 border border-blue-500/20 rounded-full">
-            <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
-            <span className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Sistema Seguro · TLS 1.3</span>
+        {/* Unit Identifier */}
+        <div className="flex justify-center mb-10">
+          <div className="group relative">
+            <div className="absolute inset-0 bg-blue-500/20 blur-xl rounded-full scale-150 animate-pulse" />
+            <div className="relative flex items-center gap-3 px-5 py-2.5 bg-slate-900/80 border border-blue-500/30 rounded-full backdrop-blur-md">
+              <div className="w-2 h-2 bg-blue-400 rounded-full shadow-[0_0_8px_rgba(96,165,250,0.8)] animate-pulse" />
+              <span className="text-[11px] font-black uppercase tracking-[0.4em] text-blue-100/70">
+                Acceso de Operativos
+              </span>
+            </div>
           </div>
         </div>
 
-        {/* Main card */}
-        <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-700/50 rounded-2xl overflow-hidden shadow-2xl shadow-black/50">
-          {/* Header stripe */}
-          <div className="h-1 bg-gradient-to-r from-blue-600 via-blue-400 to-emerald-500" />
+        {/* Tactical Frame */}
+        <div className="bg-slate-900/90 border border-slate-800 rounded-3xl overflow-hidden shadow-[0_32px_64px_-12px_rgba(0,0,0,0.8)]">
+          {/* Top accent line */}
+          <div className="h-1.5 w-full bg-gradient-to-r from-transparent via-blue-500 to-transparent opacity-80" />
 
-          <div className="p-8">
-            {/* Logo */}
-            <div className="text-center mb-8">
-              <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-2xl mb-4 shadow-lg shadow-blue-600/30 relative">
-                <Shield className="w-8 h-8 text-white" />
-                <div className="absolute -top-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full border-2 border-slate-900 flex items-center justify-center">
-                  <div className="w-1.5 h-1.5 bg-white rounded-full" />
+          <div className="p-10 pt-8">
+            {/* Header */}
+            <div className="text-center mb-10">
+              <div className="relative inline-block mb-6">
+                <div className="absolute inset-0 bg-blue-600 blur-2xl opacity-20 scale-150" />
+                <div className="relative w-20 h-20 bg-blue-600 rounded-2xl flex items-center justify-center shadow-[0_0_30px_rgba(37,99,235,0.4)] border border-blue-400/30">
+                  <Shield className="w-10 h-10 text-white stroke-[2.5]" />
+                  <div className="absolute -top-1 -right-1 w-5 h-5 bg-emerald-500 rounded-full border-[3px] border-slate-900 flex items-center justify-center">
+                    <div className="w-1.5 h-1.5 bg-white rounded-full" />
+                  </div>
                 </div>
               </div>
-              <h1 className="text-3xl font-black tracking-tight text-white mb-1">POLIC<span className="text-blue-400">.</span>ia</h1>
-              <p className="text-slate-500 text-xs uppercase tracking-[0.2em] font-bold">Sistema de Entrenamiento Táctico PNP</p>
+              <h1 className="text-4xl font-black tracking-tighter text-white mb-2 italic">
+                POLIC<span className="text-blue-500">.</span>ia
+              </h1>
+              <p className="text-slate-500 text-[10px] uppercase tracking-[0.3em] font-black">
+                Entrenamiento de Élite PNP
+              </p>
             </div>
 
-            {/* Google button */}
-            <div className="space-y-6">
-              <p className="text-slate-400 text-sm text-center leading-relaxed">
-                Para garantizar la seguridad de tu expediente y sincronización con el Ranking Nacional, el acceso es exclusivo vía Google.
-              </p>
+            {/* Login Action Area */}
+            <div className="space-y-8">
+              <div className="space-y-3">
+                <p className="text-slate-400 text-xs text-center font-medium leading-relaxed uppercase tracking-wider">
+                  Sincronización de Identidad mediante
+                </p>
+                <div className="h-px w-12 bg-blue-500/30 mx-auto" />
+              </div>
               
               <button
                 onClick={handleGoogle}
                 disabled={googleLoading}
-                className="w-full flex items-center justify-center gap-3 py-4 bg-white text-slate-900 hover:bg-slate-100 rounded-xl transition-all duration-200 font-black text-sm uppercase tracking-widest disabled:opacity-50 shadow-xl shadow-white/10"
+                className="group relative w-full overflow-hidden"
               >
-                {googleLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <GoogleIcon />}
-                Continuar con Google
+                {/* Button Outer Border / Shadow */}
+                <div className="absolute inset-0 bg-blue-500 opacity-20 blur-lg group-hover:opacity-40 transition-opacity" />
+                
+                <div className="relative flex items-center justify-center gap-4 py-4.5 bg-slate-100 group-hover:bg-white border-2 border-blue-500 rounded-2xl transition-all duration-300 transform group-active:scale-[0.98]">
+                  {googleLoading ? (
+                    <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+                  ) : (
+                    <div className="bg-white p-1 rounded-lg">
+                      <GoogleIcon />
+                    </div>
+                  )}
+                  <span className="text-slate-900 font-black text-sm uppercase tracking-[0.15em]">
+                    Ingresar con Google
+                  </span>
+                </div>
               </button>
 
-              <div className="bg-blue-600/10 border border-blue-500/20 rounded-xl p-4 flex gap-3">
-                <AlertCircle className="w-5 h-5 text-blue-400 shrink-0" />
-                <p className="text-[10px] text-blue-300 leading-tight uppercase font-bold">
-                  Atención: Si ya tenías una cuenta con correo y contraseña, inicia sesión con el Google asociado a ese mismo correo para recuperar tus datos.
+              <div className="text-center">
+                <p className="text-[9px] text-slate-500 uppercase font-black tracking-widest opacity-60">
+                  Encriptación de Grado Militar · AES-256
                 </p>
               </div>
             </div>
-
           </div>
 
-          {/* Footer */}
-          <div className="px-8 pb-6 text-center">
-            <p className="text-[10px] text-slate-600 uppercase tracking-widest">
-              Plataforma oficial de preparación · PNP {new Date().getFullYear()}
-            </p>
+          {/* Tactical Bottom Bar */}
+          <div className="bg-slate-950/50 py-4 border-t border-slate-800/50 flex justify-center items-center gap-8">
+             <div className="flex items-center gap-1.5 opacity-40">
+                <div className="w-1 h-1 bg-blue-400 rounded-full" />
+                <span className="text-[8px] font-bold text-slate-400 tracking-tighter uppercase">PNP-OFFICIAL</span>
+             </div>
+             <div className="flex items-center gap-1.5 opacity-40">
+                <div className="w-1 h-1 bg-blue-400 rounded-full" />
+                <span className="text-[8px] font-bold text-slate-400 tracking-tighter uppercase">PROCESO-2026</span>
+             </div>
           </div>
         </div>
 
-        {/* Bottom stats */}
-        <div className="mt-6 grid grid-cols-3 gap-4">
+        {/* Global Stats - Minimalist */}
+        <div className="mt-8 flex justify-between px-2">
           {[
-            { val: '+5,200', label: 'Postulantes' },
-            { val: '98%', label: 'Efectividad' },
-            { val: '2026', label: 'Proceso' },
+            { val: '+5K', label: 'Efectivos' },
+            { val: '24/7', label: 'Operativo' },
+            { val: 'TLS', label: 'Secure' },
           ].map((s) => (
-            <div key={s.label} className="text-center">
-              <div className="text-lg font-black text-white">{s.val}</div>
-              <div className="text-[9px] text-slate-600 uppercase tracking-widest font-bold">{s.label}</div>
+            <div key={s.label} className="flex flex-col items-center">
+              <span className="text-xs font-black text-slate-300">{s.val}</span>
+              <span className="text-[8px] text-slate-600 font-black uppercase tracking-[0.2em]">{s.label}</span>
             </div>
           ))}
         </div>

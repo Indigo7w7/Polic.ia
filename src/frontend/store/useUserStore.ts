@@ -19,6 +19,7 @@ export interface UserState {
   photoURL: string | null;
   age: number | null;
   city: string | null;
+  profileEdited: boolean;
   role: 'user' | 'admin';
   examProgress: Record<string, ExamProgress>;
   setUserData: (data: Partial<UserState>) => void;
@@ -37,6 +38,7 @@ export const useUserStore = create<UserState>((set, get) => ({
   photoURL: null,
   age: null,
   city: null,
+  profileEdited: false,
   role: 'user',
   examProgress: {},
 

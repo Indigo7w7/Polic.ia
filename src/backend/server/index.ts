@@ -51,11 +51,21 @@ async function ensureTablesExist() {
         membership ENUM('FREE', 'PRO') NOT NULL DEFAULT 'FREE',
         premium_expiration TIMESTAMP NULL,
         last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        profile_edited BOOLEAN NOT NULL DEFAULT FALSE,
         age INT,
         city VARCHAR(100),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+
+    // Ensure profile_edited column exists in case the table was created previously
+    try {
+      await pool.execute(`ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_edited BOOLEAN NOT NULL DEFAULT FALSE`);
+    } catch (alterError) {
+      // Ignore error if column already exists
+      console.log('Profile_edited column check/addition skipped or already present.');
+    }
+    
     console.log('Database verification complete.');
   } catch (error) {
     console.error('Database verification FAILED:', error);

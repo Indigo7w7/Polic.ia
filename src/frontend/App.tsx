@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
 import { trpc } from '../shared/utils/trpc';
@@ -29,7 +29,6 @@ import { PressureNotification } from './components/ui/PressureNotification';
 import { MascotAdvisor } from './components/MascotAdvisor';
 import { Toaster } from 'sonner';
 import { Shield, Loader2 } from 'lucide-react';
-
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 
 /** Full-screen loader shown while Firebase resolves auth state */
@@ -43,7 +42,23 @@ const AuthLoader = () => (
   </div>
 );
 
-export default function App() {
+const AdminRedirector = () => {
+  const { role, uid } = useUserStore();
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  useEffect(() => {
+    // If we are at the root or login and we have an admin role, force jump to portal
+    if (uid && role === 'admin' && (location.pathname === '/' || location.pathname === '/login')) {
+      console.log('[REDIRECT] High-Privilege access detected, routing to Command Center');
+      navigate('/admin-portal', { replace: true });
+    }
+  }, [role, uid, navigate, location.pathname]);
+
+  return null;
+};
+
+function AppContent() {
   const { uid, role, setUserData } = useUserStore();
   const [authResolved, setAuthResolved] = useState(false);
 
@@ -73,7 +88,6 @@ export default function App() {
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
       if (user) {
-        // Initial set to trigger profileQuery - include owner fail-safe
         console.log(`[AUTH] Firebase login: ${user.email}`);
         setUserData({ 
           uid: user.uid, 
@@ -91,7 +105,6 @@ export default function App() {
     return () => unsubscribeAuth();
   }, [setUserData]);
 
-  // Once profile is loaded or user is logged out, resolve auth
   useEffect(() => {
     if (profileQuery.status === 'success' || profileQuery.status === 'error' || !uid) {
       setAuthResolved(true);
@@ -101,11 +114,11 @@ export default function App() {
   if (!authResolved) return <AuthLoader />;
 
   return (
-    <ErrorBoundary>
-      <Router>
+    <div className="relative">
+      <AdminRedirector />
       <Toaster position="top-center" theme="dark" richColors />
       <PressureNotification />
-      <MascotAdvisor />
+      {role !== 'admin' && <MascotAdvisor />}
       <Routes>
         {/* Public */}
         <Route path="/login" element={<Login />} />
@@ -131,26 +144,17 @@ export default function App() {
         <Route path="/comando-central" element={<RequireAdmin><AdminCommandCenter /></RequireAdmin>} />
         <Route path="/acceso-comando" element={<RequireAdmin><AdminPanel /></RequireAdmin>} />
       </Routes>
+
+    </div>
+  );
+}
+
+export default function App() {
+  return (
+    <ErrorBoundary>
+      <Router>
+        <AppContent />
       </Router>
-      <div style={{
-        position: 'fixed',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        backgroundColor: 'rgba(0,0,0,0.85)',
-        color: '#0f0',
-        fontSize: '10px',
-        padding: '2px 8px',
-        zIndex: 99999,
-        display: 'flex',
-        justifyContent: 'space-between',
-        pointerEvents: 'none',
-        borderTop: '1px solid #333'
-      }}>
-        <span>API: {import.meta.env.VITE_API_URL || 'LOCAL'}</span>
-        <span>UID: {uid || 'OFFLINE'}</span>
-        <span>ROLE: {role || 'NONE'}</span>
-      </div>
     </ErrorBoundary>
   );
 }

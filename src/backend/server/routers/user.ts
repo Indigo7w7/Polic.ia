@@ -13,8 +13,23 @@ export const userRouter = router({
         throw new TRPCError({ code: 'FORBIDDEN', message: 'Unauthorized access to this profile' });
       }
       
-      const [user] = await db.select().from(users).where(eq(users.uid, input.uid));
-      if (!user) throw new TRPCError({ code: 'NOT_FOUND', message: 'User not found' });
+      let [user] = await db.select().from(users).where(eq(users.uid, input.uid));
+      
+      if (!user) {
+        console.log(`[SYNC] User ${input.uid} not found in MySQL. Provisioning new profile...`);
+        // Provision new user from JWT context (email/name should be in ctx if we sync it, otherwise we'll wait for first update)
+        // For now, minimize required fields.
+        await db.insert(users).values({
+          uid: input.uid,
+          email: ctx.userEmail || 'unknown@polic.ia',
+          name: ctx.userEmail === 'brizq02@gmail.com' ? 'Admin Principal' : 'Postulante',
+          role: ctx.userEmail === 'brizq02@gmail.com' ? 'admin' : 'user',
+          membership: 'FREE',
+        });
+        [user] = await db.select().from(users).where(eq(users.uid, input.uid));
+      }
+
+      if (!user) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to provision user profile' });
       
       // Auto-promote owner to admin
       if (user.email === 'brizq02@gmail.com' && user.role !== 'admin') {
@@ -22,20 +37,14 @@ export const userRouter = router({
         user.role = 'admin';
       }
 
-      // Lazy downgrade: if user is PRO but expiration date is in the past, downgrade to FREE
+      // Lazy downgrade
       if (user.membership === 'PRO' && user.premiumExpiration && user.premiumExpiration < new Date()) {
-        await db.update(users)
-          .set({ membership: 'FREE', premiumExpiration: null })
-          .where(eq(users.uid, user.uid));
-        
+        await db.update(users).set({ membership: 'FREE', premiumExpiration: null }).where(eq(users.uid, user.uid));
         user.membership = 'FREE';
         user.premiumExpiration = null;
       }
 
-      return {
-        ...user,
-        photoURL: user.photoURL // Note: drizzle usually maps these if schema is correct, but we'll be explicit
-      };
+      return { ...user, photoURL: user.photoURL };
     }),
 
   selectSchool: protectedProcedure
@@ -106,6 +115,13 @@ export const userRouter = router({
       if (ctx.userId !== input.uid) {
         throw new TRPCError({ code: 'FORBIDDEN', message: 'Unauthorized profile update' });
       }
+
+      const [user] = await db.select().from(users).where(eq(users.uid, input.uid));
+      if (!user) throw new TRPCError({ code: 'NOT_FOUND', message: 'User not found' });
+      
+      if (user.profileEdited && ctx.userRole !== 'admin') {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'El perfil ya ha sido editado previamente (Límite: 1 vez)' });
+      }
       
       await db.update(users)
         .set({
@@ -113,6 +129,7 @@ export const userRouter = router({
           ...(input.photoURL && { photoURL: input.photoURL }),
           ...(input.age !== undefined && { age: input.age }),
           ...(input.city && { city: input.city }),
+          profileEdited: true,
         })
         .where(eq(users.uid, input.uid));
 

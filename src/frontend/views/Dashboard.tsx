@@ -246,13 +246,22 @@ export const Dashboard: React.FC = () => {
                 Escuela
               </button>
             )}
-            <div className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 border ${
+            <div className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 border transition-all duration-500 ${
               isPremium
-                ? 'bg-amber-500/10 text-amber-400 border-amber-500/20 shadow-[0_0_10px_rgba(245,158,11,0.1)]'
+                ? 'bg-amber-500 text-slate-900 border-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.4)] animate-pulse'
                 : 'bg-slate-800 text-slate-500 border-slate-700'
             }`}>
-              <Zap className={`w-3 h-3 ${isPremium ? 'fill-current' : ''}`} />
-              {isPremium ? 'PRO Elite' : 'Base'}
+              {isPremium ? (
+                <>
+                  <Trophy className="w-3.5 h-3.5 fill-current" />
+                  <span>AGENTE ÉLITE ACTIVO</span>
+                </>
+              ) : (
+                <>
+                  <Zap className="w-3 h-3" />
+                  <span>Rango Base</span>
+                </>
+              )}
             </div>
             <button onClick={handleLogout} className="p-2 text-slate-500 hover:text-white transition-colors rounded-lg hover:bg-slate-800">
               <LogOut className="w-5 h-5" />
@@ -304,7 +313,7 @@ export const Dashboard: React.FC = () => {
               </motion.div>
             )}
 
-            {/* FREE user upsell */}
+            {/* FREE user upsell - HIDDEN FOR PRO */}
             {!isPremium && (
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.35 }}>
                 <div className="bg-gradient-to-r from-blue-950/40 to-slate-900/60 border border-blue-500/20 rounded-2xl p-5 flex items-center gap-4">
@@ -508,27 +517,29 @@ export const Dashboard: React.FC = () => {
               </CardContent>
             </Card>
 
-            {/* Ad Panel - Non-invasive advertisement */}
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}>
-              <Card className="bg-gradient-to-br from-indigo-900/40 to-slate-900/90 border-indigo-500/30 overflow-hidden group cursor-pointer hover:border-indigo-400 transition-all">
-                <CardContent className="p-4 relative">
-                  <div className="absolute -right-8 -bottom-8 w-24 h-24 bg-indigo-500/10 rounded-full blur-2xl group-hover:bg-indigo-500/20 transition-all" />
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-indigo-500/20 rounded-lg text-indigo-400">
-                      <Sparkles className="w-5 h-5" />
+            {/* Ad Panel - HIDDEN FOR PRO */}
+            {!isPremium && (
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}>
+                <Card className="bg-gradient-to-br from-indigo-900/40 to-slate-900/90 border-indigo-500/30 overflow-hidden group cursor-pointer hover:border-indigo-400 transition-all">
+                  <CardContent className="p-4 relative">
+                    <div className="absolute -right-8 -bottom-8 w-24 h-24 bg-indigo-500/10 rounded-full blur-2xl group-hover:bg-indigo-500/20 transition-all" />
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-indigo-500/20 rounded-lg text-indigo-400">
+                        <Sparkles className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-indigo-400 mb-0.5">Próximo Evento</p>
+                        <h4 className="text-sm font-bold text-white leading-tight">Mega Simulacro Presencial 2025</h4>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-[10px] font-black uppercase tracking-widest text-indigo-400 mb-0.5">Próximo Evento</p>
-                      <h4 className="text-sm font-bold text-white leading-tight">Mega Simulacro Presencial 2025</h4>
+                    <div className="mt-3 flex items-center justify-between text-[10px]">
+                      <span className="text-slate-400 font-medium">Sede Lima - 15 de Abril</span>
+                      <span className="text-indigo-400 font-black uppercase tracking-tighter group-hover:translate-x-1 transition-transform inline-block">Ver detalles →</span>
                     </div>
-                  </div>
-                  <div className="mt-3 flex items-center justify-between text-[10px]">
-                    <span className="text-slate-400 font-medium">Sede Lima - 15 de Abril</span>
-                    <span className="text-indigo-400 font-black uppercase tracking-tighter group-hover:translate-x-1 transition-transform inline-block">Ver detalles →</span>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            )}
           </div>
         </main>
 

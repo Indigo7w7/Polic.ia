@@ -13,6 +13,7 @@ export const users = mysqlTable('users', {
   lastSeen: timestamp('last_seen').defaultNow(),
   age: int('age'),
   city: varchar('city', { length: 100 }),
+  profileEdited: boolean('profile_edited').default(false).notNull(),
   createdAt: timestamp('created_at').defaultNow(),
 }, (table) => [
   index('idx_users_membership').on(table.membership),

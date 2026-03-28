@@ -12,7 +12,7 @@ import { Button } from '../components/ui/Button';
 const MILITARY_SEEDS = ['Alpha', 'Bravo', 'Delta', 'Echo', 'Falcon', 'Ghost', 'Hunter', 'Iron', 'Justice', 'Knight', 'Major', 'Nova', 'Oscar', 'Patriot', 'Ranger', 'Strike', 'Titan', 'Vanguard', 'Wolf', 'X-ray'];
 
 export const Profile: React.FC = () => {
-  const { uid, name, photoURL, age, city, setUserData, isPremiumActive } = useUserStore();
+  const { uid, name, photoURL, age, city, profileEdited, setUserData, isPremiumActive } = useUserStore();
   const navigate = useNavigate();
   const isPremium = isPremiumActive();
   
@@ -22,9 +22,12 @@ export const Profile: React.FC = () => {
   const [selectedAvatar, setSelectedAvatar] = useState(photoURL || `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=Tactical&backgroundColor=0f172a`);
   const [isSaving, setIsSaving] = useState(false);
 
+  const canEdit = !profileEdited;
+
   const updateProfileMutation = trpc.user.updateProfile.useMutation();
 
   const generateRandomAvatar = () => {
+    if (!canEdit) return;
     const randomSeed = MILITARY_SEEDS[Math.floor(Math.random() * MILITARY_SEEDS.length)] + Math.floor(Math.random() * 100);
     // Darker, tactical backgrounds
     const colors = ['0f172a', '1e293b', '334155', '064e3b', '450a0a', '3f2b05'];
@@ -36,6 +39,7 @@ export const Profile: React.FC = () => {
   const utils = trpc.useUtils();
 
   const handleSave = async () => {
+    if (!canEdit) return;
     if (!newName.trim()) {
       toast.error('El alias no puede estar vacío.');
       return;
@@ -57,12 +61,13 @@ export const Profile: React.FC = () => {
       // 2. Invalidate tRPC Cache to force App.tsx to reload fresh data
       await utils.user.getProfile.invalidate();
 
-      // 3. Update Local Store for immediate feedback (though getProfile.invalidate will also trigger this)
+      // 3. Update Local Store for immediate feedback
       setUserData({ 
         name: newName, 
         photoURL: selectedAvatar,
         age: newAge ? parseInt(newAge) : null,
-        city: newCity || null 
+        city: newCity || null,
+        profileEdited: true
       });
 
       toast.success('Expediente actualizado exitosamente.');
@@ -93,8 +98,16 @@ export const Profile: React.FC = () => {
       </header>
 
       <main className="max-w-2xl mx-auto space-y-6">
+        {!canEdit && (
+          <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-xl flex items-center gap-4 text-red-400">
+            <AlertCircle className="w-6 h-6 shrink-0" />
+            <div className="text-xs font-black uppercase tracking-widest leading-relaxed">
+              Expediente Bloqueado: Los datos solo pueden editarse una vez para garantizar la integridad institucional.
+            </div>
+          </div>
+        )}
 
-        <Card className="bg-slate-900/50 border-slate-800 shadow-2xl overflow-hidden">
+        <Card className={`bg-slate-900/50 border-slate-800 shadow-2xl overflow-hidden transition-opacity ${!canEdit ? 'opacity-80' : ''}`}>
           <div className="h-24 bg-gradient-to-r from-blue-900/50 to-indigo-900/50 relative">
              <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-slate-900/50 to-transparent" />
           </div>
@@ -102,17 +115,21 @@ export const Profile: React.FC = () => {
           <CardContent className="pt-0 relative">
             <div className="flex flex-col items-center -mt-12 mb-8">
               <div className="relative group">
-                <div className="w-24 h-24 rounded-2xl border-4 border-[#060d1a] shadow-xl overflow-hidden bg-slate-800">
+                <div className={`w-24 h-24 rounded-2xl border-4 border-[#060d1a] shadow-xl overflow-hidden bg-slate-800 ${!canEdit ? 'grayscale' : ''}`}>
                   <img src={selectedAvatar} alt="Avatar" className="w-full h-full object-cover" />
                 </div>
-                <button 
-                  onClick={generateRandomAvatar}
-                  className="absolute -bottom-2 -right-2 p-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl shadow-lg transition-transform hover:scale-110 active:scale-95 border-2 border-[#060d1a]"
-                >
-                  <Sparkles className="w-4 h-4" />
-                </button>
+                {canEdit && (
+                  <button 
+                    onClick={generateRandomAvatar}
+                    className="absolute -bottom-2 -right-2 p-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl shadow-lg transition-transform hover:scale-110 active:scale-95 border-2 border-[#060d1a]"
+                  >
+                    <Sparkles className="w-4 h-4" />
+                  </button>
+                )}
               </div>
-              <p className="text-xs text-slate-500 mt-3 uppercase tracking-widest font-bold">Generar nuevo Avatar</p>
+              <p className="text-xs text-slate-500 mt-3 uppercase tracking-widest font-bold">
+                {canEdit ? 'Generar nuevo Avatar' : 'Avatar Identificado'}
+              </p>
             </div>
 
             <div className="space-y-5">
@@ -123,7 +140,7 @@ export const Profile: React.FC = () => {
                 <div className="px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-xl font-bold flex items-center justify-between">
                   <span>{isPremium ? 'Agente Élite PRO' : 'Postulante Base'}</span>
                   {isPremium 
-                    ? <span className="text-[10px] bg-amber-500/20 text-amber-400 px-2 py-1 rounded tracking-widest uppercase border border-amber-500/30">Activo</span>
+                    ? <span className="text-[10px] bg-amber-500 text-slate-900 px-2 py-1 rounded font-black tracking-widest uppercase border border-amber-400 animate-pulse">Agente Élite ACTIVO</span>
                     : <button onClick={() => navigate('/yape-checkout')} className="text-[10px] bg-blue-600 hover:bg-blue-500 text-white px-2 py-1 rounded tracking-widest uppercase transition-colors">Mejorar Rango</button>
                   }
                 </div>
@@ -138,8 +155,9 @@ export const Profile: React.FC = () => {
                   type="text"
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
+                  disabled={!canEdit}
                   placeholder="Ej: Cadete Torres"
-                  className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-medium"
+                  className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                   maxLength={20}
                 />
               </div>
@@ -154,8 +172,9 @@ export const Profile: React.FC = () => {
                     type="number"
                     value={newAge}
                     onChange={(e) => setNewAge(e.target.value)}
+                    disabled={!canEdit}
                     placeholder="20"
-                    className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-medium"
+                    className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                   />
                 </div>
                 <div>
@@ -167,8 +186,9 @@ export const Profile: React.FC = () => {
                     type="text"
                     value={newCity}
                     onChange={(e) => setNewCity(e.target.value)}
+                    disabled={!canEdit}
                     placeholder="Lima"
-                    className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-medium"
+                    className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                   />
                 </div>
               </div>
@@ -176,12 +196,16 @@ export const Profile: React.FC = () => {
               <div className="pt-4 border-t border-slate-800">
                 <Button 
                   onClick={handleSave} 
-                  disabled={isSaving}
-                  className="w-full py-4 text-sm font-black uppercase tracking-widest bg-emerald-600 hover:bg-emerald-500 flex items-center justify-center gap-2"
+                  disabled={isSaving || !canEdit}
+                  className={`w-full py-4 text-sm font-black uppercase tracking-widest flex items-center justify-center gap-2 ${!canEdit ? 'bg-slate-800 text-slate-500 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-500'}`}
                 >
                   {isSaving ? (
                     <>
                       <Loader2 className="w-5 h-5 animate-spin" /> Procesando
+                    </>
+                  ) : !canEdit ? (
+                    <>
+                      IDENTIDAD VERIFICADA
                     </>
                   ) : (
                     <>

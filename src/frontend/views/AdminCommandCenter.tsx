@@ -12,21 +12,30 @@ import {
   Search,
   CheckCircle,
   XCircle,
-  Database
+  Database,
+  LogOut,
+  UserX,
+  TrendingDown,
+  TrendingUp
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { auth } from '../../firebase';
 
 export const AdminCommandCenter = () => {
-  const [activeTab, setActiveTab] = useState<'users' | 'vouchers' | 'content'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'content'>('users');
   const [searchTerm, setSearchTerm] = useState('');
   const stats = trpc.admin.getAdminStats.useQuery();
   const usersList = trpc.admin.getUsers.useQuery({ search: searchTerm });
-  const vouchersList = trpc.admin.getVouchers.useQuery();
   
   const toggleRole = trpc.admin.toggleAdminRole.useMutation();
   const updateMembership = trpc.admin.updateUserMembership.useMutation();
-  const updateVoucher = trpc.admin.updateVoucherStatus.useMutation();
+  const deleteUser = trpc.admin.deleteUser.useMutation();
   const utils = trpc.useUtils();
+
+  const handleLogout = () => {
+    auth.signOut();
+    window.location.href = '/login';
+  };
 
   const handleToggleRole = async (uid: string, isAdmin: boolean) => {
     try {
@@ -38,26 +47,26 @@ export const AdminCommandCenter = () => {
     }
   };
 
-  const handleManualPremium = async (uid: string, currentIsPro: boolean) => {
+  const handleManualPremium = async (uid: string, target: 'PRO' | 'FREE') => {
     try {
-      await updateMembership.mutateAsync({ uid, membership: currentIsPro ? 'FREE' : 'PRO' });
-      toast.success(currentIsPro ? 'Membresía FREE' : 'Membresía PRO activada');
+      await updateMembership.mutateAsync({ uid, membership: target });
+      toast.success(target === 'FREE' ? 'Membresía FREE' : 'Membresía PRO activada');
       utils.admin.getUsers.invalidate();
       utils.admin.getAdminStats.invalidate();
     } catch (e) {
-      toast.error('Error en la activación manual');
+      toast.error('Error en la gestión de membresía');
     }
   };
 
-  const handleUpdateVoucher = async (id: number, status: 'APROBADO' | 'RECHAZADO') => {
+  const handleDeleteUser = async (uid: string) => {
+    if (!window.confirm('¿ESTÁ SEGURO DE ELIMINAR ESTE USUARIO? ESTA ACCIÓN ES IRREVERSIBLE.')) return;
     try {
-      await updateVoucher.mutateAsync({ id, status });
-      toast.success(`Voucher ${status.toLowerCase()} correctamente`);
-      utils.admin.getVouchers.invalidate();
+      await deleteUser.mutateAsync({ uid });
+      toast.success('Usuario eliminado del sistema');
       utils.admin.getUsers.invalidate();
       utils.admin.getAdminStats.invalidate();
     } catch (e) {
-      toast.error('Error al procesar el voucher');
+      toast.error('Error al eliminar usuario');
     }
   };
 
@@ -84,6 +93,13 @@ export const AdminCommandCenter = () => {
               </div>
             </CardContent>
           </Card>
+          <Button 
+            variant="outline" 
+            className="border-red-900/40 bg-red-950/10 text-red-500 hover:bg-red-500 hover:text-white font-black px-6 gap-2 h-auto"
+            onClick={handleLogout}
+          >
+            <LogOut className="w-4 h-4" /> SALIR
+          </Button>
         </div>
       </header>
 
@@ -94,13 +110,7 @@ export const AdminCommandCenter = () => {
             onClick={() => setActiveTab('users')}
             className={`px-6 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'users' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'text-slate-500 hover:text-slate-300'}`}
           >
-            Usuarios
-          </button>
-          <button 
-            onClick={() => setActiveTab('vouchers')}
-            className={`px-6 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'vouchers' ? 'bg-amber-600 text-white shadow-lg shadow-amber-600/20' : 'text-slate-500 hover:text-slate-300'}`}
-          >
-            Vouchers Yape
+            Gestión de Usuarios
           </button>
         </div>
 
@@ -113,18 +123,22 @@ export const AdminCommandCenter = () => {
                   <Database className="w-3 h-3" /> Métricas Base
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="grid grid-cols-2 lg:grid-cols-1 gap-4">
                 <div>
-                  <div className="text-sm text-slate-400">Total Candidatos</div>
+                  <div className="text-[10px] text-slate-500 uppercase">Total</div>
                   <div className="text-2xl font-black text-white">{stats.data?.totalUsers || 0}</div>
                 </div>
                 <div>
-                  <div className="text-sm text-slate-400">Personal PRO</div>
+                  <div className="text-[10px] text-amber-500 uppercase">Elite PRO</div>
                   <div className="text-2xl font-black text-amber-500">{stats.data?.premiumUsers || 0}</div>
                 </div>
                 <div>
-                  <div className="text-sm text-slate-400">Ingresos Hoy</div>
-                  <div className="text-2xl font-black text-emerald-500">S/ {stats.data?.dailyRevenue || 0}</div>
+                  <div className="text-[10px] text-slate-400 uppercase">Free</div>
+                  <div className="text-2xl font-black text-slate-300">{stats.data?.freeUsers || 0}</div>
+                </div>
+                <div>
+                  <div className="text-[10px] text-emerald-500 uppercase">Activos (5m)</div>
+                  <div className="text-2xl font-black text-emerald-500">{stats.data?.activeUsers || 0}</div>
                 </div>
               </CardContent>
             </Card>
@@ -139,12 +153,12 @@ export const AdminCommandCenter = () => {
 
           {/* Dynamic Content Area */}
           <section className="lg:col-span-9">
-            {activeTab === 'users' ? (
+            {activeTab === 'users' && (
               <Card className="bg-slate-900/40 border-slate-800/60 overflow-hidden">
                 <CardHeader className="border-b border-slate-800/80 bg-slate-900/20 p-6">
                   <div className="flex flex-col md:flex-row items-center justify-between gap-4">
                     <CardTitle className="text-lg font-bold text-white flex items-center gap-2">
-                      <Users className="w-5 h-5 text-blue-500" /> Gestión de Expedientes
+                      <Users className="w-5 h-5 text-blue-500" /> Expedientes de Postulantes
                     </CardTitle>
                     <div className="relative w-full md:w-64">
                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
@@ -164,9 +178,9 @@ export const AdminCommandCenter = () => {
                       <thead>
                         <tr className="bg-slate-900/60 text-[10px] uppercase font-black tracking-widest text-slate-500 border-b border-slate-800">
                           <th className="px-6 py-4">Usuario</th>
-                          <th className="px-6 py-4">Estado</th>
+                          <th className="px-6 py-4">Membresía</th>
                           <th className="px-6 py-4">Sede / Escuela</th>
-                          <th className="px-6 py-4 text-right">Acciones Tácticas</th>
+                          <th className="px-6 py-4 text-right">Acciones</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-800/50">
@@ -203,84 +217,44 @@ export const AdminCommandCenter = () => {
                             </td>
                             <td className="px-6 py-4 text-right">
                               <div className="flex items-center justify-end gap-2">
-                                <Button 
-                                  size="sm" 
-                                  variant="outline" 
-                                  className={`h-8 text-[10px] font-black px-3 ${user.membership === 'PRO' ? 'border-amber-500/30 text-amber-500' : 'border-slate-700'}`}
-                                  onClick={() => handleManualPremium(user.uid, user.membership === 'PRO')}
-                                >
-                                  {user.membership === 'PRO' ? 'EXTENDER' : 'HACER PRO'}
-                                </Button>
+                                {user.membership === 'FREE' ? (
+                                  <Button 
+                                    size="sm" 
+                                    variant="outline" 
+                                    className="h-8 text-[10px] font-black px-3 border-amber-500/30 text-amber-500 hover:bg-amber-500 hover:text-black"
+                                    onClick={() => handleManualPremium(user.uid, 'PRO')}
+                                  >
+                                    <TrendingUp className="w-3 h-3 mr-1" /> HACER PRO
+                                  </Button>
+                                ) : (
+                                  <Button 
+                                    size="sm" 
+                                    variant="outline" 
+                                    className="h-8 text-[10px] font-black px-3 border-slate-700 text-slate-400 hover:bg-slate-700 hover:text-white"
+                                    onClick={() => handleManualPremium(user.uid, 'FREE')}
+                                  >
+                                    <TrendingDown className="w-3 h-3 mr-1" /> QUITAR PRO
+                                  </Button>
+                                )}
                                 <Button 
                                   size="sm" 
                                   variant="ghost" 
-                                  className={`h-8 w-8 p-0 ${user.role === 'admin' ? 'text-red-500 bg-red-500/10' : 'text-slate-600'}`}
+                                  className={`h-8 w-8 p-0 ${user.role === 'admin' ? 'text-blue-500 bg-blue-500/10' : 'text-slate-600 hover:text-blue-400'}`}
+                                  title="Alternar Admin"
                                   onClick={() => handleToggleRole(user.uid, user.role === 'admin')}
                                 >
                                   <ShieldAlert className="w-4 h-4" />
                                 </Button>
+                                <Button 
+                                  size="sm" 
+                                  variant="ghost" 
+                                  className="h-8 w-8 p-0 text-red-900/40 hover:text-red-500 hover:bg-red-500/10"
+                                  title="Eliminar Usuario"
+                                  onClick={() => handleDeleteUser(user.uid)}
+                                >
+                                  <UserX className="w-4 h-4" />
+                                </Button>
                               </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </CardContent>
-              </Card>
-            ) : (
-              <Card className="bg-slate-900/40 border-slate-800/60 overflow-hidden">
-                <CardHeader className="border-b border-slate-800/80 bg-slate-900/20 p-6">
-                  <CardTitle className="text-lg font-bold text-white flex items-center gap-2">
-                    <Activity className="w-5 h-5 text-amber-500" /> Auditoría de Pagos Yape
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-0">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse">
-                      <thead>
-                        <tr className="bg-slate-900/60 text-[10px] uppercase font-black tracking-widest text-slate-500 border-b border-slate-800">
-                          <th className="px-6 py-4">Status</th>
-                          <th className="px-6 py-4">Usuario</th>
-                          <th className="px-6 py-4">Monto</th>
-                          <th className="px-6 py-4">Voucher</th>
-                          <th className="px-6 py-4 text-right">Acción</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-800/50">
-                        {vouchersList.data?.map((v) => (
-                          <tr key={v.id} className="hover:bg-amber-500/5 transition-colors group">
-                            <td className="px-6 py-4">
-                              <span className={`px-2 py-0.5 rounded text-[10px] font-black border ${
-                                v.status === 'PENDIENTE' ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' :
-                                v.status === 'APROBADO' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' :
-                                'bg-red-500/10 text-red-500 border-red-500/20'
-                              }`}>
-                                {v.status}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 text-xs text-slate-300">
-                              {v.userId}
-                            </td>
-                            <td className="px-6 py-4 text-sm font-black text-white">
-                              S/ {v.amount}
-                            </td>
-                            <td className="px-6 py-4">
-                              <a href={v.voucherUrl} target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300 underline text-[10px] font-bold">
-                                VER IMAGEN
-                              </a>
-                            </td>
-                            <td className="px-6 py-4 text-right">
-                              {v.status === 'PENDIENTE' && (
-                                <div className="flex items-center justify-end gap-2">
-                                  <Button size="sm" className="bg-emerald-600 hover:bg-emerald-500 h-7 text-[10px] font-black" onClick={() => handleUpdateVoucher(v.id, 'APROBADO')}>
-                                    <CheckCircle className="w-3 h-3 mr-1" /> APROBAR
-                                  </Button>
-                                  <Button size="sm" variant="destructive" className="h-7 text-[10px] font-black" onClick={() => handleUpdateVoucher(v.id, 'RECHAZADO')}>
-                                    <XCircle className="w-3 h-3 mr-1" /> RECHAZAR
-                                  </Button>
-                                </div>
-                              )}
                             </td>
                           </tr>
                         ))}
@@ -298,7 +272,7 @@ export const AdminCommandCenter = () => {
       <footer className="max-w-7xl mx-auto mt-12 p-6 rounded-xl bg-black border border-slate-800 font-mono text-[10px] text-emerald-500/50">
         <div className="flex items-center gap-4">
           <span className="animate-pulse">_</span>
-          <span>SISTEMA DE GESTIÓN TÁCTICA V2.0 // DESPLIEGUE SEGURO // POLIC.IA PROYECTO NACIONAL</span>
+          <span>SISTEMA DE GESTIÓN TÁCTICA V2.5 // DESPLIEGUE SEGURO // POLIC.IA PROYECTO NACIONAL</span>
         </div>
       </footer>
     </div>

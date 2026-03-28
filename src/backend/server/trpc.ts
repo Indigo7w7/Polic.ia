@@ -11,6 +11,7 @@ import { adminAuth } from './firebaseAdmin';
 export const createContext = async ({ req, res }: CreateExpressContextOptions) => {
   const authHeader = req.headers.authorization;
   let userId: string | null = null;
+  let userEmail: string | null = null;
   let userRole: 'user' | 'admin' = 'user';
 
   if (authHeader?.startsWith('Bearer ')) {
@@ -22,6 +23,7 @@ export const createContext = async ({ req, res }: CreateExpressContextOptions) =
         const decodedToken = await adminAuth.verifyIdToken(token);
         userId = decodedToken.uid;
         const email = decodedToken.email?.toLowerCase().trim();
+        userEmail = email || null;
         
         console.log(`[AUTH] Verifying token for: ${email} (UID: ${userId})`);
 
@@ -54,7 +56,7 @@ export const createContext = async ({ req, res }: CreateExpressContextOptions) =
     }
   }
 
-  return { req, res, userId, userRole };
+  return { req, res, userId, userEmail, userRole };
 };
 
 type Context = Awaited<ReturnType<typeof createContext>>;
