@@ -6,22 +6,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const getPool = () => {
-  // 1. Prioritize individual Railway variables (most reliable for internal networks)
-  if (process.env.MYSQLHOST && process.env.MYSQLPASSWORD) {
-    console.log(`[DB] Using production variables: host=${process.env.MYSQLHOST}, user=${process.env.MYSQLUSER || 'root'}`);
-    return mysql.createPool({
-      host: process.env.MYSQLHOST,
-      user: process.env.MYSQLUSER || 'root',
-      password: process.env.MYSQLPASSWORD,
-      database: process.env.MYSQLDATABASE || 'railway', // Railway default is often 'railway'
-      port: parseInt(process.env.MYSQLPORT || '3306'),
-      waitForConnections: true,
-      connectionLimit: 10,
-      family: 4,
-    } as any);
-  }
-
-  // 2. Fallback to DATABASE_URL if available
+  // 1. Prioritize DATABASE_URL (most reliable as it's often the public/verified string)
   const url = process.env.MYSQL_URL || process.env.DATABASE_URL;
   if (url) {
     try {
@@ -44,6 +29,21 @@ const getPool = () => {
       // Final fallback to raw string if parsing fails
       return mysql.createPool(url);
     }
+  }
+
+  // 2. Fallback to individual Railway variables
+  if (process.env.MYSQLHOST && process.env.MYSQLPASSWORD) {
+    console.log(`[DB] Using production variables: host=${process.env.MYSQLHOST}, user=${process.env.MYSQLUSER || 'root'}`);
+    return mysql.createPool({
+      host: process.env.MYSQLHOST,
+      user: process.env.MYSQLUSER || 'root',
+      password: process.env.MYSQLPASSWORD,
+      database: process.env.MYSQLDATABASE || 'railway', // Railway default is often 'railway'
+      port: parseInt(process.env.MYSQLPORT || '3306'),
+      waitForConnections: true,
+      connectionLimit: 10,
+      family: 4,
+    } as any);
   }
 
   // 3. Local Development Fallback
