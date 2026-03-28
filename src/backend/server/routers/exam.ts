@@ -1,7 +1,7 @@
 import { router, protectedProcedure } from '../trpc';
 import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
-import { db, examAttempts, attemptAnswers, leitnerCards, examQuestions } from '../../../database/db';
+import { db, exams, examAttempts, attemptAnswers, leitnerCards, examQuestions } from '../../../database/db';
 import { eq, desc, and, sql } from 'drizzle-orm';
 
 export const examRouter = router({
@@ -128,5 +128,13 @@ export const examRouter = router({
         .from(examAttempts)
         .where(eq(examAttempts.userId, input.userId))
         .orderBy(desc(examAttempts.startedAt));
+    }),
+
+  /** Get available exam levels for the student dashboard */
+  getLevels: protectedProcedure
+    .query(async () => {
+      return await db.select()
+        .from(exams)
+        .orderBy(exams.school, exams.level);
     }),
 });

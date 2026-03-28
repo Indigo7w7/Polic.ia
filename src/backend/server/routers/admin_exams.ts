@@ -10,6 +10,7 @@ export const adminExamRouter = router({
     .input(z.object({
       school: z.enum(['EO', 'EESTP']),
       title: z.string().optional(),
+      isDemo: z.boolean().optional().default(false),
       questions: z.array(z.object({
         question: z.string(),
         options: z.array(z.string()),
@@ -36,6 +37,7 @@ export const adminExamRouter = router({
           school: input.school,
           level: nextLevel,
           title: finalTitle,
+          isDemo: input.isDemo,
         });
 
         const examId = newExam.insertId;

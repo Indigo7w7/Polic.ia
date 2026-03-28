@@ -33,9 +33,10 @@ const getPool = () => {
         port: parseInt(parsed.port || '3306'),
         waitForConnections: true,
         connectionLimit: 10,
+        family: 4, // Force IPv4 to avoid internal IPv6 access denied issues
       };
       
-      console.log(`[DB] Manual URL Parse: host=${config.host}, user=${config.user}, db=${config.database}`);
+      console.log(`[DB] URL Mode: host=${config.host}, user=${config.user}, db=${config.database}`);
       return mysql.createPool(config);
     } catch (err) {
       console.error(`[DB] URL Parse Error: ${err instanceof Error ? err.message : String(err)}`);

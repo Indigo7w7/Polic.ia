@@ -15,7 +15,7 @@ import { useExamStore } from '../store/useExamStore';
 import { ExamDocument, LeitnerDocument } from '../../shared/types';
 import { toast } from 'sonner';
 import { motion } from 'motion/react';
-import { EXAMENES_EO, EXAMENES_EESTP, isExamUnlocked, type ExamLevel } from '../../database/data/examenes_config';
+import { isExamUnlocked, type ExamLevel } from '../../database/data/examenes_config';
 
 const ResourceButton: React.FC<{ title: string; url: string }> = ({ title, url }) => (
   <a
@@ -46,6 +46,7 @@ export const Dashboard: React.FC = () => {
   // tRPC Queries
   const userStats = trpc.user.getStats.useQuery({ uid: uid || '' }, { enabled: !!uid });
   const leitnerStats = trpc.leitner.getStats.useQuery({ userId: uid || '' }, { enabled: !!uid });
+  const levelsQuery = trpc.exam.getLevels.useQuery();
 
   const metricsLoading = userStats.isLoading || leitnerStats.isLoading;
   const metrics: Metrics = {
@@ -72,7 +73,7 @@ export const Dashboard: React.FC = () => {
       let formattedQuestions: any[] = [];
 
       // If it's a demo, use the static banco if possible FOR SPEED and RELIABILITY
-      if (level.esDemo && level.banco && level.banco.length > 0) {
+      if (level.isDemo && level.banco && level.banco.length > 0) {
         formattedQuestions = level.banco.map((q, idx) => ({
           id: `demo-${idx}`,
           text: q.text,
@@ -84,8 +85,9 @@ export const Dashboard: React.FC = () => {
       } else {
         // Fetch dynamic questions from the database
         const dbQuestions = await utils.exam.getQuestionsByFilter.fetch({
-          school: level.id.startsWith('eo') ? 'EO' : 'EESTP',
-          limit: level.totalPreguntas
+          school: level.school,
+          examId: Number(level.id),
+          limit: level.totalPreguntas || 100
         });
 
         if (!dbQuestions || dbQuestions.length === 0) {
@@ -104,7 +106,7 @@ export const Dashboard: React.FC = () => {
       }
 
       useExamStore.getState().iniciarExamen(formattedQuestions);
-      navigate('/simulador', { state: { examLevelId: level.id, modalidad: level.id.startsWith('eo') ? 'EO' : 'EESTP' } });
+      navigate('/simulador', { state: { examLevelId: level.id.toString(), modalidad: level.school } });
     } catch (err) {
       console.error('Failed to start exam:', err);
       toast.error('Error al iniciar el simulacro.');
@@ -140,10 +142,11 @@ export const Dashboard: React.FC = () => {
         {isFree && <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-1.5 py-0.5 rounded text-[8px] font-black uppercase ml-auto">PRO</span>}
       </p>
       {examList.map((level, idx) => {
-        const unlocked = level.esDemo || (isPremium && isExamUnlocked(examList, idx, examProgress));
-        const progress = examProgress[level.id];
-        const isLocked = !level.esDemo && !isPremium;
-        const needsPreviousPass = !level.esDemo && isPremium && !isExamUnlocked(examList, idx, examProgress);
+        const levelId = level.id.toString();
+        const unlocked = level.isDemo || (isPremium && isExamUnlocked(examList, idx, examProgress));
+        const progress = examProgress[levelId];
+        const isLocked = !level.isDemo && !isPremium;
+        const needsPreviousPass = !level.isDemo && isPremium && !isExamUnlocked(examList, idx, examProgress);
 
         return (
           <motion.button
@@ -178,10 +181,12 @@ export const Dashboard: React.FC = () => {
               {/* Info */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-0.5">
-                  <h3 className={`font-black text-base ${unlocked ? 'text-white' : 'text-slate-400'}`}>{level.titulo}</h3>
-                  {level.esDemo && <span className="bg-blue-500/20 text-blue-400 border border-blue-500/30 px-1.5 py-0.5 rounded text-[8px] font-black uppercase">GRATIS</span>}
+                  <h3 className={`font-black text-base ${unlocked ? 'text-white' : 'text-slate-400'}`}>{level.title || `Nivel ${level.level}`}</h3>
+                  {level.isDemo && <span className="bg-blue-500/20 text-blue-400 border border-blue-500/30 px-1.5 py-0.5 rounded text-[8px] font-black uppercase">GRATIS</span>}
                 </div>
-                <p className={`text-xs ${unlocked ? 'text-white/60' : 'text-slate-600'}`}>{level.descripcion}</p>
+                <p className={`text-xs ${unlocked ? 'text-white/60' : 'text-slate-600'}`}>
+                  {`Simulacro completo para ${level.school} · Nivel ${level.level.toString().padStart(2, '0')}`}
+                </p>
                 {progress && (
                   <div className="flex items-center gap-2 mt-1">
                     <div className="h-1.5 flex-1 bg-black/20 rounded-full overflow-hidden">
@@ -332,19 +337,28 @@ export const Dashboard: React.FC = () => {
             )}
 
             {/* ── EXAM LEVELS PER SCHOOL ── */}
-            {showEO && renderExamTrack(
-              EXAMENES_EO.filter(l => !isPremium || !l.esDemo),
-              'Escuela de Oficiales (EO-PNP)',
-              <Shield className="w-3 h-3 text-blue-400" />,
-              'from-blue-600/80 to-indigo-700/80',
-              'blue',
-            )}
-            {showEESTP && renderExamTrack(
-              EXAMENES_EESTP.filter(l => !isPremium || !l.esDemo),
-              'Escuela Técnica (EESTP-PNP)',
-              <GraduationCap className="w-3 h-3 text-emerald-400" />,
-              'from-emerald-600/80 to-teal-700/80',
-              'emerald',
+            {levelsQuery.isLoading ? (
+              <div className="py-12 flex flex-col items-center gap-4">
+                <Shield className="w-8 h-8 animate-pulse text-blue-500" />
+                <p className="text-[10px] uppercase font-black tracking-widest text-slate-500">Sincronizando Terminal...</p>
+              </div>
+            ) : (
+              <>
+                {showEO && renderExamTrack(
+                  (levelsQuery.data as ExamLevel[] || []).filter(l => l.school === 'EO'),
+                  'Escuela de Oficiales (EO-PNP)',
+                  <Shield className="w-3 h-3 text-blue-400" />,
+                  'from-blue-600/80 to-indigo-700/80',
+                  'blue',
+                )}
+                {showEESTP && renderExamTrack(
+                  (levelsQuery.data as ExamLevel[] || []).filter(l => l.school === 'EESTP'),
+                  'Escuela Técnica (EESTP-PNP)',
+                  <GraduationCap className="w-3 h-3 text-emerald-400" />,
+                  'from-emerald-600/80 to-teal-700/80',
+                  'emerald',
+                )}
+              </>
             )}
 
             {/* No school selected prompt */}

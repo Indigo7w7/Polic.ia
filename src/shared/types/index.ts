@@ -5,10 +5,12 @@
 export interface Question {
   id: string;
   text: string;
+  question?: string; // DB Alias
   options: string[];
   correctOptionIndex: number;
-  justification: string; // Explicación para la Flashcard
-  area: string; // Ej. 'Aptitud Académica', 'Conocimientos'
+  correctOption?: number; // DB Alias
+  justification: string;
+  area: string;
 }
 
 export interface Exam {

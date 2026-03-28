@@ -72,9 +72,17 @@ async function ensureTablesExist() {
         school ENUM('EO', 'EESTP') NOT NULL,
         level INT NOT NULL,
         title VARCHAR(255),
+        is_demo BOOLEAN NOT NULL DEFAULT FALSE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+
+    // Ensure is_demo exists in case the table was created previously
+    try {
+      await pool.execute(`ALTER TABLE exams ADD COLUMN IF NOT EXISTS is_demo BOOLEAN NOT NULL DEFAULT FALSE`);
+    } catch (alterError) {
+      console.log('Is_demo column check skipped.');
+    }
 
     // Ensure exam_id exists in exam_questions
     try {

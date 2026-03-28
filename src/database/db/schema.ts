@@ -121,6 +121,7 @@ export const exams = mysqlTable('exams', {
   school: mysqlEnum('school', ['EO', 'EESTP']).notNull(),
   level: int('level').notNull(),
   title: varchar('title', { length: 255 }),
+  isDemo: boolean('is_demo').default(false).notNull(),
   createdAt: timestamp('created_at').defaultNow(),
 }, (table) => [
   index('idx_exams_school').on(table.school),
