@@ -9,12 +9,15 @@ import './index.css';
 import { auth } from '@/src/firebase';
 
 function Root() {
+  const apiUrl = 'https://backend-production-f0aa.up.railway.app/trpc';
+  console.log(`[CONFIG] tRPC API URL: ${apiUrl}`);
+  
   const [queryClient] = useState(() => new QueryClient());
   const [trpcClient] = useState(() =>
     trpc.createClient({
       links: [
         httpBatchLink({
-          url: import.meta.env.VITE_API_URL || 'http://localhost:3001/trpc',
+          url: apiUrl,
           async headers() {
             const token = await auth.currentUser?.getIdToken(false).catch(() => null);
             return {

@@ -21,10 +21,13 @@ export const createContext = async ({ req, res }: CreateExpressContextOptions) =
       if (token && token.length > 50) {
         const decodedToken = await adminAuth.verifyIdToken(token);
         userId = decodedToken.uid;
+        const email = decodedToken.email?.toLowerCase().trim();
         
+        console.log(`[AUTH] Verifying token for: ${email} (UID: ${userId})`);
+
         // Fail-safe: Hardcode owner as admin even if DB lookup fails or hasn't happened yet
-        if (decodedToken.email === 'brizq02@gmail.com') {
-          console.log(`[AUTH] Admin override active for ${decodedToken.email}`);
+        if (email === 'brizq02@gmail.com') {
+          console.log(`[AUTH] Admin override active for ${email}`);
           userRole = 'admin';
         }
       } else if (process.env.NODE_ENV !== 'production' && token) {

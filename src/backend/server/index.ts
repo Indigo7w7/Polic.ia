@@ -12,9 +12,15 @@ const app = express();
 const port = process.env.PORT || 3001;
 
 app.use(cors({
-  origin: ['https://polic-ia-7bf7e.web.app', 'http://localhost:3000'],
+  origin: '*', // Allow all origins
   credentials: true
 }));
+
+// Global Request Logger for diagnostics
+app.use((req, _res, next) => {
+  console.log(`[REQ] ${req.method} ${req.path} from ${req.headers.origin || 'no-origin'} (IP: ${req.ip})`);
+  next();
+});
 app.use(express.json());
 
 app.use(

@@ -32,6 +32,9 @@ export const Profile: React.FC = () => {
     setSelectedAvatar(`https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${randomSeed}&backgroundColor=${randomColor}`);
   };
 
+  const profileQuery = trpc.user.getProfile.useQuery({ uid: uid || '' }, { enabled: !!uid });
+  const utils = trpc.useUtils();
+
   const handleSave = async () => {
     if (!newName.trim()) {
       toast.error('El alias no puede estar vacío.');
@@ -48,21 +51,20 @@ export const Profile: React.FC = () => {
         city: newCity || undefined,
       };
 
-      if (uid && auth.currentUser) {
-        await firebaseUpdateProfile(auth.currentUser, {
-          displayName: newName,
-          photoURL: selectedAvatar
-        });
-        
-        await updateProfileMutation.mutateAsync(profileData);
-      }
+      // 1. Update MySQL (Source of Truth)
+      await updateProfileMutation.mutateAsync(profileData);
 
+      // 2. Invalidate tRPC Cache to force App.tsx to reload fresh data
+      await utils.user.getProfile.invalidate();
+
+      // 3. Update Local Store for immediate feedback (though getProfile.invalidate will also trigger this)
       setUserData({ 
         name: newName, 
         photoURL: selectedAvatar,
         age: newAge ? parseInt(newAge) : null,
         city: newCity || null 
       });
+
       toast.success('Expediente actualizado exitosamente.');
       navigate('/');
     } catch (error) {

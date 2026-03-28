@@ -44,7 +44,7 @@ const AuthLoader = () => (
 );
 
 export default function App() {
-  const { uid, setUserData } = useUserStore();
+  const { uid, role, setUserData } = useUserStore();
   const [authResolved, setAuthResolved] = useState(false);
 
   // Sync with MySQL
@@ -126,11 +126,31 @@ export default function App() {
         <Route path="/perfil" element={<RequireAuth><Profile /></RequireAuth>} />
 
         {/* Protected: Admin only */}
+        <Route path="/admin-portal" element={<RequireAdmin><AdminCommandCenter /></RequireAdmin>} />
         <Route path="/admin" element={<RequireAdmin><AdminPanel /></RequireAdmin>} />
         <Route path="/comando-central" element={<RequireAdmin><AdminCommandCenter /></RequireAdmin>} />
         <Route path="/acceso-comando" element={<RequireAdmin><AdminPanel /></RequireAdmin>} />
       </Routes>
       </Router>
+      <div style={{
+        position: 'fixed',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        backgroundColor: 'rgba(0,0,0,0.85)',
+        color: '#0f0',
+        fontSize: '10px',
+        padding: '2px 8px',
+        zIndex: 99999,
+        display: 'flex',
+        justifyContent: 'space-between',
+        pointerEvents: 'none',
+        borderTop: '1px solid #333'
+      }}>
+        <span>API: {import.meta.env.VITE_API_URL || 'LOCAL'}</span>
+        <span>UID: {uid || 'OFFLINE'}</span>
+        <span>ROLE: {role || 'NONE'}</span>
+      </div>
     </ErrorBoundary>
   );
 }

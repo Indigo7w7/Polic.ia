@@ -36,6 +36,9 @@ export const SchoolSelector: React.FC = () => {
 
   React.useEffect(() => {
     if (modalidad_postulacion) {
+      toast.error('Acción no permitida: Ya has seleccionado una escuela anteriormente.', {
+        id: 'school-lock-toast'
+      });
       navigate('/');
     }
   }, [modalidad_postulacion, navigate]);

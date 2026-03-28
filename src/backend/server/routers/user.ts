@@ -32,7 +32,10 @@ export const userRouter = router({
         user.premiumExpiration = null;
       }
 
-      return user;
+      return {
+        ...user,
+        photoURL: user.photoURL // Note: drizzle usually maps these if schema is correct, but we'll be explicit
+      };
     }),
 
   selectSchool: protectedProcedure
