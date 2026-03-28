@@ -62,8 +62,25 @@ async function ensureTablesExist() {
     try {
       await pool.execute(`ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_edited BOOLEAN NOT NULL DEFAULT FALSE`);
     } catch (alterError) {
-      // Ignore error if column already exists
-      console.log('Profile_edited column check/addition skipped or already present.');
+      console.log('Profile_edited column check skipped.');
+    }
+
+    // New: Exams table
+    await pool.execute(`
+      CREATE TABLE IF NOT EXISTS exams (
+        id INT PRIMARY KEY AUTO_INCREMENT,
+        school ENUM('EO', 'EESTP') NOT NULL,
+        level INT NOT NULL,
+        title VARCHAR(255),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Ensure exam_id exists in exam_questions
+    try {
+      await pool.execute(`ALTER TABLE exam_questions ADD COLUMN IF NOT EXISTS exam_id INT REFERENCES exams(id)`);
+    } catch (alterError) {
+      console.log('Exam_id column check skipped.');
     }
     
     console.log('Database verification complete.');

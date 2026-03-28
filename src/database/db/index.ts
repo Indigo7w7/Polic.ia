@@ -23,8 +23,25 @@ const getPool = () => {
   // 2. Fallback to DATABASE_URL if available
   const url = process.env.MYSQL_URL || process.env.DATABASE_URL;
   if (url) {
-    console.log(`[DB] Using URL connection mode`);
-    return mysql.createPool(url);
+    try {
+      const parsed = new URL(url);
+      const config = {
+        host: parsed.hostname,
+        user: parsed.username,
+        password: decodeURIComponent(parsed.password),
+        database: parsed.pathname.slice(1),
+        port: parseInt(parsed.port || '3306'),
+        waitForConnections: true,
+        connectionLimit: 10,
+      };
+      
+      console.log(`[DB] Manual URL Parse: host=${config.host}, user=${config.user}, db=${config.database}`);
+      return mysql.createPool(config);
+    } catch (err) {
+      console.error(`[DB] URL Parse Error: ${err instanceof Error ? err.message : String(err)}`);
+      // Final fallback to raw string if parsing fails
+      return mysql.createPool(url);
+    }
   }
 
   // 3. Local Development Fallback

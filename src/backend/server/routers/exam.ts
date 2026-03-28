@@ -11,6 +11,7 @@ export const examRouter = router({
       school: z.enum(['EO', 'EESTP', 'BOTH']).optional(),
       areaId: z.number().optional(),
       difficulty: z.enum(['EASY', 'MEDIUM', 'HARD']).optional(),
+      examId: z.number().optional(), // Specific level filter
       limit: z.number().min(1).max(200).default(100),
     }))
     .query(async ({ input }) => {
@@ -25,6 +26,9 @@ export const examRouter = router({
       }
       if (input.difficulty) {
         filters.push(eq(examQuestions.difficulty, input.difficulty));
+      }
+      if (input.examId) {
+        filters.push(eq(examQuestions.examId, input.examId));
       }
 
       const whereClause = filters.length > 0 ? and(...filters) : undefined;

@@ -41,21 +41,6 @@ export const learningContent = mysqlTable('learning_content', {
   index('idx_content_school').on(table.schoolType),
 ]);
 
-// 4. Exam Questions
-export const examQuestions = mysqlTable('exam_questions', {
-  id: int('id').primaryKey().autoincrement(),
-  areaId: int('area_id').references(() => learningAreas.id),
-  question: text('question').notNull(),
-  options: json('options').notNull(),
-  correctOption: int('correct_option').notNull(),
-  difficulty: mysqlEnum('difficulty', ['EASY', 'MEDIUM', 'HARD']).default('MEDIUM'),
-  schoolType: mysqlEnum('school_type', ['EO', 'EESTP', 'BOTH']).default('BOTH'),
-}, (table) => [
-  index('idx_questions_area').on(table.areaId),
-  index('idx_questions_difficulty').on(table.difficulty),
-  index('idx_questions_school').on(table.schoolType),
-]);
-
 // 5. Exam Attempts
 export const examAttempts = mysqlTable('exam_attempts', {
   id: int('id').primaryKey().autoincrement(),
@@ -128,4 +113,33 @@ export const yapeAudits = mysqlTable('yape_audits', {
 }, (table) => [
   index('idx_yape_user').on(table.userId),
   index('idx_yape_status').on(table.status),
+]);
+
+// 11. Exams (Levels)
+export const exams = mysqlTable('exams', {
+  id: int('id').primaryKey().autoincrement(),
+  school: mysqlEnum('school', ['EO', 'EESTP']).notNull(),
+  level: int('level').notNull(),
+  title: varchar('title', { length: 255 }),
+  createdAt: timestamp('created_at').defaultNow(),
+}, (table) => [
+  index('idx_exams_school').on(table.school),
+  index('idx_exams_level').on(table.level),
+]);
+
+// Update examQuestions to include examId
+export const examQuestions = mysqlTable('exam_questions', {
+  id: int('id').primaryKey().autoincrement(),
+  examId: int('exam_id').references(() => exams.id), // Link to an explicit exam level
+  areaId: int('area_id').references(() => learningAreas.id),
+  question: text('question').notNull(),
+  options: json('options').notNull(),
+  correctOption: int('correct_option').notNull(),
+  difficulty: mysqlEnum('difficulty', ['EASY', 'MEDIUM', 'HARD']).default('MEDIUM'),
+  schoolType: mysqlEnum('school_type', ['EO', 'EESTP', 'BOTH']).default('BOTH'),
+}, (table) => [
+  index('idx_questions_exam').on(table.examId),
+  index('idx_questions_area').on(table.areaId),
+  index('idx_questions_difficulty').on(table.difficulty),
+  index('idx_questions_school').on(table.schoolType),
 ]);
