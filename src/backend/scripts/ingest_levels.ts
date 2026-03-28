@@ -1,4 +1,4 @@
-import { db, exams, examQuestions, learningAreas } from '../../database/db';
+import { db, exams, examQuestions } from '../../database/db';
 import { eq, and } from 'drizzle-orm';
 import fs from 'fs';
 import path from 'path';
@@ -23,8 +23,6 @@ async function ingest() {
     const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
     const { school, title, questions } = data;
 
-    // Check if level already exists to avoid duplicates
-    // We'll calculate the next level number based on the files (1, 2)
     const levelNumber = file.includes('01') ? 1 : 2;
 
     const existing = await db.select()
@@ -51,11 +49,11 @@ async function ingest() {
     // 2. Insert questions
     const questionValues = questions.map((q: any) => ({
       examId: Number(examId),
-      areaId: q.areaId || 1,
+      areaId: 1,
       question: q.question,
       options: q.options,
       correctOption: q.correctOption,
-      difficulty: q.difficulty || 'MEDIUM',
+      difficulty: 'MEDIUM',
       schoolType: school,
     }));
 
