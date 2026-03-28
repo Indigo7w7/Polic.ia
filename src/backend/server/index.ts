@@ -1,16 +1,16 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
 import express from 'express';
 import cors from 'cors';
 import * as trpcExpress from '@trpc/server/adapters/express';
 import { appRouter } from './routers';
 import { createContext } from './trpc';
-import dotenv from 'dotenv';
 import './firebaseAdmin';
 import fs from 'fs';
 import path from 'path';
 import { db, exams, examQuestions } from '../../database/db';
 import { eq, and } from 'drizzle-orm';
-
-dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 3001;
