@@ -17,7 +17,8 @@ const getPool = () => {
       port: parseInt(process.env.MYSQLPORT || '3306'),
       waitForConnections: true,
       connectionLimit: 10,
-    });
+      family: 4,
+    } as any);
   }
 
   // 2. Fallback to DATABASE_URL if available
