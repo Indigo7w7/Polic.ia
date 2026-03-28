@@ -43,17 +43,5 @@ export const firebaseAdminAuth = adminAuth;
 export const db = getFirestore(app);
 export const storage = getStorage(app);
 
-// MySQL Pool Configuration
-import mysql from 'mysql2/promise';
-
-const pool = mysql.createPool({
-  host: process.env.MYSQL_HOST,
-  user: process.env.MYSQL_USER,
-  password: process.env.MYSQL_PASSWORD,
-  database: process.env.MYSQL_DATABASE,
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
-});
-
-export default pool;
+// Reuse the shared database pool for consistency
+export { poolConnection as default } from '../../database/db';

@@ -69,6 +69,58 @@ async function ensureTablesExist() {
       console.log('Profile_edited column check skipped.');
     }
 
+    // Exam Questions table
+    await pool.execute(`
+      CREATE TABLE IF NOT EXISTS exam_questions (
+        id INT PRIMARY KEY AUTO_INCREMENT,
+        exam_id INT,
+        area_id INT DEFAULT 1,
+        question TEXT NOT NULL,
+        options JSON NOT NULL,
+        correct_option INT NOT NULL,
+        explanation TEXT,
+        difficulty ENUM('EASY', 'MEDIUM', 'HARD') DEFAULT 'MEDIUM',
+        school_type ENUM('EO', 'EESTP', 'BOTH') DEFAULT 'BOTH',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Exam Attempts table
+    await pool.execute(`
+      CREATE TABLE IF NOT EXISTS exam_attempts (
+        id INT PRIMARY KEY AUTO_INCREMENT,
+        user_id VARCHAR(255) NOT NULL,
+        score FLOAT NOT NULL,
+        passed BOOLEAN NOT NULL,
+        started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        ended_at TIMESTAMP NULL
+      )
+    `);
+
+    // Attempt Answers
+    await pool.execute(`
+      CREATE TABLE IF NOT EXISTS attempt_answers (
+        id INT PRIMARY KEY AUTO_INCREMENT,
+        attempt_id INT NOT NULL,
+        question_id INT NOT NULL,
+        chosen_option INT NOT NULL,
+        is_correct BOOLEAN NOT NULL
+      )
+    `);
+
+    // Leitner Cards
+    await pool.execute(`
+      CREATE TABLE IF NOT EXISTS leitner_cards (
+        id INT PRIMARY KEY AUTO_INCREMENT,
+        user_id VARCHAR(255) NOT NULL,
+        question_id INT NOT NULL,
+        level INT DEFAULT 1,
+        next_review TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        last_reviewed TIMESTAMP NULL,
+        UNIQUE KEY user_question (user_id, question_id)
+      )
+    `);
+
     // New: Exams table
     await pool.execute(`
       CREATE TABLE IF NOT EXISTS exams (
@@ -90,7 +142,7 @@ async function ensureTablesExist() {
 
     // Ensure exam_id exists in exam_questions
     try {
-      await pool.execute(`ALTER TABLE exam_questions ADD COLUMN IF NOT EXISTS exam_id INT REFERENCES exams(id)`);
+      await pool.execute(`ALTER TABLE exam_questions ADD COLUMN IF NOT EXISTS exam_id INT`);
     } catch (alterError) {
       console.log('Exam_id column check skipped.');
     }
