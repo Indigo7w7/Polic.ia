@@ -76,7 +76,7 @@ function AppContent() {
         uid: data.uid,
         name: data.name || 'Postulante',
         photoURL: data.photoURL || null,
-        role: data.email === 'brizq02@gmail.com' ? 'admin' : (data.role || 'user'),
+        role: data.role || 'user',
         estado_financiero: data.membership || 'FREE',
         acceso_unificado: false,
         modalidad_postulacion: data.school as any || null,
@@ -91,13 +91,10 @@ function AppContent() {
         console.log(`[AUTH] Firebase login: ${user.email}`);
         setUserData({ 
           uid: user.uid, 
-          role: user.email === 'brizq02@gmail.com' ? 'admin' : 'user', 
-          estado_financiero: 'FREE', 
-          fecha_expiracion_premium: null, 
           photoURL: user.photoURL 
         });
       } else {
-        setUserData({ uid: null, estado_financiero: 'FREE', fecha_expiracion_premium: null, role: 'user', photoURL: null });
+        setUserData({ uid: null, estado_financiero: 'FREE', fecha_expiracion_premium: null, role: 'user', photoURL: null, modalidad_postulacion: null });
         setAuthResolved(true);
       }
     });

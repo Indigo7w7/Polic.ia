@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 
 export type ModalidadPostulacion = 'EO' | 'EESTP' | null;
 export type EstadoFinanciero = 'FREE' | 'PRO';
@@ -28,45 +29,60 @@ export interface UserState {
   registrarExamen: (examId: string, score: number) => void;
 }
 
-export const useUserStore = create<UserState>((set, get) => ({
-  uid: null,
-  modalidad_postulacion: null,
-  estado_financiero: 'FREE',
-  fecha_expiracion_premium: null,
-  acceso_unificado: false,
-  name: 'Invitado',
-  photoURL: null,
-  age: null,
-  city: null,
-  profileEdited: false,
-  role: 'user',
-  examProgress: {},
+export const useUserStore = create<UserState>()(
+  persist(
+    (set, get) => ({
+      uid: null,
+      modalidad_postulacion: null,
+      estado_financiero: 'FREE',
+      fecha_expiracion_premium: null,
+      acceso_unificado: false,
+      name: 'Invitado',
+      photoURL: null,
+      age: null,
+      city: null,
+      profileEdited: false,
+      role: 'user',
+      examProgress: {},
 
-  setUserData: (data) => set((state) => ({ ...state, ...data })),
+      setUserData: (data) => set((state) => ({ ...state, ...data })),
 
-  activarPremium: (timestampExpiracion: string) => set((state) => ({
-    ...state,
-    estado_financiero: 'PRO',
-    fecha_expiracion_premium: timestampExpiracion,
-  })),
+      activarPremium: (timestampExpiracion: string) => set((state) => ({
+        ...state,
+        estado_financiero: 'PRO',
+        fecha_expiracion_premium: timestampExpiracion,
+      })),
 
-  isPremiumActive: () => {
-    const { estado_financiero, fecha_expiracion_premium } = get();
-    
-    if (estado_financiero !== 'PRO') return false;
-    if (!fecha_expiracion_premium) return false;
-    return new Date(fecha_expiracion_premium) > new Date();
-  },
-
-  registrarExamen: (examId: string, score: number) => set((state) => ({
-    ...state,
-    examProgress: {
-      ...state.examProgress,
-      [examId]: {
-        score,
-        passed: score >= 0.55,
-        completedAt: new Date().toISOString(),
+      isPremiumActive: () => {
+        const { estado_financiero, fecha_expiracion_premium } = get();
+        
+        if (estado_financiero !== 'PRO') return false;
+        if (!fecha_expiracion_premium) return false;
+        return new Date(fecha_expiracion_premium) > new Date();
       },
-    },
-  })),
-}));
+
+      registrarExamen: (examId: string, score: number) => set((state) => ({
+        ...state,
+        examProgress: {
+          ...state.examProgress,
+          [examId]: {
+            score,
+            passed: score >= 0.55,
+            completedAt: new Date().toISOString(),
+          },
+        },
+      })),
+    }),
+    {
+      name: 'policia-user-storage',
+      partialize: (state) => ({ 
+        uid: state.uid, 
+        modalidad_postulacion: state.modalidad_postulacion,
+        role: state.role,
+        estado_financiero: state.estado_financiero,
+        fecha_expiracion_premium: state.fecha_expiracion_premium,
+        examProgress: state.examProgress 
+      }),
+    }
+  )
+);

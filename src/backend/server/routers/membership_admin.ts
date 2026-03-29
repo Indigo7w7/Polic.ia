@@ -29,7 +29,32 @@ export const membershipRouter = router({
 });
 
 export const adminRouter = router({
-  // removed voucher management as per user request
+  getVouchers: adminProcedure.query(async () => {
+    return await db.select().from(yapeAudits).orderBy(sql`${yapeAudits.createdAt} desc`);
+  }),
+  
+  updateVoucherStatus: adminProcedure
+    .input(z.object({
+      id: z.number(),
+      status: z.enum(['APROBADO', 'RECHAZADO']),
+      reason: z.string().optional()
+    }))
+    .mutation(async ({ input }) => {
+      await db.update(yapeAudits)
+        .set({ status: input.status })
+        .where(eq(yapeAudits.id, input.id));
+
+      if (input.status === 'APROBADO') {
+        const [voucher] = await db.select().from(yapeAudits).where(eq(yapeAudits.id, input.id));
+        if (voucher) {
+          const expiration = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+          await db.update(users)
+            .set({ membership: 'PRO', premiumExpiration: expiration, ...(voucher.school ? { school: voucher.school as any } : {}) })
+            .where(eq(users.uid, voucher.userId));
+        }
+      }
+      return { success: true };
+    }),
 
   // ─── STATS ───
   getAdminStats: adminProcedure.query(async () => {
@@ -50,6 +75,9 @@ export const adminRouter = router({
       premiumUsers: Number(userCounts.premium) || 0,
       freeUsers: Number(userCounts.free) || 0,
       activeUsers: Number(activeCount.count) || 0,
+      dailyRevenue: 0,
+      totalQuestions: 0,
+      totalContent: 0,
     };
   }),
 
@@ -128,7 +156,9 @@ export const adminRouter = router({
         action: `Changed school for ${input.uid} to ${input.school}`,
       });
 
-      return { success: true };
+      const [updatedUser] = await db.select().from(users).where(eq(users.uid, input.uid));
+
+      return { success: true, user: updatedUser };
     }),
 
   getActiveCount: adminProcedure.query(async () => {

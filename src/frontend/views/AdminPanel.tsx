@@ -11,6 +11,7 @@ import { trpc } from '../../shared/utils/trpc';
 import { storage } from '@/src/firebase';
 import { ref, deleteObject } from 'firebase/storage';
 import { toast } from 'sonner';
+import { Header } from '../components/common/Header';
 
 type AdminTab = 'vouchers' | 'users' | 'content' | 'questions' | 'ingest';
 
@@ -21,6 +22,7 @@ export const AdminPanel: React.FC = () => {
   const [jsonInput, setJsonInput] = useState('');
   const [userSearch, setUserSearch] = useState('');
   const [userFilter, setUserFilter] = useState<'ALL' | 'FREE' | 'PRO'>('ALL');
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
   // ─── Queries ───
   const vouchersQuery = trpc.admin.getVouchers.useQuery();
@@ -146,12 +148,10 @@ export const AdminPanel: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#0f172a] text-[#f8fafc] p-4 md:p-8 font-sans">
-      <header className="mb-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+      <Header showSchoolSelector={false} />
+      
+      <div className="mb-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div className="flex items-center gap-6">
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-            <ShieldCheck className="w-6 h-6 text-blue-500" />
-            Panel Táctico
-          </h1>
           <nav className="flex items-center bg-slate-900 rounded-lg p-1 border border-slate-800 flex-wrap gap-0.5">
             {tabs.map(tab => (
               <button
@@ -168,8 +168,7 @@ export const AdminPanel: React.FC = () => {
             ))}
           </nav>
         </div>
-        <Button variant="outline" onClick={() => navigate('/')}>Salir</Button>
-      </header>
+      </div>
 
       {/* Stats cards */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
@@ -222,7 +221,7 @@ export const AdminPanel: React.FC = () => {
                             }`}>{v.status}</span>
                           </td>
                           <td className="py-4 space-x-2">
-                            <a href={v.voucherUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-blue-400 hover:underline"><ExternalLink size={14}/></a>
+                            <button onClick={() => setLightboxUrl(v.voucherUrl)} className="inline-flex items-center gap-1 text-blue-400 hover:underline"><ExternalLink size={14}/></button>
                             {v.status === 'PENDIENTE' && (
                               <>
                                 <button onClick={() => handleApprove(v.id, v.userId || '', v.voucherUrl)} className="p-1.5 bg-emerald-500/20 text-emerald-400 rounded hover:bg-emerald-500/40">
@@ -511,6 +510,22 @@ export const AdminPanel: React.FC = () => {
           </Card>
         )}
       </main>
+
+      {/* Lightbox Modal */}
+      {lightboxUrl && (
+        <div 
+          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm cursor-zoom-out"
+          onClick={() => setLightboxUrl(null)}
+        >
+          <img src={lightboxUrl} alt="Comprobante" className="max-h-[90vh] max-w-full rounded-2xl shadow-2xl object-contain border-4 border-slate-800" />
+          <button 
+            className="absolute top-4 right-4 p-3 bg-red-600 text-white rounded-full hover:bg-red-500 transition-colors shadow-xl"
+            onClick={() => setLightboxUrl(null)}
+          >
+            <X className="w-6 h-6" />
+          </button>
+        </div>
+      )}
     </div>
   );
 };

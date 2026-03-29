@@ -10,8 +10,9 @@ import {
   GraduationCap, Unlock, Star, BookOpen, Sparkles
 } from 'lucide-react';
 import { trpc } from '../../shared/utils/trpc';
-import { auth } from '@/src/firebase';
 import { useExamStore } from '../store/useExamStore';
+import { useExamManager } from '../hooks/useExamManager';
+import { Header } from '../components/common/Header';
 import { ExamDocument, LeitnerDocument } from '../../shared/types';
 import { toast } from 'sonner';
 import { motion } from 'motion/react';
@@ -59,61 +60,11 @@ export const Dashboard: React.FC = () => {
   };
 
   const utils = trpc.useUtils();
-  const [startingExam, setStartingExam] = useState<string | null>(null);
+  const { startingExam, startLevel } = useExamManager();
 
-  const handleLogout = async () => {
-    await auth.signOut();
-    navigate('/login');
-  };
 
   /* ── Start a level-based exam ── */
-  const handleStartLevel = async (level: ExamLevel) => {
-    setStartingExam(level.id);
-    try {
-      let formattedQuestions: any[] = [];
 
-      // If it's a demo, use the static banco if possible FOR SPEED and RELIABILITY
-      if (level.isDemo && level.banco && level.banco.length > 0) {
-        formattedQuestions = level.banco.map((q, idx) => ({
-          id: `demo-${idx}`,
-          text: q.text,
-          options: q.options,
-          correctOptionIndex: q.correctOptionIndex,
-          justification: q.justification || 'Revisa el material de estudio.',
-          area: q.area || 'Demo',
-        }));
-      } else {
-        // Fetch dynamic questions from the database
-        const dbQuestions = await utils.exam.getQuestionsByFilter.fetch({
-          school: level.school,
-          examId: Number(level.id),
-          limit: level.totalPreguntas || 100
-        });
-
-        if (!dbQuestions || dbQuestions.length === 0) {
-          toast.error('No hay preguntas disponibles en la base de datos para este examen.');
-          return;
-        }
-
-        formattedQuestions = dbQuestions.map((q) => ({
-          id: q.id.toString(),
-          text: q.question,
-          options: q.options as string[],
-          correctOptionIndex: q.correctOption,
-          justification: 'Consulta el manual para más detalles.',
-          area: 'General',
-        }));
-      }
-
-      useExamStore.getState().iniciarExamen(formattedQuestions);
-      navigate('/simulador', { state: { examLevelId: level.id.toString(), modalidad: level.school } });
-    } catch (err) {
-      console.error('Failed to start exam:', err);
-      toast.error('Error al iniciar el simulacro.');
-    } finally {
-      setStartingExam(null);
-    }
-  };
 
   /* ── School filtering ── */
   const isFree = !isPremium;
@@ -156,8 +107,8 @@ export const Dashboard: React.FC = () => {
             transition={{ delay: 0.3 + idx * 0.08 }}
             onClick={() => {
               if (isLocked) { navigate('/yape-checkout'); return; }
-              if (needsPreviousPass) { toast.info('Aprueba el examen anterior con nota ≥ 11 para desbloquear este.'); return; }
-              handleStartLevel(level);
+              if (needsPreviousPass) { toast.info('Aprueba el examen anterior con nota >= 11 para desbloquear este.'); return; }
+              startLevel(level);
             }}
             disabled={!!startingExam}
             className={`w-full group relative overflow-hidden p-5 rounded-2xl transition-all duration-300 text-left border ${
@@ -217,62 +168,7 @@ export const Dashboard: React.FC = () => {
 
       <div className="relative p-4 md:p-8">
         {/* Header */}
-        <header className="max-w-7xl mx-auto flex items-center justify-between mb-8">
-          <div className="flex items-center gap-3">
-            <button onClick={() => navigate('/perfil')} className="w-12 h-12 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/20 overflow-hidden border-2 border-blue-500/50 hover:scale-105 transition-transform">
-              {photoURL ? (
-                <img src={photoURL} alt="Avatar" className="w-full h-full object-cover" />
-              ) : (
-                <div className="w-full h-full bg-blue-600 flex items-center justify-center">
-                  <Shield className="w-6 h-6 text-white" />
-                </div>
-              )}
-            </button>
-            <div>
-              <h1 className="text-xl font-black tracking-tight">POLIC<span className="text-blue-400">.</span>ia</h1>
-              <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">{welcomeTitle}</p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            {/* Real-time Online Counter */}
-            <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-full">
-              <span className="flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-              </span>
-              <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest leading-none">
-                {trpc.admin.getActiveCount.useQuery(undefined, { refetchInterval: 30000 }).data?.count || 1} Activos
-              </span>
-            </div>
-
-            {modalidad_postulacion && (
-              <button onClick={() => navigate('/seleccionar-escuela')} className="text-[9px] text-slate-600 hover:text-slate-400 uppercase tracking-widest font-bold transition-colors">
-                Escuela
-              </button>
-            )}
-            <div className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 border transition-all duration-500 ${
-              isPremium
-                ? 'bg-amber-500 text-slate-900 border-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.4)] animate-pulse'
-                : 'bg-slate-800 text-slate-500 border-slate-700'
-            }`}>
-              {isPremium ? (
-                <>
-                  <Trophy className="w-3.5 h-3.5 fill-current" />
-                  <span>AGENTE ÉLITE ACTIVO</span>
-                </>
-              ) : (
-                <>
-                  <Zap className="w-3 h-3" />
-                  <span>Rango Base</span>
-                </>
-              )}
-            </div>
-            <button onClick={handleLogout} className="p-2 text-slate-500 hover:text-white transition-colors rounded-lg hover:bg-slate-800">
-              <LogOut className="w-5 h-5" />
-            </button>
-          </div>
-        </header>
+        <Header showSchoolSelector={true} />
 
         <main className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* LEFT COLUMN */}

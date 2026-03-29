@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { trpc } from '../../shared/utils/trpc';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
+import { Header } from '../components/common/Header';
 import { Button } from '../components/ui/Button';
 import { 
   Terminal, 
@@ -20,7 +21,8 @@ import {
   Database,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { auth } from '../../firebase';
+import { auth } from '@/src/firebase';
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 
 export const AdminCommandCenter = () => {
   const [activeTab, setActiveTab] = useState<'users' | 'exams'>('users');
@@ -41,11 +43,6 @@ export const AdminCommandCenter = () => {
   const updateMembership = trpc.admin.updateUserMembership.useMutation();
   const deleteUser = trpc.admin.deleteUser.useMutation();
   const utils = trpc.useUtils();
-
-  const handleLogout = () => {
-    auth.signOut();
-    window.location.href = '/login';
-  };
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -123,30 +120,8 @@ export const AdminCommandCenter = () => {
 
   return (
     <div className="min-h-screen bg-[#020617] text-[#94a3b8] font-mono p-4 md:p-8">
-      <header className="max-w-7xl mx-auto mb-8 border-b border-blue-900/40 pb-6 flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div>
-          <div className="flex items-center gap-3 text-blue-500 mb-2">
-            <Terminal className="w-6 h-6 animate-pulse" />
-            <span className="text-xs font-black tracking-[0.3em] uppercase">Comando Central de Operaciones</span>
-          </div>
-          <h1 className="text-3xl font-black text-white tracking-tighter">TERMINAL DE CONTROL POLIC.IA</h1>
-        </div>
-        
-        <div className="flex gap-4">
-          <Card className="bg-blue-950/20 border-blue-900/30 min-w-[140px]">
-            <CardContent className="p-3 text-center">
-              <div className="text-blue-400 text-[10px] font-black uppercase mb-1">Status Global</div>
-              <div className="text-emerald-500 text-lg flex items-center justify-center gap-2">
-                <Activity className="w-4 h-4" /> LIVE SYNC
-              </div>
-            </CardContent>
-          </Card>
-          <Button variant="outline" className="border-red-900/40 text-red-500 gap-2 h-auto" onClick={handleLogout}>
-            <LogOut className="w-4 h-4" /> SALIR
-          </Button>
-        </div>
-      </header>
-
+      <Header showSchoolSelector={false} />
+      
       <main className="max-w-7xl mx-auto space-y-6">
         <div className="flex bg-slate-900/50 p-1 rounded-xl border border-slate-800 w-fit">
           <button 
@@ -180,8 +155,25 @@ export const AdminCommandCenter = () => {
                 ))}
               </CardContent>
             </Card>
+
+            <Card className="bg-slate-900/50 border-slate-800">
+              <CardContent className="p-4 h-40">
+                <div className="text-[10px] text-slate-500 uppercase tracking-tighter mb-2">Distribución</div>
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={[
+                    { name: 'FREE', value: (stats.data as any)?.freeUsers || 0 },
+                    { name: 'PRO', value: (stats.data as any)?.premiumUsers || 0 }
+                  ]}>
+                    <XAxis dataKey="name" stroke="#64748b" fontSize={10} />
+                    <Tooltip cursor={{fill: '#1e293b'}} contentStyle={{backgroundColor: '#0f172a', border: 'none'}} />
+                    <Bar dataKey="value" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+
             <Button className="w-full bg-blue-600 gap-2 h-12" onClick={() => stats.refetch()}>
-              <RefreshCcw className="w-4 h-4" /> REFRESCAR
+              <RefreshCcw className="w-4 h-4" /> REFRESCAR MANDO
             </Button>
           </section>
 
