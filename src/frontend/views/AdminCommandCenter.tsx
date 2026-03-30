@@ -152,7 +152,10 @@ export const AdminCommandCenter = () => {
     <div className="min-h-screen bg-[#020617] text-[#94a3b8] font-mono p-4 md:p-8">
       <Header showSchoolSelector={false} />
       
-      <main className="max-w-7xl mx-auto space-y-6">
+      <main className="max-w-7xl mx-auto p-4 md:p-8 space-y-8 relative z-10">
+        <div className="bg-blue-600/20 border border-blue-500/50 p-2 rounded text-center mb-4">
+          <span className="text-[10px] text-blue-400 font-bold tracking-[0.5em] uppercase">SISTEMA ACTUALIZADO - SYNC VERIFICADO</span>
+        </div>
         <div className="flex bg-slate-900/50 p-1 rounded-xl border border-slate-800 w-fit">
           <button 
             onClick={() => setActiveTab('users')}
