@@ -23,23 +23,23 @@ export const TimerRing: React.FC<TimerRingProps> = ({ secondsTotal, secondsLeft,
   const isWarning = pct < 0.33;
   const isDanger = pct < 0.15;
 
-  const ringColor = isDanger ? '#ef4444' : isWarning ? '#f59e0b' : '#3b82f6';
-  const glowColor = isDanger ? 'rgba(239,68,68,0.4)' : isWarning ? 'rgba(245,158,11,0.3)' : 'rgba(59,130,246,0.3)';
+  const ringColor = isDanger ? '#ff2a2a' : isWarning ? '#ffaa00' : '#00aaff';
+  const glowColor = isDanger ? 'rgba(255,42,42,0.6)' : isWarning ? 'rgba(255,170,0,0.4)' : 'rgba(0,170,255,0.4)';
 
   return (
     <div
-      className="relative flex items-center justify-center"
+      className="relative flex items-center justify-center p-2"
       style={{
         width: size,
         height: size,
-        filter: isDanger ? `drop-shadow(0 0 8px ${glowColor})` : undefined,
-        animation: isDanger ? 'timerPulse 0.8s ease-in-out infinite' : undefined,
+        filter: isDanger ? `drop-shadow(0 0 12px ${glowColor})` : `drop-shadow(0 0 4px ${glowColor})`,
+        animation: isDanger ? 'timerDangerPulse 0.6s ease-in-out infinite' : undefined,
       }}
     >
       <style>{`
-        @keyframes timerPulse {
-          0%, 100% { filter: drop-shadow(0 0 6px rgba(239,68,68,0.4)); }
-          50% { filter: drop-shadow(0 0 16px rgba(239,68,68,0.8)); }
+        @keyframes timerDangerPulse {
+          0%, 100% { filter: drop-shadow(0 0 8px rgba(255,42,42,0.4)); opacity: 1; }
+          50% { filter: drop-shadow(0 0 20px rgba(255,42,42,0.9)); opacity: 0.8; }
         }
       `}</style>
 

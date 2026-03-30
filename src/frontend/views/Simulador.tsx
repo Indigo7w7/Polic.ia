@@ -20,6 +20,7 @@ export const Simulador: React.FC = () => {
     respuestasUsuario,
     tiempoRestante,
     registrarRespuesta,
+    recuperarMision,
     finalizarExamen,
     setTiempoRestante,
   } = useExamStore();
@@ -33,10 +34,28 @@ export const Simulador: React.FC = () => {
 
   const handleTimeUp = useCallback(() => {
     finalizarExamen();
+    localStorage.removeItem('cadetepro_mission_progress'); // Limpiar al terminar
     navigate('/resultados', {
       state: { answers: useExamStore.getState().respuestasUsuario, questions: preguntas, examLevelId },
     });
-  }, [finalizarExamen, navigate, preguntas]);
+  }, [finalizarExamen, navigate, preguntas, examLevelId]);
+
+  // MOUNT POINT: Mission Recovery
+  useEffect(() => {
+    const saved = localStorage.getItem('cadetepro_mission_progress');
+    if (saved) {
+      try {
+        const { answers, timeLeft, timestamp } = JSON.parse(saved);
+        // Validar que no sea una sesión de hace más de 2 horas
+        if (Date.now() - timestamp < 7200000) {
+          console.log('[MISSION] Reintegrating tactical progress from secure cache...');
+          recuperarMision(answers, timeLeft);
+        }
+      } catch (e) {
+        console.error('Error al recuperar misión táctica');
+      }
+    }
+  }, [recuperarMision]);
 
   useEffect(() => {
     if (!examenActivo) return;
@@ -48,6 +67,17 @@ export const Simulador: React.FC = () => {
     }, 1000);
     return () => clearInterval(timer);
   }, [examenActivo, setTiempoRestante, handleTimeUp]);
+
+  // POINT 2: Operative Persistence (Anti-Crash)
+  useEffect(() => {
+    if (examenActivo && Object.keys(respuestasUsuario).length > 0) {
+      localStorage.setItem('cadetepro_mission_progress', JSON.stringify({
+        answers: respuestasUsuario,
+        timeLeft: tiempoRestante,
+        timestamp: Date.now()
+      }));
+    }
+  }, [respuestasUsuario, tiempoRestante, examenActivo]);
 
   const goTo = (idx: number) => {
     setDirection(idx > currentQuestionIndex ? 1 : -1);
@@ -93,9 +123,17 @@ export const Simulador: React.FC = () => {
 
   return (
     <div
-      className="min-h-screen text-[#f8fafc] flex flex-col font-mono"
-      style={{ background: isDanger ? '#1e0505' : '#020617' }}
+      className={`min-h-screen text-[#f8fafc] flex flex-col font-mono relative overflow-hidden transition-colors duration-700 ${isDanger ? 'bg-[#1e0505]' : 'bg-[#020617]'}`}
     >
+      {/* TACTICAL OVERLAY: SCANLINES & NOISE */}
+      <div className="fixed inset-0 pointer-events-none z-[60] opacity-[0.03] mix-blend-overlay bg-[url('https://grainy-gradients.vercel.app/noise.svg')] bg-repeat" />
+      <div className="fixed inset-0 pointer-events-none z-[60] bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,0,0.06))] bg-[length:100%_2px,3px_100%] pointer-events-none" />
+      
+      {/* DEATH PULSE FRAME */}
+      {isMuerteSubita && (
+        <div className="fixed inset-0 pointer-events-none z-50 border-[4px] border-red-600/20 animate-pulse" />
+      )}
+
       <ConfirmModal
         isOpen={showExitModal}
         onClose={() => setShowExitModal(false)}
@@ -270,12 +308,12 @@ export const Simulador: React.FC = () => {
         <div className="max-w-3xl mx-auto flex gap-3">
           <Button
             variant="secondary"
-            className="h-14 flex-1 gap-2"
+            className="h-14 flex-1 gap-2 border-slate-700 hover:border-slate-500"
             onClick={() => goTo(Math.max(0, currentQuestionIndex - 1))}
             disabled={currentQuestionIndex === 0}
           >
-            <ChevronLeft className="w-5 h-5" />
-            <span className="hidden sm:inline">Anterior</span>
+            <ChevronLeft className="w-5 h-5 text-slate-500" />
+            <span className="hidden sm:inline text-[10px] font-black tracking-widest">RETROCESO TÁCTICO</span>
           </Button>
 
           {currentQuestionIndex === preguntas.length - 1 ? (
@@ -290,10 +328,10 @@ export const Simulador: React.FC = () => {
           ) : (
             <Button
               variant="primary"
-              className="h-14 flex-1 gap-2 font-bold"
+              className="h-14 flex-1 gap-2 font-black shadow-[0_0_10px_rgba(59,130,246,0.2)]"
               onClick={() => goTo(Math.min(preguntas.length - 1, currentQuestionIndex + 1))}
             >
-              <span className="hidden sm:inline">Siguiente</span>
+              <span className="hidden sm:inline text-[10px] tracking-widest">CONTINUAR AVANCE</span>
               <ChevronRight className="w-5 h-5" />
             </Button>
           )}

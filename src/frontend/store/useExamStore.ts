@@ -10,6 +10,7 @@ interface ExamStore {
 
   iniciarExamen: (bancoPreguntas: Question[]) => void;
   registrarRespuesta: (idPregunta: string, indice: number) => void;
+  recuperarMision: (answers: Record<string, number>, timeLeft: number) => void;
   finalizarExamen: () => Question[];
   setTiempoRestante: (tiempo: number | ((prev: number) => number)) => void;
 }
@@ -32,6 +33,12 @@ export const useExamStore = create<ExamStore>((set, get) => ({
   registrarRespuesta: (idPregunta, indice) => set((state) => ({
     respuestasUsuario: { ...state.respuestasUsuario, [idPregunta]: indice }
   })),
+
+  recuperarMision: (answers, timeLeft) => set({
+    respuestasUsuario: answers,
+    tiempoRestante: timeLeft,
+    examenActivo: true
+  }),
 
   setTiempoRestante: (tiempo) => set((state) => ({
     tiempoRestante: typeof tiempo === 'function' ? tiempo(state.tiempoRestante) : tiempo
