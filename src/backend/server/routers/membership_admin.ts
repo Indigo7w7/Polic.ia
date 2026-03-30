@@ -200,7 +200,7 @@ export const adminRouter = router({
       return { success: true, user: updatedUser };
     }),
 
-  getOnlineCount: adminProcedure.query(async () => {
+  getActiveCount: adminProcedure.query(async () => {
     const [result] = await db.select({
       count: sql<number>`count(${users.uid})`,
     })

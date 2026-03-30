@@ -189,8 +189,8 @@ export const AdminCommandCenter = () => {
             <Card className="bg-slate-900/50 border-slate-800">
               <CardContent className="p-4">
                 <div className="text-[10px] text-slate-500 uppercase tracking-tighter mb-2">Distribución</div>
-                <div className="h-80 w-full">
-                  <ResponsiveContainer width="100%" height={300}>
+                <div style={{height:'300px',width:'100%',minHeight:'300px'}}>
+                  <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={[
                       { name: 'FREE', value: (stats.data as any)?.freeUsers || 0 },
                       { name: 'PRO', value: (stats.data as any)?.proUsers || 0 }

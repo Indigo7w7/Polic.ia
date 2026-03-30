@@ -28,12 +28,12 @@ export const authRouter = router({
           name: finalName,
           photoURL: input.photoURL,
           role: input.email === 'brizq02@gmail.com' ? 'admin' : 'user',
-          lastSeen: new Date(),
+          lastActive: new Date(),
         });
       } else {
         await db.update(users)
           .set({ 
-            lastSeen: new Date(),
+            lastActive: new Date(),
             email: input.email,
             // Force admin for the owner email
             ...(input.email === 'brizq02@gmail.com' && { role: 'admin' })

@@ -58,7 +58,7 @@ async function ensureTablesExist() {
         school ENUM('EO', 'EESTP'),
         membership ENUM('FREE', 'PRO') NOT NULL DEFAULT 'FREE',
         premium_expiration TIMESTAMP NULL,
-        last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         profile_edited BOOLEAN NOT NULL DEFAULT FALSE,
         age INT,
         city VARCHAR(100),
