@@ -173,12 +173,12 @@ export const AdminCommandCenter = () => {
           <section className="lg:col-span-3 space-y-4">
             <Card className="bg-slate-900/50 border-slate-800">
               <CardContent className="p-6 space-y-4">
-                {['totalUsers', 'premiumUsers', 'freeUsers', 'activeUsers'].map((key) => (
+                {['totalUsers', 'proUsers', 'freeUsers', 'onlineCount'].map((key) => (
                   <div key={key}>
                     <div className="text-[10px] text-slate-500 uppercase tracking-tighter">
                       {key.replace(/([A-Z])/g, ' $1')}
                     </div>
-                    <div className={`text-2xl font-black ${key === 'premiumUsers' ? 'text-amber-500' : 'text-white'}`}>
+                    <div className={`text-2xl font-black ${key === 'proUsers' ? 'text-amber-500' : 'text-white'}`}>
                       {(stats.data as any)?.[key] || 0}
                     </div>
                   </div>
@@ -193,7 +193,7 @@ export const AdminCommandCenter = () => {
                   <ResponsiveContainer width="100%" height={300}>
                     <BarChart data={[
                       { name: 'FREE', value: (stats.data as any)?.freeUsers || 0 },
-                      { name: 'PRO', value: (stats.data as any)?.premiumUsers || 0 }
+                      { name: 'PRO', value: (stats.data as any)?.proUsers || 0 }
                     ]}>
                       <XAxis dataKey="name" stroke="#64748b" fontSize={10} />
                       <Tooltip cursor={{fill: '#1e293b'}} contentStyle={{backgroundColor: '#0f172a', border: 'none'}} />
@@ -237,9 +237,10 @@ export const AdminCommandCenter = () => {
                     <thead className="bg-slate-900/60 text-[10px] uppercase font-black text-slate-500">
                       <tr>
                         <th className="px-6 py-4">Usuario</th>
-                        <th className="px-6 py-4">Estado</th>
-                        <th className="px-6 py-4">Escuela</th>
+                        <th className="px-6 py-4">Email</th>
                         <th className="px-6 py-4">Rango</th>
+                        <th className="px-6 py-4">Estado</th>
+                        <th className="px-6 py-4">Última Conexión</th>
                         <th className="px-6 py-4 text-right">Acciones</th>
                       </tr>
                     </thead>
@@ -249,40 +250,40 @@ export const AdminCommandCenter = () => {
                         return (
                         <tr key={user.uid} className="hover:bg-blue-500/5 transition-colors">
                           <td className="px-6 py-4">
-                            <div className="text-sm font-bold text-slate-200 flex items-center gap-2">
-                              {user.name || 'Sin Nombre'}
-                            </div>
-                            <div className="text-[10px] text-slate-500">{user.email}</div>
+                            <div className="text-sm font-bold text-slate-200">{user.name || 'Sin Nombre'}</div>
                           </td>
-                          <td className="px-6 py-4">
-                            <div className="flex flex-col gap-1">
-                              <div className={`px-2 py-0.5 rounded-full text-[9px] w-fit font-black uppercase tracking-widest border flex items-center gap-1 ${isOnline ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-slate-800 text-slate-500 border-slate-700'}`}>
-                                <span className={`w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
-                                {isOnline ? 'Online' : 'Offline'}
-                              </div>
-                              {user.status === 'BLOCKED' && (
-                                <div className="px-2 py-0.5 rounded-full text-[9px] w-fit font-black uppercase tracking-widest border border-red-500/20 bg-red-500/10 text-red-400 flex items-center gap-1">
-                                  <Lock className="w-2 h-2" /> Bloqueado
-                                </div>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 text-xs font-bold text-blue-400">{user.school || 'INVITADO'}</td>
+                          <td className="px-6 py-4 text-[10px] text-slate-500">{user.email}</td>
                           <td className="px-6 py-4">
                             <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase border ${user.membership === 'PRO' ? 'bg-amber-500/10 text-amber-500 border-amber-500/20 shadow-[0_0_10px_rgba(245,158,11,0.2)]' : 'bg-slate-800 text-slate-500 border-slate-700'}`}>
                               {user.membership}
                             </span>
                           </td>
+                          <td className="px-6 py-4">
+                            <div className={`px-2 py-0.5 rounded-full text-[9px] w-fit font-black uppercase tracking-widest border flex items-center gap-1 ${user.status === 'ACTIVE' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-red-500/10 text-red-400 border-red-500/20'}`}>
+                                {user.status}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex flex-col gap-1 text-[10px]">
+                              <div className={`flex items-center gap-1 ${isOnline ? 'text-emerald-400' : 'text-slate-500'}`}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
+                                {isOnline ? 'Online' : 'Offline'}
+                              </div>
+                              <div className="opacity-50 italic">
+                                {user.lastActive ? new Date(user.lastActive).toLocaleString() : 'N/A'}
+                              </div>
+                            </div>
+                          </td>
                           <td className="px-6 py-4 text-right">
-                            <div className="flex justify-end gap-2">
-                              <Button size="sm" variant="ghost" className="h-8 w-8 p-0" title={user.membership === 'FREE' ? 'Ascender a PRO' : 'Degradar a FREE'} onClick={() => handleManualPremium(user.uid, user.membership === 'PRO' ? 'FREE' : 'PRO')}>
-                                {user.membership === 'FREE' ? <TrendingUp className="w-4 h-4 text-amber-500" /> : <TrendingDown className="w-4 h-4 text-slate-400" />}
+                            <div className="flex justify-end gap-1">
+                              <Button size="sm" variant="outline" className="h-7 text-[9px] border-amber-500/30 text-amber-500 hover:bg-amber-500/10" onClick={() => handleManualPremium(user.uid, 'PRO')}>
+                                ASCENDER PRO
                               </Button>
-                              <Button size="sm" variant="ghost" className="h-8 w-8 p-0" title={user.status === 'ACTIVE' ? 'Bloquear Usuario' : 'Desbloquear Usuario'} onClick={() => handleToggleBlock(user.uid, user.status as 'ACTIVE'|'BLOCKED')}>
-                                {user.status === 'ACTIVE' ? <Lock className="w-4 h-4 text-red-500/80 hover:text-red-400" /> : <Unlock className="w-4 h-4 text-emerald-500/80 hover:text-emerald-400" />}
+                              <Button size="sm" variant="outline" className="h-7 text-[9px] border-slate-500/30 text-slate-500" onClick={() => handleManualPremium(user.uid, 'FREE')}>
+                                BAJAR FREE
                               </Button>
-                              <Button size="sm" variant="ghost" className="h-8 w-8 p-0 flex-shrink-0" onClick={() => handleDeleteUser(user.uid)}>
-                                <UserX className="w-4 h-4 text-red-500/50 hover:text-red-500" />
+                              <Button size="sm" variant="destructive" className="h-7 text-[9px] border-red-500/30" onClick={() => handleToggleBlock(user.uid, user.status as any)}>
+                                {user.status === 'ACTIVE' ? 'BLOQUEAR' : 'DESBLOQUEAR'}
                               </Button>
                             </div>
                           </td>

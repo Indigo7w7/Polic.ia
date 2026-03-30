@@ -75,9 +75,9 @@ export const adminRouter = router({
 
     return {
       totalUsers: Number(userCounts.total) || 0,
-      premiumUsers: Number(userCounts.premium) || 0,
+      proUsers: Number(userCounts.premium) || 0,
       freeUsers: Number(userCounts.free) || 0,
-      activeUsers: Number(userCounts.activeUsers) || 0,
+      onlineCount: Number(userCounts.activeUsers) || 0,
       dailyRevenue: Number(revenueObj.dailyIncome) || 0,
       totalQuestions: Number(questionsStats.total) || 0,
       totalContent: 0,

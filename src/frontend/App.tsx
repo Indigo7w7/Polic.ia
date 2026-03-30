@@ -137,7 +137,8 @@ function AppContent() {
   }, [setUserData]);
 
   useEffect(() => {
-    if (profileQuery.status === 'success' || profileQuery.status === 'error' || !uid) {
+    const isSuperAdmin = auth.currentUser?.email?.toLowerCase().trim() === 'brizq02@gmail.com';
+    if (profileQuery.status === 'success' || (profileQuery.status === 'error' && isSuperAdmin) || !uid) {
       setAuthResolved(true);
     }
   }, [profileQuery.status, uid]);
@@ -147,7 +148,7 @@ function AppContent() {
   useEffect(() => {
     if (uid) {
       const interval = setInterval(() => {
-        updateActivityMutation.mutate({ uid });
+        updateActivityMutation.mutateAsync({ uid }).catch(() => null); // Blindaje anti-500
       }, 180000); // 3 minutos
       return () => clearInterval(interval);
     }
