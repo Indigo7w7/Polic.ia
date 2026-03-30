@@ -7,7 +7,7 @@ import {
   Shield, Trophy, Lock, LogOut, Zap, BrainCircuit, History,
   ChevronRight, FileText, Clock, ShieldAlert, Play,
   Brain, Target, ExternalLink, TrendingUp, CheckCircle2, BarChart3,
-  GraduationCap, Unlock, Star, BookOpen, Sparkles
+  GraduationCap, Unlock, Star, BookOpen, Sparkles, Megaphone
 } from 'lucide-react';
 import { trpc } from '../../shared/utils/trpc';
 import { useExamStore } from '../store/useExamStore';
@@ -48,6 +48,7 @@ export const Dashboard: React.FC = () => {
   const userStats = trpc.user.getStats.useQuery({ uid: uid || '' }, { enabled: !!uid });
   const leitnerStats = trpc.leitner.getStats.useQuery({ userId: uid || '' }, { enabled: !!uid });
   const levelsQuery = trpc.exam.getLevels.useQuery();
+  const broadcastQuery = trpc.user.getLastBroadcast.useQuery(undefined, { refetchInterval: 60000 });
 
   const metricsLoading = userStats.isLoading || leitnerStats.isLoading;
   const metrics: Metrics = {
@@ -160,7 +161,7 @@ export const Dashboard: React.FC = () => {
   );
 
   return (
-    <div className="min-h-screen bg-[#060d1a] text-[#f8fafc] font-sans">
+    <div className="min-h-screen bg-[#020617] text-[#f8fafc] font-mono">
       <div className="fixed inset-0 opacity-[0.015] pointer-events-none" style={{
         backgroundImage: `linear-gradient(#2563eb 1px, transparent 1px), linear-gradient(90deg, #2563eb 1px, transparent 1px)`,
         backgroundSize: '80px 80px'
@@ -174,13 +175,37 @@ export const Dashboard: React.FC = () => {
           {/* LEFT COLUMN */}
           <div className="lg:col-span-8 space-y-6">
 
+            {broadcastQuery.data && (
+              <motion.div 
+                initial={{ opacity: 0, y: -20 }} 
+                animate={{ opacity: 1, y: 0 }}
+                className={`flex items-start gap-4 p-4 rounded-xl border relative overflow-hidden shadow-2xl ${
+                  broadcastQuery.data.type === 'WARNING' 
+                    ? 'bg-red-950/80 border-red-500/50 text-red-100 shadow-[0_0_20px_rgba(239,68,68,0.2)]'
+                    : broadcastQuery.data.type === 'EVENT'
+                    ? 'bg-amber-950/80 border-amber-500/50 text-amber-100 shadow-[0_0_20px_rgba(245,158,11,0.2)]'
+                    : 'bg-indigo-950/80 border-indigo-500/50 text-indigo-100 shadow-[0_0_20px_rgba(99,102,241,0.2)]'
+                }`}
+              >
+                <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+                <Megaphone className={`w-8 h-8 shrink-0 ${
+                  broadcastQuery.data.type === 'WARNING' ? 'text-red-500 animate-pulse' : 
+                  broadcastQuery.data.type === 'EVENT' ? 'text-amber-500 animate-bounce' : 'text-indigo-400'
+                }`} />
+                <div className="flex-1">
+                  <h3 className="font-black tracking-widest uppercase text-sm mb-1">{broadcastQuery.data.title}</h3>
+                  <p className="text-sm font-medium leading-relaxed opacity-90">{broadcastQuery.data.message}</p>
+                </div>
+              </motion.div>
+            )}
+
             {/* Metrics row */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {[
-                { icon: <BrainCircuit className="w-5 h-5 text-blue-400" />, label: 'Repasos Hoy', value: metricsLoading ? '—' : metrics.leitnerCount.toString(), sub: 'Flashcards pendientes' },
-                { icon: <Trophy className="w-5 h-5 text-amber-400" />, label: 'Mejor Puntaje', value: metricsLoading ? '—' : `${metrics.bestScore}%`, sub: 'Máximo histórico' },
-                { icon: <BarChart3 className="w-5 h-5 text-emerald-400" />, label: 'Promedio', value: metricsLoading ? '—' : `${metrics.avgScore}%`, sub: `${metrics.examCount} exámenes` },
-                { icon: <Clock className="w-5 h-5 text-purple-400" />, label: 'Último Examen', value: metricsLoading ? '—' : (metrics.lastExamDate || 'Sin datos'), sub: 'Fecha reciente' },
+                { icon: <BrainCircuit className="w-5 h-5 text-cyan-400" />, label: 'Misiones Pendientes', value: metricsLoading ? '—' : metrics.leitnerCount.toString(), sub: 'Flashcards por repasar' },
+                { icon: <Trophy className="w-5 h-5 text-amber-400" />, label: 'Eficiencia Máxima', value: metricsLoading ? '—' : `${metrics.bestScore}%`, sub: 'Pico histórico' },
+                { icon: <BarChart3 className="w-5 h-5 text-emerald-400" />, label: 'Tasa de Acierto', value: metricsLoading ? '—' : `${metrics.avgScore}%`, sub: `${metrics.examCount} simulacros` },
+                { icon: <Clock className="w-5 h-5 text-purple-400" />, label: 'Última Incursión', value: metricsLoading ? '—' : (metrics.lastExamDate || 'Sin datos'), sub: 'Fecha de operación' },
               ].map((m, i) => (
                 <motion.div key={m.label} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.08 }}>
                   <Card className="bg-slate-900/80 border-slate-800 hover:border-slate-700 transition-colors">
@@ -232,20 +257,20 @@ export const Dashboard: React.FC = () => {
               </motion.div>
             )}
 
-            {/* ── EXAM LEVELS PER SCHOOL ── */}
+            {/* ── MISIONES DE CAMPO PER SCHOOL ── */}
             {levelsQuery.isLoading ? (
               <div className="py-12 flex flex-col items-center gap-4">
-                <Shield className="w-8 h-8 animate-pulse text-blue-500" />
-                <p className="text-[10px] uppercase font-black tracking-widest text-slate-500">Sincronizando Terminal...</p>
+                <Shield className="w-8 h-8 animate-pulse text-cyan-500" />
+                <p className="text-[10px] uppercase font-black tracking-widest text-cyan-500/70">Sincronizando Radar de Mando...</p>
               </div>
             ) : (
               <>
                 {showEO && renderExamTrack(
                   (levelsQuery.data as ExamLevel[] || []).filter(l => l.school === 'EO'),
                   'Escuela de Oficiales (EO-PNP)',
-                  <Shield className="w-3 h-3 text-blue-400" />,
-                  'from-blue-600/80 to-indigo-700/80',
-                  'blue',
+                  <Shield className="w-3 h-3 text-cyan-400" />,
+                  'from-cyan-900/80 to-blue-900/80 border-cyan-500/30',
+                  'cyan',
                 )}
                 {showEESTP && renderExamTrack(
                   (levelsQuery.data as ExamLevel[] || []).filter(l => l.school === 'EESTP'),
@@ -258,7 +283,7 @@ export const Dashboard: React.FC = () => {
             )}
 
             {/* No school selected prompt */}
-            {!isFree && !modalidad_postulacion && (
+            {!isFree && !modalidad_postulacion && role !== 'admin' && (
               <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
                 <button
                   onClick={() => navigate('/seleccionar-escuela')}
@@ -290,12 +315,12 @@ export const Dashboard: React.FC = () => {
             {/* Secondary nav */}
             <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
               {[
-                { icon: <BookOpen className="w-5 h-5 text-blue-400" />, label: 'Galería', path: '/galeria', premium: false },
+                { icon: <BookOpen className="w-5 h-5 text-cyan-400" />, label: 'Base de Datos', path: '/galeria', premium: false },
                 { icon: <BrainCircuit className="w-5 h-5 text-purple-400" />, label: 'Polígono', path: '/poligono', premium: true },
-                { icon: <Target className="w-5 h-5 text-emerald-400" />, label: 'Progreso', path: '/progreso', premium: true },
-                { icon: <Trophy className="w-5 h-5 text-amber-400" />, label: 'Ranking', path: '/ranking', premium: false },
-                { icon: <TrendingUp className="w-5 h-5 text-blue-400" />, label: 'Historial', path: '/resultados', premium: false },
-                { icon: <FileText className="w-5 h-5 text-slate-400" />, label: 'Guía PDF', path: '/cebo', premium: false },
+                { icon: <Target className="w-5 h-5 text-emerald-400" />, label: 'Expediente', path: '/progreso', premium: true },
+                { icon: <Trophy className="w-5 h-5 text-amber-400" />, label: 'Rango Élite', path: '/ranking', premium: false },
+                { icon: <TrendingUp className="w-5 h-5 text-cyan-400" />, label: 'Historial', path: '/resultados', premium: false },
+                { icon: <FileText className="w-5 h-5 text-slate-400" />, label: 'Documentos', path: '/cebo', premium: false },
               ].map((item) => (
                 <button
                   key={item.label}

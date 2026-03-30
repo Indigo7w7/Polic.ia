@@ -4,16 +4,16 @@ import { Button } from '../components/ui/Button';
 import { 
   ShieldCheck, Search, Check, X, Loader2, ExternalLink, Database,
   UploadCloud, FileJson, Users as UsersIcon, BookOpen, HelpCircle,
-  Plus, Trash2, Edit3, Save, Filter
+  Plus, Trash2, Edit3, Save, Filter, GraduationCap, Video, FileText, Link as LinkIcon
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { trpc } from '../../shared/utils/trpc';
 import { storage } from '@/src/firebase';
-import { ref, deleteObject } from 'firebase/storage';
+import { ref, deleteObject, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { toast } from 'sonner';
 import { Header } from '../components/common/Header';
 
-type AdminTab = 'vouchers' | 'users' | 'content' | 'questions' | 'ingest';
+type AdminTab = 'vouchers' | 'users' | 'content' | 'questions' | 'ingest' | 'courses';
 
 export const AdminPanel: React.FC = () => {
   const navigate = useNavigate();
@@ -43,6 +43,21 @@ export const AdminPanel: React.FC = () => {
   const createQuestionMutation = trpc.admin.createQuestion.useMutation();
   const deleteQuestionMutation = trpc.admin.deleteQuestion.useMutation();
 
+  // ─── Courses Queries & Mutations ───
+  const coursesQuery = trpc.adminCourses.getCourses.useQuery(undefined, { enabled: activeTab === 'courses' });
+  const createCourseMutation = trpc.adminCourses.createCourse.useMutation();
+  const deleteCourseMutation = trpc.adminCourses.deleteCourse.useMutation();
+
+  const [selectedCourseForMaterials, setSelectedCourseForMaterials] = useState<number | null>(null);
+  const materialsQuery = trpc.adminCourses.getCourseMaterials.useQuery(
+    { courseId: selectedCourseForMaterials! }, 
+    { enabled: !!selectedCourseForMaterials }
+  );
+  const addMaterialMutation = trpc.adminCourses.addMaterialToCourse.useMutation();
+  const deleteMaterialMutation = trpc.adminCourses.deleteCourseMaterial.useMutation();
+  const [newMaterial, setNewMaterial] = useState({ title: '', type: 'PDF' as 'PDF'|'VIDEO'|'EXAM'|'LINK'|'TEXT', contentUrl: '', file: null as File | null });
+  const [uploadProgress, setUploadProgress] = useState(0);
+
   // ─── Content form state ───
   const [newContent, setNewContent] = useState({ areaId: 0, title: '', body: '', level: 1, schoolType: 'BOTH' as 'EO' | 'EESTP' | 'BOTH' });
   const [newArea, setNewArea] = useState({ name: '', icon: '' });
@@ -52,6 +67,9 @@ export const AdminPanel: React.FC = () => {
     areaId: 0, question: '', options: ['', '', '', ''], correctOption: 0,
     difficulty: 'MEDIUM' as 'EASY' | 'MEDIUM' | 'HARD', schoolType: 'BOTH' as 'EO' | 'EESTP' | 'BOTH'
   });
+
+  // ─── Courses form state ───
+  const [newCourse, setNewCourse] = useState({ title: '', description: '', level: 'BASICO' as 'BASICO'|'INTERMEDIO'|'AVANZADO', schoolType: 'BOTH' as 'EO' | 'EESTP' | 'BOTH' });
 
   const handleApprove = async (voucherId: number, userId: string, url: string) => {
     setProcessingId(voucherId);
@@ -109,6 +127,58 @@ export const AdminPanel: React.FC = () => {
     } catch { toast.error('Error al crear contenido.'); }
   };
 
+  const handleCreateCourse = async () => {
+    if (!newCourse.title) { toast.error('El título del curso es obligatorio.'); return; }
+    try {
+      await createCourseMutation.mutateAsync(newCourse);
+      toast.success('Curso creado.');
+      setNewCourse({ title: '', description: '', level: 'BASICO', schoolType: 'BOTH' });
+      coursesQuery.refetch();
+    } catch { toast.error('Error al crear curso.'); }
+  };
+
+  const handleCreateMaterial = async () => {
+    if (!newMaterial.title || !selectedCourseForMaterials) { toast.error('Falta título o curso seleccionado.'); return; }
+    
+    let finalUrl = newMaterial.contentUrl;
+
+    if (newMaterial.file) {
+      const storageRef = ref(storage, `courses/${selectedCourseForMaterials}/${Date.now()}_${newMaterial.file.name}`);
+      const uploadTask = uploadBytesResumable(storageRef, newMaterial.file);
+      
+      try {
+        await new Promise<void>((resolve, reject) => {
+          uploadTask.on('state_changed', 
+            (snapshot) => setUploadProgress((snapshot.bytesTransferred / snapshot.totalBytes) * 100),
+            (error) => { toast.error('Error subiendo archivo'); reject(error); },
+            async () => {
+              finalUrl = await getDownloadURL(uploadTask.snapshot.ref);
+              resolve();
+            }
+          );
+        });
+      } catch { setUploadProgress(0); return; }
+    }
+
+    if (!finalUrl && newMaterial.type !== 'TEXT') {
+      toast.error('Debes proporcionar un enlace o subir un archivo.');
+      return;
+    }
+
+    try {
+      await addMaterialMutation.mutateAsync({
+        courseId: selectedCourseForMaterials,
+        title: newMaterial.title,
+        type: newMaterial.type as any,
+        contentUrl: finalUrl
+      });
+      toast.success('Material enlazado correctamente.');
+      setNewMaterial({ title: '', type: 'PDF', contentUrl: '', file: null });
+      setUploadProgress(0);
+      materialsQuery.refetch();
+    } catch { toast.error('Error al enlazar material.'); }
+  };
+
   const handleCreateQuestion = async () => {
     if (!newQuestion.areaId || !newQuestion.question || newQuestion.options.some(o => !o.trim())) {
       toast.error('Completa todos los campos y opciones.'); return;
@@ -144,6 +214,7 @@ export const AdminPanel: React.FC = () => {
     { id: 'content', label: 'Contenido', count: contentList.length, icon: <BookOpen className="w-3.5 h-3.5" /> },
     { id: 'questions', label: 'Preguntas', count: questions.length, icon: <HelpCircle className="w-3.5 h-3.5" /> },
     { id: 'ingest', label: 'Inyección', icon: <UploadCloud className="w-3.5 h-3.5" /> },
+    { id: 'courses', label: 'Cursos', icon: <GraduationCap className="w-3.5 h-3.5" /> },
   ];
 
   return (
@@ -509,7 +580,132 @@ export const AdminPanel: React.FC = () => {
             </CardContent>
           </Card>
         )}
+
+        {/* ─── COURSES TAB ─── */}
+        {activeTab === 'courses' && (
+          <div className="space-y-6">
+            <Card>
+              <CardHeader><CardTitle className="text-lg flex items-center gap-2"><GraduationCap className="w-5 h-5 text-blue-400" /> Crear Nuevo Curso</CardTitle></CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <input placeholder="Título del curso" value={newCourse.title} onChange={(e) => setNewCourse(p => ({...p, title: e.target.value}))}
+                    className="bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-sm text-white focus:border-blue-500 outline-none" />
+                  <select value={newCourse.level} onChange={(e) => setNewCourse(p => ({...p, level: e.target.value as any}))}
+                    className="bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-sm text-white focus:border-blue-500 outline-none">
+                    <option value="BASICO">BÁSICO</option>
+                    <option value="INTERMEDIO">INTERMEDIO</option>
+                    <option value="AVANZADO">AVANZADO</option>
+                  </select>
+                </div>
+                <textarea placeholder="Descripción detallada..." value={newCourse.description} onChange={(e) => setNewCourse(p => ({...p, description: e.target.value}))}
+                  className="w-full h-24 bg-slate-900 border border-slate-700 rounded-xl p-4 text-sm text-white placeholder-slate-600 resize-none focus:border-blue-500 outline-none" />
+                <Button fullWidth onClick={handleCreateCourse} disabled={createCourseMutation.isPending}>
+                  {createCourseMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Plus className="w-4 h-4 mr-1" /> Crear Curso</>}
+                </Button>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader><CardTitle className="text-sm text-slate-400 uppercase tracking-widest">Cursos ({coursesQuery.data?.length || 0})</CardTitle></CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {(coursesQuery.data || []).map(course => (
+                    <div key={course.id} className="flex items-center justify-between p-3 bg-slate-900/50 rounded-lg border border-slate-800">
+                      <div>
+                        <div className="font-bold text-sm text-white">{course.title}</div>
+                        <div className="text-[10px] text-slate-500">{course.level} · {course.schoolType}</div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-[10px] font-black px-2 py-0.5 rounded ${course.isPublished ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-700 text-slate-400'}`}>
+                          {course.isPublished ? 'PUBLICADO' : 'BORRADOR'}
+                        </span>
+                        <button onClick={async () => {
+                          await deleteCourseMutation.mutateAsync({ courseId: course.id });
+                          toast.success('Curso eliminado.'); coursesQuery.refetch();
+                        }} className="p-2 text-red-400 hover:bg-red-500/20 rounded transition-colors"><Trash2 className="w-4 h-4" /></button>
+                        <button onClick={() => setSelectedCourseForMaterials(course.id)} className="p-2 text-blue-400 hover:bg-blue-500/20 rounded transition-colors"><FileJson className="w-4 h-4" /></button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
       </main>
+
+      {/* Materials Modal */}
+      {selectedCourseForMaterials && (
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-slate-700 w-full max-w-2xl rounded-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+            <div className="px-6 py-4 flex items-center justify-between border-b border-slate-700 bg-slate-800/50">
+              <h3 className="font-bold text-white flex items-center gap-2"><BookOpen className="w-4 h-4 text-blue-400" /> Gestionar Materiales del Curso</h3>
+              <button onClick={() => setSelectedCourseForMaterials(null)} className="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-700 transition-colors"><X className="w-5 h-5" /></button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              {/* Nuevo Material */}
+              <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700 space-y-4">
+                <h4 className="text-sm font-black text-slate-300 uppercase tracking-widest mb-2">Añadir Recurso</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <input placeholder="Título del Material" value={newMaterial.title} onChange={e => setNewMaterial(p => ({...p, title: e.target.value}))} className="bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-sm text-white focus:border-blue-500 outline-none" />
+                  <select value={newMaterial.type} onChange={e => setNewMaterial(p => ({...p, type: e.target.value as any}))} className="bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-sm text-white focus:border-blue-500 outline-none">
+                    <option value="PDF">Documento PDF</option>
+                    <option value="VIDEO">Enlace de Video</option>
+                    <option value="LINK">Enlace Externo</option>
+                    <option value="EXAM">Simulacro / Examen</option>
+                  </select>
+                </div>
+                
+                {newMaterial.type === 'PDF' ? (
+                  <div className="border border-dashed border-slate-600 rounded-lg p-6 flex flex-col items-center justify-center gap-2 relative bg-slate-900/50 hover:bg-slate-900 transition-colors">
+                    <input type="file" accept=".pdf" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onChange={e => setNewMaterial(p => ({...p, file: e.target.files?.[0] || null}))} />
+                    <UploadCloud className="w-6 h-6 text-slate-400" />
+                    <p className="text-xs font-bold text-slate-300">{newMaterial.file ? newMaterial.file.name : 'Subir archivo PDF (.pdf)'}</p>
+                    {uploadProgress > 0 && <div className="w-full bg-slate-800 rounded-full h-1 mt-2.5 overflow-hidden"><div className="bg-blue-500 h-1 transition-all" style={{width: `${uploadProgress}%`}} /></div>}
+                  </div>
+                ) : (
+                  <input placeholder="URL del contenido (ej: YouTube, Drive...)" value={newMaterial.contentUrl} onChange={e => setNewMaterial(p => ({...p, contentUrl: e.target.value}))} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-sm text-white focus:border-blue-500 outline-none" />
+                )}
+
+                <Button fullWidth onClick={handleCreateMaterial} disabled={addMaterialMutation.isPending || uploadProgress > 0}>
+                  {(addMaterialMutation.isPending || (uploadProgress > 0 && uploadProgress < 100)) ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Plus className="w-4 h-4 mr-1" /> Adjuntar a Curso</>}
+                </Button>
+              </div>
+
+              {/* Lista Materiales */}
+              <div className="space-y-2">
+                {materialsQuery.isLoading ? (
+                  <div className="py-8 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-slate-500" /></div>
+                ) : materialsQuery.data?.length === 0 ? (
+                  <p className="text-center text-xs text-slate-500 py-4">No hay materiales en este curso.</p>
+                ) : (
+                  materialsQuery.data?.map(mat => (
+                    <div key={mat.id} className="flex items-center justify-between p-3 bg-slate-900 rounded-lg border border-slate-800 group">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-slate-800 flex items-center justify-center">
+                          {mat.type === 'PDF' && <FileText className="w-4 h-4 text-red-400" />}
+                          {mat.type === 'VIDEO' && <Video className="w-4 h-4 text-blue-400" />}
+                          {mat.type === 'LINK' && <LinkIcon className="w-4 h-4 text-emerald-400" />}
+                          {mat.type === 'EXAM' && <HelpCircle className="w-4 h-4 text-amber-400" />}
+                        </div>
+                        <div>
+                          <p className="text-sm font-bold text-white">{mat.title}</p>
+                          <a href={mat.contentUrl!} target="_blank" rel="noreferrer" className="text-[9px] text-blue-400 hover:underline max-w-[200px] truncate block">Ver Recurso</a>
+                        </div>
+                      </div>
+                      <button onClick={async () => {
+                        await deleteMaterialMutation.mutateAsync({ materialId: mat.id });
+                        toast.success('Eliminado.'); materialsQuery.refetch();
+                      }} className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-md transition-all opacity-0 group-hover:opacity-100"><Trash2 className="w-4 h-4" /></button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Lightbox Modal */}
       {lightboxUrl && (

@@ -1,6 +1,6 @@
 import { router, protectedProcedure, adminProcedure } from '../trpc';
 import { z } from 'zod';
-import { db, users, adminLogs, yapeAudits, examQuestions, learningAreas, learningContent } from '../../../database/db';
+import { db, users, adminLogs, yapeAudits, examQuestions, learningAreas, learningContent, globalNotifications } from '../../../database/db';
 import { eq, sql, and, like, or } from 'drizzle-orm';
 import { TRPCError } from '@trpc/server';
 
@@ -62,21 +62,24 @@ export const adminRouter = router({
       total: sql<number>`count(${users.uid})`,
       premium: sql<number>`sum(case when ${users.membership} = 'PRO' then 1 else 0 end)`,
       free: sql<number>`sum(case when ${users.membership} = 'FREE' then 1 else 0 end)`,
+      activeUsers: sql<number>`sum(case when ${users.lastSeen} >= NOW() - INTERVAL 5 MINUTE then 1 else 0 end)`,
     }).from(users);
 
-    const [activeCount] = await db.select({
-      count: sql<number>`count(${users.uid})`,
-    })
-    .from(users)
-    .where(sql`${users.lastSeen} >= ${new Date(Date.now() - 5 * 60 * 1000)}`);
+    const [revenueObj] = await db.select({
+      dailyIncome: sql<number>`sum(case when DATE(${adminLogs.createdAt}) = CURDATE() AND ${adminLogs.action} LIKE '%MANUAL_OVERRIDE: Set % to PRO' then 145 else 0 end)`,
+    }).from(adminLogs);
+
+    const [questionsStats] = await db.select({
+      total: sql<number>`count(${examQuestions.id})`,
+    }).from(examQuestions);
 
     return {
       totalUsers: Number(userCounts.total) || 0,
       premiumUsers: Number(userCounts.premium) || 0,
       freeUsers: Number(userCounts.free) || 0,
-      activeUsers: Number(activeCount.count) || 0,
-      dailyRevenue: 0,
-      totalQuestions: 0,
+      activeUsers: Number(userCounts.activeUsers) || 0,
+      dailyRevenue: Number(revenueObj.dailyIncome) || 0,
+      totalQuestions: Number(questionsStats.total) || 0,
       totalContent: 0,
     };
   }),
@@ -130,6 +133,50 @@ export const adminRouter = router({
       return { success: true };
     }),
 
+  updateUserStatus: adminProcedure
+    .input(z.object({
+      targetUid: z.string(),
+      membership: z.enum(['FREE', 'PRO']).optional(),
+      status: z.enum(['ACTIVE', 'BLOCKED']).optional(),
+    }))
+    .mutation(async ({ input }) => {
+      if (input.membership) {
+        const expiration = input.membership === 'PRO' 
+          ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) 
+          : null;
+        await db.update(users)
+          .set({ membership: input.membership, premiumExpiration: expiration })
+          .where(eq(users.uid, input.targetUid));
+      }
+      if (input.status) {
+        await db.update(users)
+          .set({ status: input.status })
+          .where(eq(users.uid, input.targetUid));
+      }
+      return { success: true };
+    }),
+
+  sendBroadcast: adminProcedure
+    .input(z.object({
+      title: z.string(),
+      message: z.string(),
+      type: z.enum(['INFO', 'WARNING', 'EVENT']).default('WARNING'),
+      durationHours: z.number().default(24)
+    }))
+    .mutation(async ({ input }) => {
+      // Deactivate previous broadcasts
+      await db.update(globalNotifications).set({ isActive: false });
+
+      await db.insert(globalNotifications).values({
+        title: input.title,
+        message: input.message,
+        type: input.type,
+        isActive: true,
+        expiresAt: new Date(Date.now() + input.durationHours * 60 * 60 * 1000)
+      });
+      return { success: true };
+    }),
+
   deleteUser: adminProcedure
     .input(z.object({ uid: z.string() }))
     .mutation(async ({ input }) => {
@@ -161,12 +208,12 @@ export const adminRouter = router({
       return { success: true, user: updatedUser };
     }),
 
-  getActiveCount: adminProcedure.query(async () => {
+  getOnlineCount: adminProcedure.query(async () => {
     const [result] = await db.select({
       count: sql<number>`count(${users.uid})`,
     })
     .from(users)
-    .where(sql`${users.lastSeen} >= ${new Date(Date.now() - 5 * 60 * 1000)}`);
+    .where(sql`${users.lastSeen} >= NOW() - INTERVAL 5 MINUTE`);
     
     return { count: result.count || 0 };
   }),

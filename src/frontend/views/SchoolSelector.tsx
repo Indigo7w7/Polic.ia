@@ -6,6 +6,8 @@ import { Shield, GraduationCap, ChevronRight, Sparkles } from 'lucide-react';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
 
+import { auth } from '@/src/firebase';
+
 const schools: { id: ModalidadPostulacion; title: string; subtitle: string; welcome: string; icon: React.ReactNode; gradient: string; border: string; glow: string }[] = [
   {
     id: 'EO',
@@ -41,16 +43,26 @@ export const SchoolSelector: React.FC = () => {
       });
       navigate('/');
     }
+    
+    // Admin Override: Admins don't need a school. Route them to portal.
+    const isOwner = auth.currentUser?.email?.toLowerCase().trim() === 'brizq02@gmail.com';
+    if (useUserStore.getState().role === 'admin' || isOwner) {
+       navigate('/admin-portal', { replace: true });
+    }
   }, [modalidad_postulacion, navigate]);
 
   const handleSelect = async (modalidad: ModalidadPostulacion) => {
     if (!modalidad || modalidad_postulacion) return;
     
+    const utils = trpc.useUtils();
     setUserData({ modalidad_postulacion: modalidad });
 
     if (uid) {
       try {
         await selectSchool.mutateAsync({ uid, school: modalidad as 'EO' | 'EESTP' });
+        // MANDATORY: Force cache invalidation to prevent old null value from overwriting the store
+        await utils.user.getProfile.invalidate({ uid });
+        console.log('[SYNC] Profile cache invalidated after school selection');
       } catch (e: any) {
         console.error('Error saving modalidad:', e);
         if (e.message?.includes('irreversible')) {
@@ -63,7 +75,7 @@ export const SchoolSelector: React.FC = () => {
 
     const chosen = schools.find(s => s.id === modalidad)!;
     toast.success(chosen.welcome, { duration: 4000 });
-    navigate('/');
+    navigate('/', { replace: true });
   };
 
   const displayName = name === 'Invitado' ? 'Postulante' : name.split(' ')[0];

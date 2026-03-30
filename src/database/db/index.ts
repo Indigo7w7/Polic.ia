@@ -9,19 +9,9 @@ const getPool = () => {
   // 1. Prioritize Full URL (Handles Railway internal/external URLs correctly)
   const url = process.env.MYSQL_URL || process.env.DATABASE_URL;
   if (url) {
+    console.log(`[DB] Connecting via explicitly provided URL`);
     try {
-      const parsed = new URL(url);
-      console.log(`[DB] Database: ${parsed.pathname.slice(1)}, Host: ${parsed.hostname}`);
-      return mysql.createPool({
-        host: parsed.hostname,
-        user: parsed.username,
-        password: decodeURIComponent(parsed.password),
-        database: parsed.pathname.slice(1) || 'railway',
-        port: parseInt(parsed.port || '3306'),
-        waitForConnections: true,
-        connectionLimit: 10,
-        family: 4, // Force IPv4
-      } as any);
+      return mysql.createPool(url);
     } catch (err) {
       console.error(`[DB] URL Parse Error: ${err instanceof Error ? err.message : String(err)}`);
     }

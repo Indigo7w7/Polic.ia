@@ -22,6 +22,7 @@ export interface UserState {
   city: string | null;
   profileEdited: boolean;
   role: 'user' | 'admin';
+  status: 'ACTIVE' | 'BLOCKED';
   examProgress: Record<string, ExamProgress>;
   setUserData: (data: Partial<UserState>) => void;
   activarPremium: (timestampExpiracion: string) => void;
@@ -43,6 +44,7 @@ export const useUserStore = create<UserState>()(
       city: null,
       profileEdited: false,
       role: 'user',
+      status: 'ACTIVE',
       examProgress: {},
 
       setUserData: (data) => set((state) => ({ ...state, ...data })),
@@ -74,9 +76,8 @@ export const useUserStore = create<UserState>()(
       })),
     }),
     {
-      name: 'policia-user-storage',
+      name: 'policia-pro-v1', // RENAME FOR FORCED RESET
       partialize: (state) => ({ 
-        uid: state.uid, 
         modalidad_postulacion: state.modalidad_postulacion,
         role: state.role,
         estado_financiero: state.estado_financiero,

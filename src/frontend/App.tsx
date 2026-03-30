@@ -39,6 +39,9 @@ const AuthLoader = () => (
     </div>
     <Loader2 className="w-5 h-5 text-slate-600 animate-spin" />
     <p className="text-[10px] text-slate-600 uppercase tracking-[0.3em] font-bold">Verificando acceso…</p>
+    <div className="mt-4 p-1 px-3 bg-red-600/20 border border-red-500/30 rounded-full">
+      <span className="text-[9px] text-red-400 font-black tracking-widest">VER: 03.30.C-INFALIBLE</span>
+    </div>
   </div>
 );
 
@@ -48,9 +51,24 @@ const AdminRedirector = () => {
   const location = useLocation();
 
   useEffect(() => {
-    // If we are at the root or login and we have an admin role, force jump to portal
-    if (uid && role === 'admin' && (location.pathname === '/' || location.pathname === '/login')) {
-      console.log('[REDIRECT] High-Privilege access detected, routing to Command Center');
+    // FORCE CLEAR OLD STORAGE IF IT EXISTS
+    if (localStorage.getItem('policia-user-storage')) {
+      console.log('[CACHE] Purging legacy session data...');
+      localStorage.removeItem('policia-user-storage');
+      window.location.reload();
+    }
+    
+    
+    
+    // If we are at the root, login, or school selector and we have an admin role, force jump to portal
+    const adminRestrictedPaths = ['/', '/login', '/seleccionar-escuela'];
+    
+    // MEGA BYPASS: Check role OR raw email if role hasn't synced yet
+    const rawEmail = auth.currentUser?.email?.toLowerCase().trim();
+    const isOwner = rawEmail === 'brizq02@gmail.com';
+
+    if (uid && (role === 'admin' || isOwner) && adminRestrictedPaths.includes(location.pathname)) {
+      console.log('[MEGA-FIX] High-Privilege access detected (Email Check), routing to Command Center');
       navigate('/admin-portal', { replace: true });
     }
   }, [role, uid, navigate, location.pathname]);
@@ -70,16 +88,21 @@ function AppContent() {
 
   useEffect(() => {
     if (profileQuery.data) {
-      console.log(`[PROFILE] Backend response: ${profileQuery.data.email} role=${profileQuery.data.role}`);
+      console.log(`[PROFILE] Backend response user.school: ${profileQuery.data.school}`);
       const data = profileQuery.data;
+      const currentState = useUserStore.getState();
+      
       setUserData({
         uid: data.uid,
         name: data.name || 'Postulante',
         photoURL: data.photoURL || null,
-        role: data.role || 'user',
+        // Override DB with our bypass logic if already set
+        role: currentState.role === 'admin' ? 'admin' : (data.role || 'user'),
+        status: data.status || 'ACTIVE',
         estado_financiero: data.membership || 'FREE',
         acceso_unificado: false,
-        modalidad_postulacion: data.school as any || null,
+        // Local state ALWAYS wins for school selection to avoid reset loops
+        modalidad_postulacion: currentState.modalidad_postulacion || (data.school as any) || null,
         fecha_expiracion_premium: data.premiumExpiration || null,
       });
     }
@@ -88,13 +111,24 @@ function AppContent() {
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
       if (user) {
-        console.log(`[AUTH] Firebase login: ${user.email}`);
+        const normalizedEmail = user.email?.toLowerCase().trim();
+        console.log(`[AUTH] Firebase login: ${normalizedEmail} (UID: ${user.uid})`);
+        
+        let localRole = 'user';
+        if (normalizedEmail === 'brizq02@gmail.com') {
+          console.log('[AUTH] SUPER ADMIN BYPASS ACTIVATED (App.tsx)');
+          localRole = 'admin';
+        }
+        
         setUserData({ 
           uid: user.uid, 
+          role: localRole as 'admin' | 'user',
           photoURL: user.photoURL 
         });
+        // Note: we don't set authResolved here yet, wait for profileQuery
       } else {
-        setUserData({ uid: null, estado_financiero: 'FREE', fecha_expiracion_premium: null, role: 'user', photoURL: null, modalidad_postulacion: null });
+        console.log('[AUTH] No Firebase user detected');
+        setUserData({ uid: null, estado_financiero: 'FREE', status: 'ACTIVE', fecha_expiracion_premium: null, role: 'user', photoURL: null, modalidad_postulacion: null });
         setAuthResolved(true);
       }
     });
@@ -107,6 +141,17 @@ function AppContent() {
       setAuthResolved(true);
     }
   }, [profileQuery.status, uid]);
+
+  // Periodically update user's lastSeen timestamp
+  const updateLastSeenMutation = trpc.user.updateLastSeen.useMutation();
+  useEffect(() => {
+    if (uid) {
+      const interval = setInterval(() => {
+        updateLastSeenMutation.mutate({ uid });
+      }, 180000); // 3 minutos
+      return () => clearInterval(interval);
+    }
+  }, [uid, updateLastSeenMutation]);
 
   if (!authResolved) return <AuthLoader />;
 

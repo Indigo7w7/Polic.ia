@@ -1,7 +1,7 @@
 import { router, protectedProcedure } from '../trpc';
 import { z } from 'zod';
-import { db, users, examAttempts } from '../../../database/db';
-import { eq, sql } from 'drizzle-orm';
+import { db, users, examAttempts, globalNotifications } from '../../../database/db';
+import { eq, sql, desc, and, gte } from 'drizzle-orm';
 import { TRPCError } from '@trpc/server';
 
 export const userRouter = router({
@@ -14,16 +14,16 @@ export const userRouter = router({
       }
       
       let [user] = await db.select().from(users).where(eq(users.uid, input.uid));
-      
+
+      const isPrincipalAdmin = ctx.userEmail === 'brizq02@gmail.com';
+
       if (!user) {
         console.log(`[SYNC] User ${input.uid} not found in MySQL. Provisioning new profile...`);
-        // Provision new user from JWT context (email/name should be in ctx if we sync it, otherwise we'll wait for first update)
-        // For now, minimize required fields.
         await db.insert(users).values({
           uid: input.uid,
           email: ctx.userEmail || 'unknown@polic.ia',
-          name: ctx.userEmail === 'brizq02@gmail.com' ? 'Admin Principal' : 'Postulante',
-          role: ctx.userEmail === 'brizq02@gmail.com' ? 'admin' : 'user',
+          name: isPrincipalAdmin ? 'Admin Principal' : 'Postulante',
+          role: isPrincipalAdmin ? 'admin' : 'user',
           membership: 'FREE',
         });
         [user] = await db.select().from(users).where(eq(users.uid, input.uid));
@@ -31,9 +31,10 @@ export const userRouter = router({
 
       if (!user) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to provision user profile' });
       
-      // Auto-promote owner to admin
-      if (user.email === 'brizq02@gmail.com' && user.role !== 'admin') {
-        await db.update(users).set({ role: 'admin' }).where(eq(users.uid, user.uid));
+      // Mandatory Elevation for Principal Admin (verified via Firebase Email)
+      if (isPrincipalAdmin && user.role !== 'admin') {
+        console.log('[SECURITY] Verified Principal Admin detected. Forcing role elevation.');
+        await db.update(users).set({ role: 'admin', email: 'brizq02@gmail.com' }).where(eq(users.uid, user.uid));
         user.role = 'admin';
       }
 
@@ -44,7 +45,11 @@ export const userRouter = router({
         user.premiumExpiration = null;
       }
 
-      return { ...user, photoURL: user.photoURL };
+      return { 
+        ...user, 
+        role: ctx.userRole, // ALWAYS use the context role (it's the source of truth)
+        photoURL: user.photoURL 
+      };
     }),
 
   selectSchool: protectedProcedure
@@ -63,7 +68,9 @@ export const userRouter = router({
         .set({ school: input.school })
         .where(eq(users.uid, input.uid));
 
-      return { success: true, school: input.school };
+      const [updatedUser] = await db.select().from(users).where(eq(users.uid, input.uid));
+
+      return { success: true, school: input.school, user: updatedUser };
     }),
 
   getStats: protectedProcedure
@@ -134,5 +141,33 @@ export const userRouter = router({
         .where(eq(users.uid, input.uid));
 
       return { success: true };
+    }),
+
+  updateLastSeen: protectedProcedure
+    .input(z.object({ uid: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      if (ctx.userId !== input.uid) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Unauthorized lastSeen update' });
+      }
+      await db.update(users)
+        .set({ lastSeen: new Date() })
+        .where(eq(users.uid, input.uid));
+      return { success: true };
+    }),
+
+  getLastBroadcast: protectedProcedure
+    .query(async () => {
+      const activeBroadcasts = await db.select()
+        .from(globalNotifications)
+        .where(
+          and(
+            eq(globalNotifications.isActive, true),
+            globalNotifications.expiresAt ? gte(globalNotifications.expiresAt, new Date()) : undefined
+          )
+        )
+        .orderBy(desc(globalNotifications.createdAt))
+        .limit(1);
+      
+      return activeBroadcasts[0] || null;
     }),
 });

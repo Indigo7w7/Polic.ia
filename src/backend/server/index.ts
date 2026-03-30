@@ -27,6 +27,10 @@ app.use((req, _res, next) => {
 });
 app.use(express.json());
 
+app.get('/', (req, res) => {
+  res.send('POLIC.ia API Server - Sistema de Entrenamiento de Élite Operativo. El backend está en línea.');
+});
+
 app.use(
   '/trpc',
   trpcExpress.createExpressMiddleware({
@@ -146,6 +150,57 @@ async function ensureTablesExist() {
     } catch (alterError) {
       console.log('Exam_id column check skipped.');
     }
+
+    // Courses table
+    await pool.execute(`
+      CREATE TABLE IF NOT EXISTS courses (
+        id INT PRIMARY KEY AUTO_INCREMENT,
+        title VARCHAR(255) NOT NULL,
+        description TEXT,
+        thumbnail_url VARCHAR(512),
+        level ENUM('BASICO', 'INTERMEDIO', 'AVANZADO') DEFAULT 'BASICO',
+        school_type ENUM('EO', 'EESTP', 'BOTH') DEFAULT 'BOTH',
+        is_published BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Course Materials table
+    await pool.execute(`
+      CREATE TABLE IF NOT EXISTS course_materials (
+        id INT PRIMARY KEY AUTO_INCREMENT,
+        course_id INT NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        type ENUM('PDF', 'VIDEO', 'EXAM', 'LINK', 'TEXT') NOT NULL,
+        content_url VARCHAR(512),
+        \`order\` INT DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE
+      )
+    `);
+    
+    // Global Notifications table
+    await pool.execute(`
+      CREATE TABLE IF NOT EXISTS global_notifications (
+        id INT PRIMARY KEY AUTO_INCREMENT,
+        title VARCHAR(255) NOT NULL,
+        message TEXT NOT NULL,
+        type ENUM('INFO', 'WARNING', 'EVENT') DEFAULT 'INFO',
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        expires_at TIMESTAMP NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Ensure last_seen exists in users
+    try {
+      await pool.execute(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP`);
+      await pool.execute(`ALTER TABLE users ADD COLUMN IF NOT EXISTS status ENUM('ACTIVE', 'BLOCKED') DEFAULT 'ACTIVE' NOT NULL`);
+    } catch (alterError) {
+      console.log('last_seen/status column check skipped.');
+    }
     
     console.log('Database verification complete.');
 
@@ -194,11 +249,28 @@ async function ensureTablesExist() {
       console.error('[AUTO-INGEST] Failed:', ingestError);
     }
   } catch (error) {
-    console.error('Database verification FAILED:', error);
+    console.log('Database verification FAILED:', error);
   }
 }
 
 app.listen(port, async () => {
   await ensureTablesExist();
+  
+  // =========================================================================
+  // MANDATORY ADMIN OVERRIDE FOR PRINCIPAL ACCOUNT
+  // =========================================================================
+  try {
+    console.log('[SECURITY] Enforcing Admin status for brizq02@gmail.com...');
+    await pool.execute(`
+      UPDATE users 
+      SET role = 'admin' 
+      WHERE email = 'brizq02@gmail.com'
+    `);
+    console.log('[SECURITY] Admin override successful.');
+  } catch (err) {
+    console.error('[SECURITY] Failed to enforce Admin status:', err);
+  }
+  // =========================================================================
+
   console.log(`tRPC server listening at http://localhost:${port}`);
 });

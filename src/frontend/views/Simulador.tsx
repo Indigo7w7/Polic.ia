@@ -75,13 +75,13 @@ export const Simulador: React.FC = () => {
 
   if (preguntas.length === 0) {
     return (
-      <div className="min-h-screen bg-[#060d1a] flex items-center justify-center p-4">
+      <div className="min-h-screen bg-[#020617] flex items-center justify-center p-4">
         <Card className="max-w-md w-full text-center py-12 border-slate-800 bg-slate-900">
           <CardContent>
-            <ShieldAlert className="w-16 h-16 text-blue-500 mx-auto mb-4" />
-            <h2 className="text-xl font-bold mb-2 text-white">Cargando Batería de Preguntas</h2>
-            <p className="text-slate-400 mb-6">Preparando el entorno de simulación táctica...</p>
-            <Button onClick={() => navigate('/')}>Volver al Centro de Mando</Button>
+            <ShieldAlert className="w-16 h-16 text-cyan-500 mx-auto mb-4" />
+            <h2 className="text-xl font-bold mb-2 text-white">Cargando Batería Táctica</h2>
+            <p className="text-slate-400 mb-6">Preparando el entorno de misión de campo...</p>
+            <Button onClick={() => navigate('/')} className="bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-black">Abortar Misión</Button>
           </CardContent>
         </Card>
       </div>
@@ -93,15 +93,15 @@ export const Simulador: React.FC = () => {
 
   return (
     <div
-      className="min-h-screen text-[#f8fafc] flex flex-col font-sans"
-      style={{ background: isDanger ? '#0f0505' : '#060d1a' }}
+      className="min-h-screen text-[#f8fafc] flex flex-col font-mono"
+      style={{ background: isDanger ? '#1e0505' : '#020617' }}
     >
       <ConfirmModal
         isOpen={showExitModal}
         onClose={() => setShowExitModal(false)}
         onConfirm={confirmExit}
-        title="Examen Incompleto"
-        message={`Tienes ${preguntas.length - answeredCount} preguntas sin responder. Si finalizas, se calificarán como incorrectas.`}
+        title="Misión Incompleta"
+        message={`Tienes ${preguntas.length - answeredCount} sectores sin asegurar. Si abortas ahora, se reportarán como fallidos.`}
       />
 
       {/* Question map overlay */}
@@ -121,8 +121,8 @@ export const Simulador: React.FC = () => {
               className="bg-slate-900 border border-slate-700 rounded-2xl p-6 max-w-sm w-full shadow-2xl"
               onClick={e => e.stopPropagation()}
             >
-              <h3 className="text-sm font-bold uppercase tracking-widest text-slate-400 mb-4">
-                Mapa de Preguntas — {answeredCount}/{preguntas.length} respondidas
+              <h3 className="text-sm font-bold uppercase tracking-widest text-cyan-400 mb-4">
+                Radar de Misión — {answeredCount}/{preguntas.length} asegurados
               </h3>
               <div className="grid grid-cols-5 gap-2">
                 {preguntas.map((q, idx) => {
@@ -134,7 +134,7 @@ export const Simulador: React.FC = () => {
                       onClick={() => goTo(idx)}
                       className={`aspect-square rounded-lg text-xs font-bold transition-all ${
                         isCurrent
-                          ? 'bg-blue-600 text-white ring-2 ring-blue-400'
+                          ? 'bg-cyan-600 text-slate-900 ring-2 ring-cyan-400 shadow-[0_0_10px_rgba(34,211,238,0.5)]'
                           : answered
                           ? 'bg-emerald-600/30 text-emerald-400 border border-emerald-600/40'
                           : 'bg-slate-800 text-slate-500 hover:bg-slate-700'
@@ -167,12 +167,12 @@ export const Simulador: React.FC = () => {
 
             {/* Progress bar */}
             <div className="hidden sm:block">
-              <div className="text-[9px] font-bold uppercase tracking-widest text-slate-600 mb-1">
-                Pregunta {currentQuestionIndex + 1} de {preguntas.length}
+              <div className="text-[9px] font-bold uppercase tracking-widest text-cyan-600 mb-1 drop-shadow-[0_0_5px_rgba(34,211,238,0.3)]">
+                Sector {currentQuestionIndex + 1} de {preguntas.length}
               </div>
-              <div className="w-40 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+              <div className="w-40 h-1.5 bg-slate-900 border border-slate-800 rounded-full overflow-hidden shadow-inner">
                 <div
-                  className="h-full bg-blue-600 rounded-full transition-all duration-300"
+                  className="h-full bg-cyan-500 rounded-full transition-all duration-300 shadow-[0_0_10px_rgba(34,211,238,0.8)]"
                   style={{ width: `${((currentQuestionIndex + 1) / preguntas.length) * 100}%` }}
                 />
               </div>
@@ -248,8 +248,8 @@ export const Simulador: React.FC = () => {
                   }}
                   className={`w-full text-left p-5 rounded-2xl border transition-all duration-200 flex items-center gap-4 min-h-[64px] ${
                     selectedAnswerIndex === idx
-                      ? 'bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-900/30'
-                      : 'bg-slate-900/80 border-slate-800 text-slate-300 hover:border-slate-600 hover:bg-slate-800/60'
+                      ? 'bg-cyan-600/20 border-cyan-500 text-cyan-50 shadow-[0_0_15px_rgba(34,211,238,0.2)]'
+                      : 'bg-slate-900/50 border-slate-800 text-slate-300 hover:border-slate-600 hover:bg-slate-800/60'
                   }`}
                 >
                   <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-sm font-black shrink-0 transition-colors ${
@@ -281,11 +281,11 @@ export const Simulador: React.FC = () => {
           {currentQuestionIndex === preguntas.length - 1 ? (
             <Button
               variant="primary"
-              className="h-14 flex-1 gap-2 bg-emerald-600 hover:bg-emerald-500 font-black"
+              className="h-14 flex-1 gap-2 bg-emerald-600 hover:bg-emerald-500 font-black shadow-[0_0_15px_rgba(16,185,129,0.3)] text-slate-950 uppercase tracking-widest"
               onClick={handleFinish}
             >
               <Send className="w-5 h-5" />
-              Finalizar Examen
+              Finalizar Operación
             </Button>
           ) : (
             <Button

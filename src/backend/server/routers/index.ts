@@ -6,6 +6,7 @@ import { learningRouter } from './learning';
 import { leitnerRouter } from './leitner';
 import { membershipRouter, adminRouter } from './membership_admin';
 import { adminExamRouter } from './admin_exams';
+import { adminCourseRouter } from './admin_courses';
 
 export const appRouter = router({
   auth: authRouter,
@@ -16,6 +17,7 @@ export const appRouter = router({
   membership: membershipRouter,
   admin: adminRouter,
   adminExams: adminExamRouter,
+  adminCourses: adminCourseRouter,
 });
 
 export type AppRouter = typeof appRouter;

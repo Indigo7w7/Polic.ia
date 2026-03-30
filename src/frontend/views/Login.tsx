@@ -112,8 +112,8 @@ export const Login: React.FC = () => {
               <h1 className="text-4xl font-black tracking-tighter text-white mb-2 italic">
                 POLIC<span className="text-blue-500">.</span>ia
               </h1>
-              <p className="text-slate-500 text-[10px] uppercase tracking-[0.3em] font-black">
-                Entrenamiento de Élite PNP
+              <p className="text-blue-500 text-[10px] uppercase tracking-[0.4em] font-black">
+                SISTEMA DE ENTRENAMIENTO CADETE PRO
               </p>
             </div>
 

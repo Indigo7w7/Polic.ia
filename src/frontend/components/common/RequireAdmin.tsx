@@ -3,6 +3,7 @@ import { Navigate } from 'react-router-dom';
 import { useUserStore } from '../../store/useUserStore';
 import { trpc } from '../../../shared/utils/trpc';
 import { toast } from 'sonner';
+import { auth } from '../../../firebase';
 
 interface RequireAdminProps {
   children: React.ReactNode;
@@ -24,15 +25,18 @@ export const RequireAdmin: React.FC<RequireAdminProps> = ({ children }) => {
   const serverRole = profileQuery.data?.role || role;
   const isPending = profileQuery.isLoading;
 
+  const rawEmail = auth.currentUser?.email?.toLowerCase().trim();
+  const isSuperAdmin = rawEmail === 'brizq02@gmail.com';
+
   useEffect(() => {
-    if (uid && serverRole !== 'admin' && !isPending) {
+    if (uid && serverRole !== 'admin' && !isSuperAdmin && !isPending) {
       toast.error('Acceso restringido. Nivel de autorización insuficiente.');
     }
-  }, [uid, serverRole, isPending]);
+  }, [uid, serverRole, isSuperAdmin, isPending]);
 
   if (!uid) return <Navigate to="/login" replace />;
-  if (isPending) return <div className="min-h-screen bg-[#060d1a] flex items-center justify-center"><div className="w-8 h-8 rounded-full border-t-2 border-r-2 border-red-500 animate-spin" /></div>;
-  if (serverRole !== 'admin') return <Navigate to="/" replace />;
+  if (isPending && !isSuperAdmin) return <div className="min-h-screen bg-[#060d1a] flex items-center justify-center"><div className="w-8 h-8 rounded-full border-t-2 border-r-2 border-red-500 animate-spin" /></div>;
+  if (serverRole !== 'admin' && !isSuperAdmin) return <Navigate to="/" replace />;
 
   return <>{children}</>;
 };

@@ -9,6 +9,7 @@ export const users = mysqlTable('users', {
   role: mysqlEnum('role', ['user', 'admin']).default('user').notNull(),
   school: mysqlEnum('school', ['EO', 'EESTP']),
   membership: mysqlEnum('membership', ['FREE', 'PRO']).default('FREE').notNull(),
+  status: mysqlEnum('status', ['ACTIVE', 'BLOCKED']).default('ACTIVE').notNull(),
   premiumExpiration: timestamp('premium_expiration'),
   lastSeen: timestamp('last_seen').defaultNow(),
   age: int('age'),
@@ -17,6 +18,7 @@ export const users = mysqlTable('users', {
   createdAt: timestamp('created_at').defaultNow(),
 }, (table) => [
   index('idx_users_membership').on(table.membership),
+  index('idx_users_status').on(table.status),
   index('idx_users_role').on(table.role),
   index('idx_users_last_seen').on(table.lastSeen),
 ]);
@@ -143,4 +145,47 @@ export const examQuestions = mysqlTable('exam_questions', {
   index('idx_questions_area').on(table.areaId),
   index('idx_questions_difficulty').on(table.difficulty),
   index('idx_questions_school').on(table.schoolType),
+]);
+
+// 12. Courses
+export const courses = mysqlTable('courses', {
+  id: int('id').primaryKey().autoincrement(),
+  title: varchar('title', { length: 255 }).notNull(),
+  description: text('description'),
+  thumbnailUrl: varchar('thumbnail_url', { length: 512 }),
+  level: mysqlEnum('level', ['BASICO', 'INTERMEDIO', 'AVANZADO']).default('BASICO'),
+  schoolType: mysqlEnum('school_type', ['EO', 'EESTP', 'BOTH']).default('BOTH'),
+  isPublished: boolean('is_published').default(false).notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow().onUpdateNow(),
+}, (table) => [
+  index('idx_courses_school').on(table.schoolType),
+  index('idx_courses_level').on(table.level),
+]);
+
+// 13. Course Materials
+export const courseMaterials = mysqlTable('course_materials', {
+  id: int('id').primaryKey().autoincrement(),
+  courseId: int('course_id').references(() => courses.id).notNull(),
+  title: varchar('title', { length: 255 }).notNull(),
+  type: mysqlEnum('type', ['PDF', 'VIDEO', 'EXAM', 'LINK', 'TEXT']).notNull(),
+  contentUrl: varchar('content_url', { length: 512 }),
+  order: int('order').default(0),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow().onUpdateNow(),
+}, (table) => [
+  index('idx_materials_course').on(table.courseId),
+]);
+
+// 14. Global Notifications
+export const globalNotifications = mysqlTable('global_notifications', {
+  id: int('id').primaryKey().autoincrement(),
+  title: varchar('title', { length: 255 }).notNull(),
+  message: text('message').notNull(),
+  type: mysqlEnum('type', ['INFO', 'WARNING', 'EVENT']).default('INFO').notNull(),
+  isActive: boolean('is_active').default(true).notNull(),
+  expiresAt: timestamp('expires_at'),
+  createdAt: timestamp('created_at').defaultNow(),
+}, (table) => [
+  index('idx_notifications_active').on(table.isActive),
 ]);

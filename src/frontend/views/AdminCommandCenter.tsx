@@ -16,9 +16,11 @@ import {
   TrendingUp,
   Upload,
   Book,
-  ChevronRight,
   Trash2,
   Database,
+  Lock,
+  Unlock,
+  Megaphone,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { auth } from '@/src/firebase';
@@ -40,9 +42,26 @@ export const AdminCommandCenter = () => {
   const deleteExam = trpc.adminExams.deleteExam.useMutation();
 
   const toggleRole = trpc.admin.toggleAdminRole.useMutation();
-  const updateMembership = trpc.admin.updateUserMembership.useMutation();
+  const updateMembership = trpc.admin.updateUserStatus.useMutation();
   const deleteUser = trpc.admin.deleteUser.useMutation();
+  const sendBroadcast = trpc.admin.sendBroadcast.useMutation();
   const utils = trpc.useUtils();
+
+  const handleBroadcast = async () => {
+    const title = window.prompt('Título de la Alerta (ej. MANTENIMIENTO):');
+    if (!title) return;
+    const message = window.prompt('Mensaje:');
+    if (!message) return;
+    const typeStr = window.prompt('Tipo (INFO, WARNING, EVENT):', 'WARNING');
+    const type = (['INFO', 'WARNING', 'EVENT'].includes(typeStr?.toUpperCase() || '') ? typeStr?.toUpperCase() : 'WARNING') as any;
+
+    try {
+      await sendBroadcast.mutateAsync({ title, message, type });
+      toast.success('¡Alerta enviada a todas las unidades!');
+    } catch (e) {
+      toast.error('Error al emitir alerta roja');
+    }
+  };
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -93,14 +112,25 @@ export const AdminCommandCenter = () => {
     }
   };
 
-  const handleManualPremium = async (uid: string, target: 'PRO' | 'FREE') => {
+  const handleManualPremium = async (targetUid: string, membership: 'FREE' | 'PRO') => {
     try {
-      await updateMembership.mutateAsync({ uid, membership: target });
-      toast.success(target === 'FREE' ? 'Membresía FREE' : 'Membresía PRO activada');
+      await updateMembership.mutateAsync({ targetUid, membership });
+      toast.success(`Rango actualizado a ${membership}`);
       utils.admin.getUsers.invalidate();
       utils.admin.getAdminStats.invalidate();
     } catch (e) {
       toast.error('Error en la gestión de membresía');
+    }
+  };
+
+  const handleToggleBlock = async (targetUid: string, currentStatus: 'ACTIVE' | 'BLOCKED') => {
+    const newStatus = currentStatus === 'ACTIVE' ? 'BLOCKED' : 'ACTIVE';
+    try {
+      await updateMembership.mutateAsync({ targetUid, status: newStatus });
+      toast.success(`Usuario marcado como ${newStatus}`);
+      utils.admin.getUsers.invalidate();
+    } catch (e) {
+      toast.error('Error al cambiar el estado del usuario');
     }
   };
 
@@ -157,20 +187,26 @@ export const AdminCommandCenter = () => {
             </Card>
 
             <Card className="bg-slate-900/50 border-slate-800">
-              <CardContent className="p-4 h-40">
+              <CardContent className="p-4">
                 <div className="text-[10px] text-slate-500 uppercase tracking-tighter mb-2">Distribución</div>
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={[
-                    { name: 'FREE', value: (stats.data as any)?.freeUsers || 0 },
-                    { name: 'PRO', value: (stats.data as any)?.premiumUsers || 0 }
-                  ]}>
-                    <XAxis dataKey="name" stroke="#64748b" fontSize={10} />
-                    <Tooltip cursor={{fill: '#1e293b'}} contentStyle={{backgroundColor: '#0f172a', border: 'none'}} />
-                    <Bar dataKey="value" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
+                <div className="h-40 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={[
+                      { name: 'FREE', value: (stats.data as any)?.freeUsers || 0 },
+                      { name: 'PRO', value: (stats.data as any)?.premiumUsers || 0 }
+                    ]}>
+                      <XAxis dataKey="name" stroke="#64748b" fontSize={10} />
+                      <Tooltip cursor={{fill: '#1e293b'}} contentStyle={{backgroundColor: '#0f172a', border: 'none'}} />
+                      <Bar dataKey="value" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
               </CardContent>
             </Card>
+
+            <Button className="w-full bg-red-600/90 hover:bg-red-600 gap-2 h-12 text-white shadow-[0_0_15px_rgba(220,38,38,0.3)] border border-red-500/50" onClick={handleBroadcast}>
+              <Megaphone className="w-5 h-5 animate-pulse" /> ALERTA ROJA (GLOBAL)
+            </Button>
 
             <Button className="w-full bg-blue-600 gap-2 h-12" onClick={() => stats.refetch()}>
               <RefreshCcw className="w-4 h-4" /> REFRESCAR MANDO
@@ -201,36 +237,57 @@ export const AdminCommandCenter = () => {
                     <thead className="bg-slate-900/60 text-[10px] uppercase font-black text-slate-500">
                       <tr>
                         <th className="px-6 py-4">Usuario</th>
+                        <th className="px-6 py-4">Estado</th>
                         <th className="px-6 py-4">Escuela</th>
                         <th className="px-6 py-4">Rango</th>
                         <th className="px-6 py-4 text-right">Acciones</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-800/50">
-                      {filteredUsers.map((user) => (
+                      {filteredUsers.map((user) => {
+                        const isOnline = user.lastSeen ? new Date() > new Date(new Date(user.lastSeen).getTime() - 5 * 60 * 1000) : false;
+                        return (
                         <tr key={user.uid} className="hover:bg-blue-500/5 transition-colors">
                           <td className="px-6 py-4">
-                            <div className="text-sm font-bold text-slate-200">{user.name || 'Sin Nombre'}</div>
+                            <div className="text-sm font-bold text-slate-200 flex items-center gap-2">
+                              {user.name || 'Sin Nombre'}
+                            </div>
                             <div className="text-[10px] text-slate-500">{user.email}</div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex flex-col gap-1">
+                              <div className={`px-2 py-0.5 rounded-full text-[9px] w-fit font-black uppercase tracking-widest border flex items-center gap-1 ${isOnline ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-slate-800 text-slate-500 border-slate-700'}`}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
+                                {isOnline ? 'Online' : 'Offline'}
+                              </div>
+                              {user.status === 'BLOCKED' && (
+                                <div className="px-2 py-0.5 rounded-full text-[9px] w-fit font-black uppercase tracking-widest border border-red-500/20 bg-red-500/10 text-red-400 flex items-center gap-1">
+                                  <Lock className="w-2 h-2" /> Bloqueado
+                                </div>
+                              )}
+                            </div>
                           </td>
                           <td className="px-6 py-4 text-xs font-bold text-blue-400">{user.school || 'INVITADO'}</td>
                           <td className="px-6 py-4">
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black border ${user.membership === 'PRO' ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' : 'bg-slate-800 text-slate-500 border-slate-700'}`}>
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase border ${user.membership === 'PRO' ? 'bg-amber-500/10 text-amber-500 border-amber-500/20 shadow-[0_0_10px_rgba(245,158,11,0.2)]' : 'bg-slate-800 text-slate-500 border-slate-700'}`}>
                               {user.membership}
                             </span>
                           </td>
                           <td className="px-6 py-4 text-right">
                             <div className="flex justify-end gap-2">
-                              <Button size="sm" variant="ghost" className="h-8 w-8 p-0" title="Manage Range" onClick={() => handleManualPremium(user.uid, user.membership === 'PRO' ? 'FREE' : 'PRO')}>
+                              <Button size="sm" variant="ghost" className="h-8 w-8 p-0" title={user.membership === 'FREE' ? 'Ascender a PRO' : 'Degradar a FREE'} onClick={() => handleManualPremium(user.uid, user.membership === 'PRO' ? 'FREE' : 'PRO')}>
                                 {user.membership === 'FREE' ? <TrendingUp className="w-4 h-4 text-amber-500" /> : <TrendingDown className="w-4 h-4 text-slate-400" />}
                               </Button>
-                              <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => handleDeleteUser(user.uid)}>
+                              <Button size="sm" variant="ghost" className="h-8 w-8 p-0" title={user.status === 'ACTIVE' ? 'Bloquear Usuario' : 'Desbloquear Usuario'} onClick={() => handleToggleBlock(user.uid, user.status as 'ACTIVE'|'BLOCKED')}>
+                                {user.status === 'ACTIVE' ? <Lock className="w-4 h-4 text-red-500/80 hover:text-red-400" /> : <Unlock className="w-4 h-4 text-emerald-500/80 hover:text-emerald-400" />}
+                              </Button>
+                              <Button size="sm" variant="ghost" className="h-8 w-8 p-0 flex-shrink-0" onClick={() => handleDeleteUser(user.uid)}>
                                 <UserX className="w-4 h-4 text-red-500/50 hover:text-red-500" />
                               </Button>
                             </div>
                           </td>
                         </tr>
-                      ))}
+                      )})}
                     </tbody>
                   </table>
                 </div>

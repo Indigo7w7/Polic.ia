@@ -81,18 +81,18 @@ export const Profile: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#060d1a] p-4 md:p-8 text-white font-sans">
+    <div className="min-h-screen bg-[#020617] p-4 md:p-8 text-white font-mono">
       <header className="max-w-2xl mx-auto flex items-center gap-4 mb-8">
         <Button variant="outline" size="icon" onClick={() => navigate('/')} className="shrink-0 bg-slate-900 border-slate-700">
           <ArrowLeft className="w-5 h-5 text-slate-400" />
         </Button>
         <div>
           <h1 className="text-2xl font-black tracking-tight flex items-center gap-2">
-            <User className="w-6 h-6 text-blue-500" />
-            Configuración de Expediente
+            <User className="w-6 h-6 text-cyan-500" />
+            Expediente de Servicio
           </h1>
-          <p className="text-xs text-slate-400 uppercase tracking-widest font-bold mt-1">
-            Personaliza tu identidad en el Ranking Nacional
+          <p className="text-xs text-cyan-500/70 uppercase tracking-widest font-bold mt-1">
+            Revisión o actualización de identidad
           </p>
         </div>
       </header>
@@ -107,9 +107,9 @@ export const Profile: React.FC = () => {
           </div>
         )}
 
-        <Card className={`bg-slate-900/50 border-slate-800 shadow-2xl overflow-hidden transition-opacity ${!canEdit ? 'opacity-80' : ''}`}>
-          <div className="h-24 bg-gradient-to-r from-blue-900/50 to-indigo-900/50 relative">
-             <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-slate-900/50 to-transparent" />
+        <Card className={`bg-slate-900/50 border-cyan-900/40 shadow-2xl overflow-hidden transition-opacity ${!canEdit ? 'opacity-80' : ''}`}>
+          <div className="h-24 bg-gradient-to-r from-cyan-950 to-blue-950 relative">
+             <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[#020617]/80 to-transparent" />
           </div>
           
           <CardContent className="pt-0 relative">
@@ -121,13 +121,13 @@ export const Profile: React.FC = () => {
                 {canEdit && (
                   <button 
                     onClick={generateRandomAvatar}
-                    className="absolute -bottom-2 -right-2 p-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl shadow-lg transition-transform hover:scale-110 active:scale-95 border-2 border-[#060d1a]"
+                    className="absolute -bottom-2 -right-2 p-2 bg-cyan-600 hover:bg-cyan-500 text-slate-950 rounded-xl shadow-lg shadow-cyan-500/50 transition-transform hover:scale-110 active:scale-95 border-2 border-[#020617]"
                   >
                     <Sparkles className="w-4 h-4" />
                   </button>
                 )}
               </div>
-              <p className="text-xs text-slate-500 mt-3 uppercase tracking-widest font-bold">
+              <p className="text-[10px] text-cyan-500/70 mt-3 uppercase tracking-widest font-bold">
                 {canEdit ? 'Generar nuevo Avatar' : 'Avatar Identificado'}
               </p>
             </div>
@@ -137,11 +137,11 @@ export const Profile: React.FC = () => {
                 <label className="block text-xs uppercase tracking-widest font-bold text-slate-400 mb-2">
                   Rango Táctico
                 </label>
-                <div className="px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-xl font-bold flex items-center justify-between">
+                <div className="px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl font-bold flex items-center justify-between shadow-inner">
                   <span>{isPremium ? 'Agente Élite PRO' : 'Postulante Base'}</span>
                   {isPremium 
-                    ? <span className="text-[10px] bg-amber-500 text-slate-900 px-2 py-1 rounded font-black tracking-widest uppercase border border-amber-400 animate-pulse">Agente Élite ACTIVO</span>
-                    : <button onClick={() => navigate('/yape-checkout')} className="text-[10px] bg-blue-600 hover:bg-blue-500 text-white px-2 py-1 rounded tracking-widest uppercase transition-colors">Mejorar Rango</button>
+                    ? <span className="text-[10px] bg-amber-500/10 text-amber-500 px-2 py-1 rounded font-black tracking-widest uppercase border border-amber-500/20 shadow-[0_0_10px_rgba(245,158,11,0.2)]">Rango Confirmado</span>
+                    : <button onClick={() => navigate('/yape-checkout')} className="text-[10px] bg-cyan-900/30 hover:bg-cyan-800 border border-cyan-800/50 text-cyan-400 px-2 py-1 rounded tracking-widest uppercase transition-colors">Solicitar Ascenso</button>
                   }
                 </div>
               </div>
