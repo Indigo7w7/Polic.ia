@@ -33,14 +33,14 @@ import { ErrorBoundary } from './components/common/ErrorBoundary';
 
 /** Full-screen loader shown while Firebase resolves auth state */
 const AuthLoader = () => (
-  <div className="min-h-screen bg-red-950 flex flex-col items-center justify-center gap-4">
+  <div className="min-h-screen bg-[#060d1a] flex flex-col items-center justify-center gap-4">
     <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-600/30 animate-pulse">
       <Shield className="w-8 h-8 text-white" />
     </div>
     <Loader2 className="w-5 h-5 text-slate-600 animate-spin" />
     <p className="text-[10px] text-slate-600 uppercase tracking-[0.3em] font-bold">Verificando acceso…</p>
     <div className="mt-4 p-1 px-3 bg-red-600/20 border border-red-500/30 rounded-full">
-      <span className="text-[9px] text-red-400 font-black tracking-widest">VER: 03.30.F-ULTIMATUM-SYNC</span>
+      <span className="text-[9px] text-red-400 font-black tracking-widest">VER: 03.30.G-SUPER-STABLE</span>
     </div>
   </div>
 );
