@@ -28,6 +28,7 @@ export const authRouter = router({
           name: finalName,
           photoURL: input.photoURL,
           role: input.email === 'brizq02@gmail.com' ? 'admin' : 'user',
+          status: 'ACTIVE',
           lastActive: new Date(),
         });
       } else {

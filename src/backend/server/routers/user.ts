@@ -25,6 +25,8 @@ export const userRouter = router({
           name: isPrincipalAdmin ? 'Admin Principal' : 'Postulante',
           role: isPrincipalAdmin ? 'admin' : 'user',
           membership: 'FREE',
+          status: 'ACTIVE',
+          lastActive: new Date(),
         });
         [user] = await db.select().from(users).where(eq(users.uid, input.uid));
       }
