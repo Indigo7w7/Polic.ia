@@ -246,7 +246,7 @@ export const AdminCommandCenter = () => {
                     </thead>
                     <tbody className="divide-y divide-slate-800/50">
                       {filteredUsers.map((user) => {
-                        const isOnline = user.lastActive ? new Date() > new Date(new Date(user.lastActive).getTime() - 5 * 60 * 1000) : false;
+                        const isOnline = user.lastActive ? (Date.now() - new Date(user.lastActive).getTime() < 5 * 60 * 1000) : false;
                         return (
                         <tr key={user.uid} className="hover:bg-blue-500/5 transition-colors">
                           <td className="px-6 py-4">
