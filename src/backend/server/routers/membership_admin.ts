@@ -84,15 +84,11 @@ export const adminRouter = router({
     };
   }),
 
-  // ─── USER MANAGEMENT ───
+  // ─── USER MANAGEMENT (TAREA 2) ───
   getUsers: adminProcedure
-    .input(z.object({
-      search: z.string().optional(),
-      membership: z.enum(['FREE', 'PRO', 'ALL']).default('ALL'),
-    }).optional())
+    .input(z.object({ search: z.string().optional() }))
     .query(async ({ input }) => {
       const filters = [];
-      
       if (input?.search) {
         filters.push(or(
           like(users.name, `%${input.search}%`),
@@ -100,10 +96,6 @@ export const adminRouter = router({
           like(users.email, `%${input.search}%`),
         ));
       }
-      if (input?.membership && input.membership !== 'ALL') {
-        filters.push(eq(users.membership, input.membership));
-      }
-
       const whereClause = filters.length > 0 ? and(...filters) : undefined;
       return await db.select().from(users).where(whereClause).orderBy(sql`${users.createdAt} desc`);
     }),

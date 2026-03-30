@@ -194,12 +194,16 @@ async function ensureTablesExist() {
       )
     `);
 
-    // Ensure last_active exists in users
+    // TAREA 1 (SQL): ALTER_TABLE_users_ADD_COLUMN_IF_NOT_EXISTS...
     try {
-      await pool.execute(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP`);
-      await pool.execute(`ALTER TABLE users ADD COLUMN IF NOT EXISTS status ENUM('ACTIVE', 'BLOCKED') DEFAULT 'ACTIVE' NOT NULL`);
-    } catch (alterError) {
-      console.log('last_active/status column check skipped.');
+      await pool.execute(`
+        ALTER TABLE users 
+        ADD COLUMN IF NOT EXISTS membership VARCHAR(50) DEFAULT 'FREE',
+        ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'ACTIVE',
+        ADD COLUMN IF NOT EXISTS last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      `);
+    } catch (e) {
+      console.log('Migración SQL: Skip/Error silencioso.');
     }
     
     console.log('Database verification complete.');
