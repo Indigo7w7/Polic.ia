@@ -189,8 +189,8 @@ export const AdminCommandCenter = () => {
             <Card className="bg-slate-900/50 border-slate-800">
               <CardContent className="p-4">
                 <div className="text-[10px] text-slate-500 uppercase tracking-tighter mb-2">Distribución</div>
-                <div className="h-40 w-full">
-                  <ResponsiveContainer width="100%" height="100%">
+                <div className="h-80 w-full">
+                  <ResponsiveContainer width="100%" height={300}>
                     <BarChart data={[
                       { name: 'FREE', value: (stats.data as any)?.freeUsers || 0 },
                       { name: 'PRO', value: (stats.data as any)?.premiumUsers || 0 }
@@ -245,7 +245,7 @@ export const AdminCommandCenter = () => {
                     </thead>
                     <tbody className="divide-y divide-slate-800/50">
                       {filteredUsers.map((user) => {
-                        const isOnline = user.lastSeen ? new Date() > new Date(new Date(user.lastSeen).getTime() - 5 * 60 * 1000) : false;
+                        const isOnline = user.lastActive ? new Date() > new Date(new Date(user.lastActive).getTime() - 5 * 60 * 1000) : false;
                         return (
                         <tr key={user.uid} className="hover:bg-blue-500/5 transition-colors">
                           <td className="px-6 py-4">

@@ -142,16 +142,16 @@ function AppContent() {
     }
   }, [profileQuery.status, uid]);
 
-  // Periodically update user's lastSeen timestamp
-  const updateLastSeenMutation = trpc.user.updateLastSeen.useMutation();
+  // Periodically update user's lastActive timestamp (Point 3: Every 3 min)
+  const updateActivityMutation = trpc.user.updateLastSeen.useMutation();
   useEffect(() => {
     if (uid) {
       const interval = setInterval(() => {
-        updateLastSeenMutation.mutate({ uid });
+        updateActivityMutation.mutate({ uid });
       }, 180000); // 3 minutos
       return () => clearInterval(interval);
     }
-  }, [uid, updateLastSeenMutation]);
+  }, [uid, updateActivityMutation]);
 
   if (!authResolved) return <AuthLoader />;
 

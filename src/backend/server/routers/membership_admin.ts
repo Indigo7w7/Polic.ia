@@ -62,7 +62,7 @@ export const adminRouter = router({
       total: sql<number>`count(${users.uid})`,
       premium: sql<number>`sum(case when ${users.membership} = 'PRO' then 1 else 0 end)`,
       free: sql<number>`sum(case when ${users.membership} = 'FREE' then 1 else 0 end)`,
-      activeUsers: sql<number>`sum(case when ${users.lastSeen} >= NOW() - INTERVAL 5 MINUTE then 1 else 0 end)`,
+      activeUsers: sql<number>`sum(case when ${users.lastActive} >= NOW() - INTERVAL 5 MINUTE then 1 else 0 end)`,
     }).from(users);
 
     const [revenueObj] = await db.select({
@@ -213,7 +213,7 @@ export const adminRouter = router({
       count: sql<number>`count(${users.uid})`,
     })
     .from(users)
-    .where(sql`${users.lastSeen} >= NOW() - INTERVAL 5 MINUTE`);
+    .where(sql`${users.lastActive} >= NOW() - INTERVAL 5 MINUTE`);
     
     return { count: result.count || 0 };
   }),

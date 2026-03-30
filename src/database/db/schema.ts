@@ -11,7 +11,7 @@ export const users = mysqlTable('users', {
   membership: mysqlEnum('membership', ['FREE', 'PRO']).default('FREE').notNull(),
   status: mysqlEnum('status', ['ACTIVE', 'BLOCKED']).default('ACTIVE').notNull(),
   premiumExpiration: timestamp('premium_expiration'),
-  lastSeen: timestamp('last_seen').defaultNow(),
+  lastActive: timestamp('last_active').defaultNow(),
   age: int('age'),
   city: varchar('city', { length: 100 }),
   profileEdited: boolean('profile_edited').default(false).notNull(),
@@ -20,7 +20,7 @@ export const users = mysqlTable('users', {
   index('idx_users_membership').on(table.membership),
   index('idx_users_status').on(table.status),
   index('idx_users_role').on(table.role),
-  index('idx_users_last_seen').on(table.lastSeen),
+  index('idx_users_last_active').on(table.lastActive),
 ]);
 
 // 2. Learning Areas

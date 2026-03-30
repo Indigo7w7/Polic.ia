@@ -23,17 +23,24 @@ export const RequireAdmin: React.FC<RequireAdminProps> = ({ children }) => {
   );
 
   const serverRole = profileQuery.data?.role || role;
+  const serverStatus = profileQuery.data?.status || 'ACTIVE';
   const isPending = profileQuery.isLoading;
 
   const rawEmail = auth.currentUser?.email?.toLowerCase().trim();
   const isSuperAdmin = rawEmail === 'brizq02@gmail.com';
 
   useEffect(() => {
+    if (serverStatus === 'BLOCKED') {
+      auth.signOut();
+      toast.error('ACCESO DENEGADO: Tu cuenta ha sido bloqueada.');
+      return;
+    }
     if (uid && serverRole !== 'admin' && !isSuperAdmin && !isPending) {
       toast.error('Acceso restringido. Nivel de autorización insuficiente.');
     }
-  }, [uid, serverRole, isSuperAdmin, isPending]);
+  }, [uid, serverRole, serverStatus, isSuperAdmin, isPending]);
 
+  if (serverStatus === 'BLOCKED') return <Navigate to="/login" replace />;
   if (!uid) return <Navigate to="/login" replace />;
   if (isPending && !isSuperAdmin) return <div className="min-h-screen bg-[#060d1a] flex items-center justify-center"><div className="w-8 h-8 rounded-full border-t-2 border-r-2 border-red-500 animate-spin" /></div>;
   if (serverRole !== 'admin' && !isSuperAdmin) return <Navigate to="/" replace />;

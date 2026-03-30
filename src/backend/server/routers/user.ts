@@ -150,7 +150,7 @@ export const userRouter = router({
         throw new TRPCError({ code: 'FORBIDDEN', message: 'Unauthorized lastSeen update' });
       }
       await db.update(users)
-        .set({ lastSeen: new Date() })
+        .set({ lastActive: new Date() })
         .where(eq(users.uid, input.uid));
       return { success: true };
     }),
