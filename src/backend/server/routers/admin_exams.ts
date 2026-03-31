@@ -1,6 +1,6 @@
 import { router, adminProcedure } from '../trpc';
 import { z } from 'zod';
-import { db, exams, examQuestions } from '../../../database/db';
+import { db, exams, examQuestions, examMaterials } from '../../../database/db';
 import { eq, and, desc, sql } from 'drizzle-orm';
 import { TRPCError } from '@trpc/server';
 
@@ -74,11 +74,47 @@ export const adminExamRouter = router({
     .input(z.object({ examId: z.number() }))
     .mutation(async ({ input }) => {
       return await db.transaction(async (tx) => {
-        // 1. Delete questions first (or cascade if FK allows, but manual for safety)
+        // 1. Delete questions first
         await tx.delete(examQuestions).where(eq(examQuestions.examId, input.examId));
-        // 2. Delete exam record
+        // 2. Delete materials
+        await tx.delete(examMaterials).where(eq(examMaterials.examId, input.examId));
+        // 3. Delete exam record
         await tx.delete(exams).where(eq(exams.id, input.examId));
         return { success: true };
       });
+    }),
+
+  /** Add material to an exam level */
+  addMaterial: adminProcedure
+    .input(z.object({
+      examId: z.number(),
+      title: z.string(),
+      url: z.string().url(),
+    }))
+    .mutation(async ({ input }) => {
+      await db.insert(examMaterials).values({
+        examId: input.examId,
+        title: input.title,
+        url: input.url,
+      });
+      return { success: true };
+    }),
+
+  /** Get materials for a specific exam */
+  getMaterials: adminProcedure
+    .input(z.object({ examId: z.number() }))
+    .query(async ({ input }) => {
+      return await db.select()
+        .from(examMaterials)
+        .where(eq(examMaterials.examId, input.examId))
+        .orderBy(desc(examMaterials.createdAt));
+    }),
+
+  /** Delete a specific material */
+  deleteMaterial: adminProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      await db.delete(examMaterials).where(eq(examMaterials.id, input.id));
+      return { success: true };
     }),
 });

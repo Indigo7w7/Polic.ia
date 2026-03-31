@@ -177,15 +177,27 @@ export const courseMaterials = mysqlTable('course_materials', {
   index('idx_materials_course').on(table.courseId),
 ]);
 
-// 14. Global Notifications / Broadcasts (Alerta Roja)
-export const globalNotifications = mysqlTable('global_notifications', {
+// 14. Global Notifications / 15. Broadcasts (Alerta Roja - separate from globalNotifications for clarity)
+export const broadcasts = mysqlTable('broadcasts', {
   id: int('id').primaryKey().autoincrement(),
   title: varchar('title', { length: 255 }).notNull(),
   message: text('message').notNull(),
-  type: mysqlEnum('type', ['INFO', 'WARNING', 'EVENT']).default('INFO').notNull(),
+  type: mysqlEnum('type', ['INFO', 'WARNING', 'EVENT']).default('WARNING').notNull(),
   isActive: boolean('is_active').default(true).notNull(),
-  expiresAt: timestamp('expires_at'),
+  activeUntil: timestamp('active_until').notNull(),
   createdAt: timestamp('created_at').defaultNow(),
 }, (table) => [
-  index('idx_notifications_active').on(table.isActive),
+  index('idx_broadcasts_active').on(table.isActive),
+  index('idx_broadcasts_until').on(table.activeUntil),
+]);
+
+// 16. Exam Materials
+export const examMaterials = mysqlTable('exam_materials', {
+  id: int('id').primaryKey().autoincrement(),
+  examId: int('exam_id').references(() => exams.id).notNull(),
+  title: varchar('title', { length: 255 }).notNull(),
+  url: varchar('url', { length: 512 }).notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+}, (table) => [
+  index('idx_exam_materials_exam').on(table.examId),
 ]);

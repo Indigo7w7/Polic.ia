@@ -23,9 +23,13 @@ import {
   X,
   CheckCircle,
   Zap,
+  FileText,
+  Plus,
+  ExternalLink,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { auth } from '@/src/firebase';
+import { auth, storage } from '@/src/firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer } from 'recharts';
 
 // ─── ALERTA ROJA MODAL ────────────────────────────────────────
@@ -65,6 +69,129 @@ const BroadcastModal = ({ broadcast, onClose }: { broadcast: any; onClose: () =>
   </div>
 );
 
+// ─── MATERIAL MANAGER ─────────────────────────────────────────
+const MaterialManager = ({ examId, onClose }: { examId: number; onClose: () => void }) => {
+  const [uploading, setUploading] = useState(false);
+  const materials = trpc.adminExams.getMaterials.useQuery({ examId });
+  const addMaterial = trpc.adminExams.addMaterial.useMutation();
+  const deleteMaterial = trpc.adminExams.deleteMaterial.useMutation();
+  const utils = trpc.useUtils();
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    try {
+      const fileName = `${Date.now()}_${file.name}`;
+      const storageRef = ref(storage, `exams_materials/${examId}/${fileName}`);
+      await uploadBytes(storageRef, file);
+      const url = await getDownloadURL(storageRef);
+
+      await addMaterial.mutateAsync({
+        examId,
+        title: file.name,
+        url,
+      });
+
+      toast.success('Material cargado correctamente');
+      utils.adminExams.getMaterials.invalidate({ examId });
+    } catch (error) {
+      console.error(error);
+      toast.error('Error al subir material');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!window.confirm('¿ELIMINAR ESTE MATERIAL?')) return;
+    try {
+      await deleteMaterial.mutateAsync({ id });
+      toast.success('Material eliminado');
+      utils.adminExams.getMaterials.invalidate({ examId });
+    } catch {
+      toast.error('Error al eliminar material');
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+      <div className="relative w-full max-w-xl bg-black border border-cyan-900 rounded-xl shadow-[0_0_40px_rgba(34,211,238,0.1)] overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-cyan-900/40">
+          <div className="flex items-center gap-2">
+            <FileText className="w-4 h-4 text-cyan-500" />
+            <span className="text-[11px] font-black uppercase tracking-widest text-cyan-500 font-mono">GESTIÓN DE MATERIALES [NIVEL_ID: {examId}]</span>
+          </div>
+          <button onClick={onClose} className="text-slate-500 hover:text-white transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-6">
+          {/* Upload Section */}
+          <div className="flex items-center justify-between gap-4 p-4 border border-cyan-900/30 bg-cyan-950/10 rounded-lg">
+            <div className="text-[10px] text-cyan-700 font-mono italic">
+              {uploading ? '> SUBIENDO_ARCHIVO...' : '> SELECCIONE PDF/DOCX PARA ESTE NIVEL'}
+            </div>
+            <input
+              type="file"
+              id="material-upload"
+              className="hidden"
+              onChange={handleUpload}
+              disabled={uploading}
+            />
+            <label
+              htmlFor="material-upload"
+              className="px-4 py-1.5 bg-cyan-900/40 border border-cyan-700 text-cyan-300 font-black text-[9px] uppercase tracking-widest rounded hover:bg-cyan-800 transition-colors cursor-pointer"
+            >
+              {uploading ? 'PROCESANDO' : 'SUBIR_NUEVO'}
+            </label>
+          </div>
+
+          {/* List Section */}
+          <div className="space-y-2 max-h-[300px] overflow-y-auto">
+            {materials.data?.map(m => (
+              <div key={m.id} className="flex items-center justify-between p-3 border border-cyan-900/20 bg-black/50 rounded-lg group">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-cyan-950/30 rounded border border-cyan-900/40">
+                    <FileText className="w-4 h-4 text-cyan-600" />
+                  </div>
+                  <div>
+                    <div className="text-[11px] font-bold text-cyan-400 font-mono truncate max-w-[250px]">{m.title}</div>
+                    <div className="text-[9px] text-cyan-900 font-mono">{new Date(m.createdAt).toLocaleString()}</div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <a
+                    href={m.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="p-1.5 text-cyan-700 hover:text-cyan-400 transition-colors"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                  <button
+                    onClick={() => handleDelete(m.id)}
+                    className="p-1.5 text-red-900 hover:text-red-500 transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            ))}
+            {materials.data?.length === 0 && !uploading && (
+              <div className="text-center py-12 text-cyan-900 text-[10px] font-mono italic uppercase tracking-widest">
+                {'> SIN_MATERIALES_ADJUNTOS'}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ─── STAT CARD ────────────────────────────────────────────────
 const StatItem = ({ label, value, accent }: { label: string; value: number; accent?: string }) => (
   <div className="border border-cyan-900/40 rounded p-3 space-y-1 bg-black/50">
@@ -81,6 +208,7 @@ export const AdminCommandCenter = () => {
   const [uploading, setUploading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [dismissedBroadcast, setDismissedBroadcast] = useState<number | null>(null);
+  const [selectedExamId, setSelectedExamId] = useState<number | null>(null);
 
   // Queries
   const stats = trpc.admin.getAdminStats.useQuery(undefined, { refetchInterval: 10000 });
@@ -204,6 +332,14 @@ export const AdminCommandCenter = () => {
         <BroadcastModal
           broadcast={activeBroadcast}
           onClose={() => setDismissedBroadcast(activeBroadcast.id)}
+        />
+      )}
+
+      {/* Material Manager Modal */}
+      {selectedExamId && (
+        <MaterialManager
+          examId={selectedExamId}
+          onClose={() => setSelectedExamId(null)}
         />
       )}
 
@@ -492,12 +628,20 @@ export const AdminCommandCenter = () => {
                             </div>
                           </div>
                         </div>
-                        <button
-                          onClick={() => handleDeleteExam(exam.id)}
-                          className="opacity-0 group-hover:opacity-100 p-1.5 text-red-800 hover:text-red-400 border border-transparent hover:border-red-900 rounded transition-all"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-all">
+                          <button
+                            onClick={() => setSelectedExamId(exam.id)}
+                            className="flex items-center gap-1.5 px-2.5 py-1 text-[9px] font-black uppercase bg-cyan-950/40 border border-cyan-800 text-cyan-400 hover:bg-cyan-900 rounded transition-all"
+                          >
+                            <FileText className="w-3 h-3" /> MATERIALES
+                          </button>
+                          <button
+                            onClick={() => handleDeleteExam(exam.id)}
+                            className="p-1.5 text-red-800 hover:text-red-400 border border-transparent hover:border-red-900 rounded transition-all"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
                     ))
                   )}
