@@ -233,17 +233,34 @@ async function ensureTablesExist() {
       )
     `);
 
-    // COLUMNAS EXTRA — ALTER individuales para máxima compatibilidad con TiDB/MySQL
-    const alterColumns = [
-      `ALTER TABLE users ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'ACTIVE'`,
-      `ALTER TABLE users ADD COLUMN IF NOT EXISTS membership ENUM('FREE','PRO') NOT NULL DEFAULT 'FREE'`,
-      `ALTER TABLE users ADD COLUMN IF NOT EXISTS last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`,
-      `ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_edited BOOLEAN NOT NULL DEFAULT FALSE`,
-      `ALTER TABLE users ADD COLUMN IF NOT EXISTS premium_expiration TIMESTAMP NULL`,
-    ];
-    for (const stmt of alterColumns) {
-      try { await pool.execute(stmt); } catch (_) { /* column already exists */ }
-    }
+
+    // Helper function to safely add a column, compatible with TiDB and MySQL
+    const safeAddColumn = async (table: string, column: string, definition: string) => {
+      try {
+        const [rows]: any = await pool.execute(
+          `SELECT COUNT(*) as count FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
+          [table, column]
+        );
+        const count = rows[0]?.count ?? 0;
+        if (count === 0) {
+          await pool.execute(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+          console.log(`[MIGRATION] Added column '${column}' to '${table}'.`);
+        }
+      } catch (e: any) {
+        console.error(`[MIGRATION] Failed to add column '${column}' to '${table}':`, e.message);
+      }
+    };
+
+    await safeAddColumn('users', 'status', `VARCHAR(50) DEFAULT 'ACTIVE'`);
+    await safeAddColumn('users', 'membership', `ENUM('FREE','PRO') NOT NULL DEFAULT 'FREE'`);
+    await safeAddColumn('users', 'last_active', `TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`);
+    await safeAddColumn('users', 'profile_edited', `BOOLEAN NOT NULL DEFAULT FALSE`);
+    await safeAddColumn('users', 'premium_expiration', `TIMESTAMP NULL`);
+    await safeAddColumn('users', 'age', `INT`);
+    await safeAddColumn('users', 'city', `VARCHAR(100)`);
+    await safeAddColumn('users', 'photo_url', `VARCHAR(512)`);
+    await safeAddColumn('exams', 'is_demo', `BOOLEAN NOT NULL DEFAULT FALSE`);
+    await safeAddColumn('exam_questions', 'exam_id', `INT`);
     
     console.log('Database verification complete.');
 
