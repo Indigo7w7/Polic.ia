@@ -177,8 +177,22 @@ export const courseMaterials = mysqlTable('course_materials', {
   index('idx_materials_course').on(table.courseId),
 ]);
 
-// 14. Global Notifications / 15. Broadcasts (Alerta Roja - separate from globalNotifications for clarity)
+// 14. Global Notifications (Red Alert system)
+export const globalNotifications = mysqlTable('global_notifications', {
+  id: int('id').primaryKey().autoincrement(),
+  title: varchar('title', { length: 255 }).notNull(),
+  message: text('message').notNull(),
+  type: mysqlEnum('type', ['INFO', 'WARNING', 'EVENT']).default('WARNING').notNull(),
+  isActive: boolean('is_active').default(true).notNull(),
+  expiresAt: timestamp('expires_at'),
+  createdAt: timestamp('created_at').defaultNow(),
+}, (table) => [
+  index('idx_notifications_active').on(table.isActive),
+]);
+
+// 15. Broadcasts (Alerta Roja - separate from globalNotifications for clarity)
 export const broadcasts = mysqlTable('broadcasts', {
+
   id: int('id').primaryKey().autoincrement(),
   title: varchar('title', { length: 255 }).notNull(),
   message: text('message').notNull(),

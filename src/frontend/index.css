@@ -15,3 +15,56 @@
     @apply min-h-[48px];
   }
 }
+
+/* ── CYBER-TERMINAL: Scrollbar, Scanline ─────────────────────── */
+@layer utilities {
+  /* Hide scrollbar but keep scroll */
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+  /* Custom thin scrollbar for terminal tables */
+  .terminal-scroll::-webkit-scrollbar { width: 4px; height: 4px; }
+  .terminal-scroll::-webkit-scrollbar-track { background: #000; }
+  .terminal-scroll::-webkit-scrollbar-thumb { background: #164e63; border-radius: 2px; }
+  .terminal-scroll::-webkit-scrollbar-thumb:hover { background: #0e7490; }
+}
+
+/* Scanline animation for cyber panels */
+@keyframes scanline {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100vh); }
+}
+
+.cyber-scanline::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 80px;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    rgba(34, 211, 238, 0.03),
+    rgba(34, 211, 238, 0.06),
+    rgba(34, 211, 238, 0.03),
+    transparent
+  );
+  animation: scanline 6s linear infinite;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* CRT flicker on terminal text */
+@keyframes crt-flicker {
+  0%, 100% { opacity: 1; }
+  92% { opacity: 1; }
+  93% { opacity: 0.93; }
+  94% { opacity: 1; }
+  96% { opacity: 0.96; }
+  97% { opacity: 1; }
+}
+
+.crt-text {
+  animation: crt-flicker 5s infinite;
+}

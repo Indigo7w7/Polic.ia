@@ -1,4 +1,4 @@
-import { router, protectedProcedure, adminProcedure } from '../trpc';
+import { router, protectedProcedure, adminProcedure, publicProcedure } from '../trpc';
 import { z } from 'zod';
 import { db, users, adminLogs, yapeAudits, examQuestions, learningAreas, learningContent, globalNotifications } from '../../../database/db';
 import { eq, sql, and, like, or } from 'drizzle-orm';
@@ -105,8 +105,8 @@ export const adminRouter = router({
     };
   }),
 
-  // ─── BROADCAST (Alerta Roja activa) ───
-  getActiveBroadcast: adminProcedure.query(async () => {
+  // ─── BROADCAST (Alerta Roja activa) — PUBLIC para que usuarios normales también la reciban ───
+  getActiveBroadcast: publicProcedure.query(async () => {
     const [active] = await db
       .select()
       .from(globalNotifications)
@@ -120,6 +120,7 @@ export const adminRouter = router({
       .limit(1);
     return active || null;
   }),
+
 
   // ─── USER MANAGEMENT (TAREA 2) ───
   getUsers: adminProcedure

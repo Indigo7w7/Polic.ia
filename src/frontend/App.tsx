@@ -15,7 +15,6 @@ import { YapeCheckout } from './views/YapeCheckout';
 import { Resultados } from './views/Resultados';
 import { Flashcards } from './views/Flashcards';
 import { Ranking } from './views/Ranking';
-import { AdminPanel } from './views/AdminPanel';
 import { AdminCommandCenter } from './views/AdminCommandCenter';
 import { ProgressAudit } from './views/ProgressAudit';
 import { Profile } from './views/Profile';
@@ -28,7 +27,7 @@ import { LearningGallery } from './views/LearningGallery';
 import { PressureNotification } from './components/ui/PressureNotification';
 import { MascotAdvisor } from './components/MascotAdvisor';
 import { Toaster } from 'sonner';
-import { Shield, Loader2 } from 'lucide-react';
+import { Shield, Loader2, AlertTriangle, X } from 'lucide-react';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 
 /** Full-screen loader shown while Firebase resolves auth state */
@@ -40,7 +39,7 @@ const AuthLoader = () => (
     <Loader2 className="w-5 h-5 text-slate-600 animate-spin" />
     <p className="text-[10px] text-slate-600 uppercase tracking-[0.3em] font-bold">Verificando acceso…</p>
     <div className="mt-4 p-1 px-3 bg-red-600/20 border border-red-500/30 rounded-full">
-      <span className="text-[9px] text-red-400 font-black tracking-widest">VER: 03.31.C-STABLE</span>
+      <span className="text-[9px] text-red-400 font-black tracking-widest">VER: 04.01.A</span>
     </div>
   </div>
 );
@@ -51,29 +50,74 @@ const AdminRedirector = () => {
   const location = useLocation();
 
   useEffect(() => {
-    // FORCE CLEAR OLD STORAGE IF IT EXISTS
     if (localStorage.getItem('policia-user-storage')) {
       console.log('[CACHE] Purging legacy session data...');
       localStorage.removeItem('policia-user-storage');
       window.location.reload();
     }
-    
-    
-    
-    // If we are at the root, login, or school selector and we have an admin role, force jump to portal
     const adminRestrictedPaths = ['/', '/login', '/seleccionar-escuela'];
-    
-    // MEGA BYPASS: Check role OR raw email if role hasn't synced yet
     const rawEmail = auth.currentUser?.email?.toLowerCase().trim();
     const isOwner = rawEmail === 'brizq02@gmail.com';
-
     if (uid && (role === 'admin' || isOwner) && adminRestrictedPaths.includes(location.pathname)) {
-      console.log('[MEGA-FIX] High-Privilege access detected (Email Check), routing to Command Center');
+      console.log('[MEGA-FIX] High-Privilege access detected, routing to Command Center');
       navigate('/admin-portal', { replace: true });
     }
   }, [role, uid, navigate, location.pathname]);
 
   return null;
+};
+
+// ─── GLOBAL ALERT LISTENER (para todos los usuarios) ──────────
+const GlobalAlertListener = () => {
+  const { role } = useUserStore();
+  const [dismissed, setDismissed] = useState<number | null>(null);
+
+  // Public query — accessible to all authenticated users
+  const broadcastQ = trpc.admin.getActiveBroadcast.useQuery(undefined, {
+    refetchInterval: 15000,
+    staleTime: 10000,
+  });
+
+  const alert = broadcastQ.data;
+  if (!alert || alert.id === dismissed || role === 'admin') return null;
+
+  return (
+    <div className="fixed inset-0 z-[9990] flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm">
+      <div className="relative w-full max-w-lg bg-black border-2 border-red-500 rounded-xl overflow-hidden shadow-[0_0_80px_rgba(239,68,68,0.4)]">
+        {/* Pulsing red overlay */}
+        <div className="absolute inset-0 pointer-events-none animate-pulse bg-red-950/15" />
+        {/* Scanlines */}
+        <div className="absolute inset-0 pointer-events-none opacity-10" style={{
+          backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(239,68,68,0.3) 2px, rgba(239,68,68,0.3) 4px)'
+        }} />
+        <div className="relative p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 bg-red-600 rounded-full flex items-center justify-center animate-bounce">
+              <AlertTriangle className="w-5 h-5 text-white" />
+            </div>
+            <div className="flex-1">
+              <div className="text-[9px] text-red-500 font-black tracking-[0.5em] uppercase animate-pulse">⚠ ALERTA GLOBAL ACTIVA</div>
+              <div className="text-lg font-black text-red-300 tracking-wider">{alert.title}</div>
+            </div>
+          </div>
+          <div className="bg-red-950/30 border border-red-900/50 rounded-lg p-4 mb-5">
+            <p className="text-red-200 text-sm leading-relaxed">{alert.message}</p>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-[9px] text-red-700 uppercase tracking-widest font-mono">
+              TIPO: <span className="text-red-400 font-black">{alert.type}</span>
+            </span>
+            <button
+              onClick={() => setDismissed(alert.id)}
+              className="flex items-center gap-2 px-5 py-2 bg-red-600 hover:bg-red-500 text-white font-black text-[11px] tracking-widest uppercase rounded-lg transition-colors"
+            >
+              <X className="w-4 h-4" /> ACUSADO RECIBO
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 function AppContent() {
@@ -168,6 +212,7 @@ function AppContent() {
   return (
     <div className="relative">
       <AdminRedirector />
+      <GlobalAlertListener />
       <Toaster position="top-center" theme="dark" richColors />
       <PressureNotification />
       {role !== 'admin' && <MascotAdvisor />}
@@ -191,10 +236,8 @@ function AppContent() {
         <Route path="/perfil" element={<RequireAuth><Profile /></RequireAuth>} />
 
         {/* Protected: Admin only */}
-        <Route path="/admin-portal" element={<RequireAdmin><AdminCommandCenter /></RequireAdmin>} />
-        <Route path="/admin" element={<RequireAdmin><AdminPanel /></RequireAdmin>} />
-        <Route path="/comando-central" element={<RequireAdmin><AdminCommandCenter /></RequireAdmin>} />
-        <Route path="/acceso-comando" element={<RequireAdmin><AdminPanel /></RequireAdmin>} />
+        <Route path="/admin-portal"     element={<RequireAdmin><AdminCommandCenter /></RequireAdmin>} />
+        <Route path="/comando-central"  element={<RequireAdmin><AdminCommandCenter /></RequireAdmin>} />
       </Routes>
 
     </div>

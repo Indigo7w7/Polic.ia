@@ -28,10 +28,15 @@ export const Login: React.FC = () => {
   const loginMutation = trpc.auth.login.useMutation();
 
   const syncUserToMySQL = async (uid: string, displayName: string | null, email: string | null, photoURL: string | null) => {
+    // Resolve final name: never send "Postulante" — use email prefix as fallback
+    const finalName = (displayName && displayName.trim() && displayName !== 'Postulante')
+      ? displayName.trim()
+      : (email?.split('@')[0] || 'Usuario');
+
     try {
       await loginMutation.mutateAsync({
         email: email || '',
-        name: displayName || 'Postulante',
+        name: finalName,
         photoURL: photoURL || undefined,
       });
     } catch (e) {
@@ -44,8 +49,19 @@ export const Login: React.FC = () => {
     try {
       const provider = new GoogleAuthProvider();
       const result = await signInWithPopup(auth, provider);
-      await syncUserToMySQL(result.user.uid, result.user.displayName, result.user.email, result.user.photoURL);
-      toast.success('Acceso concedido. Bienvenido, Postulante.');
+      const user = result.user;
+
+      // Firebase sometimes resolves displayName async — wait up to 1s for it
+      let displayName = user.displayName;
+      if (!displayName) {
+        await new Promise(res => setTimeout(res, 1000));
+        await user.reload();
+        displayName = auth.currentUser?.displayName || null;
+      }
+
+      await syncUserToMySQL(user.uid, displayName, user.email, user.photoURL);
+      const greeting = displayName ? `Bienvenido, ${displayName.split(' ')[0]}.` : 'Acceso concedido.';
+      toast.success(greeting);
       navigate('/');
     } catch (err: any) {
       toast.error('Error al autenticar con Google. Intenta de nuevo.');
@@ -53,6 +69,7 @@ export const Login: React.FC = () => {
       setGoogleLoading(false);
     }
   };
+
 
   return (
     <div className="min-h-screen bg-[#060d1a] flex items-center justify-center p-4 relative overflow-hidden font-sans">
