@@ -9,11 +9,10 @@ import './index.css';
 import { auth } from '@/src/firebase';
 
 function Root() {
-  // In production, use relative path (same domain as backend on Railway).
-  // In development, point to local backend server.
-  const apiUrl = import.meta.env.PROD
-    ? '/trpc'
-    : (import.meta.env.VITE_API_URL || 'http://localhost:3001/trpc');
+  // Priority:
+  // 1. VITE_API_URL env var (set in .env.local for dev)
+  // 2. Production: always use the Railway backend URL directly (Firebase Hosting + Railway are separate domains)
+  const apiUrl = import.meta.env.VITE_API_URL || 'https://backend-production-f0aa.up.railway.app/trpc';
   console.log(`[CONFIG] tRPC API URL: ${apiUrl}`);
   
   const [queryClient] = useState(() => new QueryClient());
