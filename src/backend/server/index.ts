@@ -222,16 +222,16 @@ async function ensureTablesExist() {
       )
     `);
 
-    // TAREA 1 (SQL): ALTER_TABLE_users_ADD_COLUMN_IF_NOT_EXISTS...
-    try {
-      await pool.execute(`
-        ALTER TABLE users 
-        ADD COLUMN IF NOT EXISTS membership VARCHAR(50) DEFAULT 'FREE',
-        ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'ACTIVE',
-        ADD COLUMN IF NOT EXISTS last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-      `);
-    } catch (e) {
-      console.log('Migración SQL: Skip/Error silencioso.');
+    // COLUMNAS EXTRA — ALTER individuales para máxima compatibilidad con TiDB/MySQL
+    const alterColumns = [
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'ACTIVE'`,
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS membership ENUM('FREE','PRO') NOT NULL DEFAULT 'FREE'`,
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`,
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_edited BOOLEAN NOT NULL DEFAULT FALSE`,
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS premium_expiration TIMESTAMP NULL`,
+    ];
+    for (const stmt of alterColumns) {
+      try { await pool.execute(stmt); } catch (_) { /* column already exists */ }
     }
     
     console.log('Database verification complete.');
