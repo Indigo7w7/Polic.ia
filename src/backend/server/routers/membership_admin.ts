@@ -29,6 +29,23 @@ export const membershipRouter = router({
 });
 
 export const adminRouter = router({
+  // ─── BROADCAST (Alerta Roja) — PUBLIC para acceso universal ───
+  getActiveBroadcast: publicProcedure.query(async () => {
+    const [active] = await db
+      .select()
+      .from(globalNotifications)
+      .where(
+        and(
+          sql`${globalNotifications.isActive} = 1`,
+          sql`(${globalNotifications.expiresAt} IS NULL OR ${globalNotifications.expiresAt} > NOW())`
+        )
+      )
+      .orderBy(sql`${globalNotifications.createdAt} desc`)
+      .limit(1);
+    return active || null;
+  }),
+
+  // ─── VOUCHERS ───
   getVouchers: adminProcedure.query(async () => {
     return await db.select().from(yapeAudits).orderBy(sql`${yapeAudits.createdAt} desc`);
   }),
@@ -84,7 +101,7 @@ export const adminRouter = router({
     };
   }),
 
-  // ─── DASHBOARD STATS (Detalle por membership/status) ───
+  // ─── DASHBOARD STATS ───
   getDashboardStats: adminProcedure.query(async () => {
     const [counts] = await db.select({
       total: sql<number>`count(${users.uid})`,
@@ -105,24 +122,7 @@ export const adminRouter = router({
     };
   }),
 
-  // ─── BROADCAST (Alerta Roja activa) — PUBLIC para que usuarios normales también la reciban ───
-  getActiveBroadcast: publicProcedure.query(async () => {
-    const [active] = await db
-      .select()
-      .from(globalNotifications)
-      .where(
-        and(
-          sql`${globalNotifications.isActive} = 1`,
-          sql`(${globalNotifications.expiresAt} IS NULL OR ${globalNotifications.expiresAt} > NOW())`
-        )
-      )
-      .orderBy(sql`${globalNotifications.createdAt} desc`)
-      .limit(1);
-    return active || null;
-  }),
-
-
-  // ─── USER MANAGEMENT (TAREA 2) ───
+  // ─── USER MANAGEMENT ───
   getUsers: adminProcedure
     .input(z.object({ search: z.string().optional() }))
     .query(async ({ input }) => {
