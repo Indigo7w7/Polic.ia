@@ -9,7 +9,11 @@ import './index.css';
 import { auth } from '@/src/firebase';
 
 function Root() {
-  const apiUrl = 'https://backend-production-f0aa.up.railway.app/trpc';
+  // In production, use relative path (same domain as backend on Railway).
+  // In development, point to local backend server.
+  const apiUrl = import.meta.env.PROD
+    ? '/trpc'
+    : (import.meta.env.VITE_API_URL || 'http://localhost:3001/trpc');
   console.log(`[CONFIG] tRPC API URL: ${apiUrl}`);
   
   const [queryClient] = useState(() => new QueryClient());

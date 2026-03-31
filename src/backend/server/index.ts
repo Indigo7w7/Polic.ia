@@ -27,9 +27,6 @@ app.use((req, _res, next) => {
 });
 app.use(express.json());
 
-// Serve static frontend files from 'dist' folder
-const distPath = path.join(process.cwd(), 'dist');
-
 app.use(
   '/trpc',
   trpcExpress.createExpressMiddleware({
@@ -42,26 +39,26 @@ app.get('/health', (req, res) => {
   res.send('Server is running and healthy!');
 });
 
-// If dist folder exists, serve static files and handle SPA routing
+// Serve static frontend files from 'dist' folder (added AFTER /trpc so API routes win)
+const distPath = path.join(process.cwd(), 'dist');
 if (fs.existsSync(distPath)) {
-  console.log(`[SYS] Serving frontend from ${distPath}`);
+  console.log(`[SYS] ✅ Serving frontend from ${distPath}`);
   app.use(express.static(distPath));
-  
-  // SPA fallback for all other routes
+
+  // SPA fallback: any route that isn't /trpc serves index.html
   app.get('*', (req, res) => {
-    // Exclude API calls or TRPC
-    if (req.path.startsWith('/trpc')) return;
-    
+    if (req.path.startsWith('/trpc') || req.path.startsWith('/health')) return;
     const indexPath = path.join(distPath, 'index.html');
     if (fs.existsSync(indexPath)) {
       res.sendFile(indexPath);
     } else {
-      res.send('POLIC.ia API Server - Sistema de Entrenamiento de Élite Operativo. Build folder found but index.html missing.');
+      res.status(404).send('[SYS] index.html not found in dist/. Run npm run build first.');
     }
   });
 } else {
-  app.get('/', (req, res) => {
-    res.send('POLIC.ia API Server - Sistema de Entrenamiento de Élite Operativo. El backend está en línea. Nota: Build del frontend no detectado.');
+  console.warn('[SYS] ⚠️  dist/ not found — frontend NOT being served. Run npm run build on Railway.');
+  app.get('/', (_req, res) => {
+    res.send('POLIC.ia API OK — Frontend not bundled. Run npm run build.');
   });
 }
 
@@ -279,24 +276,39 @@ async function ensureTablesExist() {
   }
 }
 
-app.listen(port, async () => {
-  await ensureTablesExist();
-  
-  // =========================================================================
-  // MANDATORY ADMIN OVERRIDE FOR PRINCIPAL ACCOUNT
-  // =========================================================================
+// ── STARTUP: DB must be ready BEFORE server accepts connections ──────────
+async function startServer() {
   try {
-    console.log('[SECURITY] Enforcing Admin status for brizq02@gmail.com...');
-    await pool.execute(`
-      UPDATE users 
-      SET role = 'admin' 
-      WHERE email = 'brizq02@gmail.com'
-    `);
-    console.log('[SECURITY] Admin override successful.');
-  } catch (err) {
-    console.error('[SECURITY] Failed to enforce Admin status:', err);
+    // 1. Validate DB connectivity
+    await pool.execute('SELECT 1');
+    console.log('[DB] ✅ DB_CONNECTED_SUCCESSFULLY — Connection pool is live.');
+  } catch (dbErr: any) {
+    console.error('[DB] ❌ CRITICAL: DB connection FAILED on startup:', dbErr.message);
+    console.error('[DB] Check MYSQL_URL / DATABASE_URL env vars in Railway dashboard.');
+    // Do not exit — server can still serve /health for Railway health checks
   }
-  // =========================================================================
 
-  console.log(`tRPC server listening at http://localhost:${port}`);
+  // 2. Ensure schema & tables
+  await ensureTablesExist();
+
+  // 3. Admin override
+  try {
+    console.log('[SECURITY] Enforcing admin role for brizq02@gmail.com...');
+    await pool.execute(`UPDATE users SET role = 'admin' WHERE email = 'brizq02@gmail.com'`);
+    console.log('[SECURITY] ✅ Admin override applied.');
+  } catch (err: any) {
+    console.error('[SECURITY] ⚠️  Admin override skipped:', err.message);
+  }
+
+  // 4. Start listening — only now
+  app.listen(port, () => {
+    console.log(`[SYS] 🚀 tRPC server ONLINE at http://localhost:${port}`);
+    console.log(`[SYS]    PROD mode: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`[SYS]    dist/ present: ${fs.existsSync(distPath)}`);
+  });
+}
+
+startServer().catch(err => {
+  console.error('[SYS] ❌ FATAL: startServer failed:', err);
+  process.exit(1);
 });
