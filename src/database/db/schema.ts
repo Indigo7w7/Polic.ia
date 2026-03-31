@@ -43,81 +43,7 @@ export const learningContent = mysqlTable('learning_content', {
   index('idx_content_school').on(table.schoolType),
 ]);
 
-// 5. Exam Attempts
-export const examAttempts = mysqlTable('exam_attempts', {
-  id: int('id').primaryKey().autoincrement(),
-  userId: varchar('user_id', { length: 255 }).references(() => users.uid),
-  score: int('score').notNull(),
-  passed: boolean('passed').default(false),
-  startedAt: timestamp('started_at').defaultNow(),
-  endedAt: timestamp('ended_at'),
-}, (table) => [
-  index('idx_attempts_user').on(table.userId),
-  index('idx_attempts_started').on(table.startedAt),
-]);
-
-// 6. Attempt Answers
-export const attemptAnswers = mysqlTable('attempt_answers', {
-  id: int('id').primaryKey().autoincrement(),
-  attemptId: int('attempt_id').references(() => examAttempts.id),
-  questionId: int('question_id').references(() => examQuestions.id),
-  chosenOption: int('chosen_option').notNull(),
-  isCorrect: boolean('is_correct').notNull(),
-}, (table) => [
-  index('idx_answers_attempt').on(table.attemptId),
-  index('idx_answers_question').on(table.questionId),
-]);
-
-// 7. Leitner Cards
-export const leitnerCards = mysqlTable('leitner_cards', {
-  id: int('id').primaryKey().autoincrement(),
-  userId: varchar('user_id', { length: 255 }).references(() => users.uid),
-  questionId: int('question_id').references(() => examQuestions.id),
-  level: int('level').default(0),
-  nextReview: timestamp('next_review'),
-}, (table) => [
-  index('idx_leitner_user').on(table.userId),
-  index('idx_leitner_question').on(table.questionId),
-  index('idx_leitner_review').on(table.nextReview),
-]);
-
-// 8. Stripe Subscriptions
-export const stripeSubscriptions = mysqlTable('stripe_subscriptions', {
-  id: varchar('id', { length: 255 }).primaryKey(),
-  userId: varchar('user_id', { length: 255 }).references(() => users.uid),
-  status: varchar('status', { length: 50 }),
-  priceId: varchar('price_id', { length: 255 }),
-  currentPeriodEnd: timestamp('current_period_end'),
-}, (table) => [
-  index('idx_stripe_user').on(table.userId),
-]);
-
-// 9. Admin Logs
-export const adminLogs = mysqlTable('admin_logs', {
-  id: int('id').primaryKey().autoincrement(),
-  adminId: varchar('admin_id', { length: 255 }).references(() => users.uid),
-  action: text('action').notNull(),
-  createdAt: timestamp('created_at').defaultNow(),
-}, (table) => [
-  index('idx_logs_admin').on(table.adminId),
-  index('idx_logs_created').on(table.createdAt),
-]);
-
-// 10. Yape Audits (Payment verification)
-export const yapeAudits = mysqlTable('yape_audits', {
-  id: int('id').primaryKey().autoincrement(),
-  userId: varchar('user_id', { length: 255 }).references(() => users.uid),
-  voucherUrl: varchar('voucher_url', { length: 512 }).notNull(),
-  status: mysqlEnum('status', ['PENDIENTE', 'APROBADO', 'RECHAZADO']).default('PENDIENTE').notNull(),
-  amount: int('amount').default(15),
-  school: varchar('school', { length: 50 }),
-  createdAt: timestamp('created_at').defaultNow(),
-}, (table) => [
-  index('idx_yape_user').on(table.userId),
-  index('idx_yape_status').on(table.status),
-]);
-
-// 11. Exams (Levels)
+// 4. Exams (Levels)
 export const exams = mysqlTable('exams', {
   id: int('id').primaryKey().autoincrement(),
   school: mysqlEnum('school', ['EO', 'EESTP']).notNull(),
@@ -130,10 +56,10 @@ export const exams = mysqlTable('exams', {
   index('idx_exams_level').on(table.level),
 ]);
 
-// Update examQuestions to include examId
+// 5. Exam Questions
 export const examQuestions = mysqlTable('exam_questions', {
   id: int('id').primaryKey().autoincrement(),
-  examId: int('exam_id').references(() => exams.id), // Link to an explicit exam level
+  examId: int('exam_id').references(() => exams.id),
   areaId: int('area_id').references(() => learningAreas.id),
   question: text('question').notNull(),
   options: json('options').notNull(),
@@ -145,6 +71,80 @@ export const examQuestions = mysqlTable('exam_questions', {
   index('idx_questions_area').on(table.areaId),
   index('idx_questions_difficulty').on(table.difficulty),
   index('idx_questions_school').on(table.schoolType),
+]);
+
+// 6. Exam Attempts
+export const examAttempts = mysqlTable('exam_attempts', {
+  id: int('id').primaryKey().autoincrement(),
+  userId: varchar('user_id', { length: 255 }).references(() => users.uid),
+  score: int('score').notNull(),
+  passed: boolean('passed').default(false),
+  startedAt: timestamp('started_at').defaultNow(),
+  endedAt: timestamp('ended_at'),
+}, (table) => [
+  index('idx_attempts_user').on(table.userId),
+  index('idx_attempts_started').on(table.startedAt),
+]);
+
+// 7. Attempt Answers
+export const attemptAnswers = mysqlTable('attempt_answers', {
+  id: int('id').primaryKey().autoincrement(),
+  attemptId: int('attempt_id').references(() => examAttempts.id),
+  questionId: int('question_id').references(() => examQuestions.id),
+  chosenOption: int('chosen_option').notNull(),
+  isCorrect: boolean('is_correct').notNull(),
+}, (table) => [
+  index('idx_answers_attempt').on(table.attemptId),
+  index('idx_answers_question').on(table.questionId),
+]);
+
+// 8. Leitner Cards
+export const leitnerCards = mysqlTable('leitner_cards', {
+  id: int('id').primaryKey().autoincrement(),
+  userId: varchar('user_id', { length: 255 }).references(() => users.uid),
+  questionId: int('question_id').references(() => examQuestions.id),
+  level: int('level').default(0),
+  nextReview: timestamp('next_review'),
+}, (table) => [
+  index('idx_leitner_user').on(table.userId),
+  index('idx_leitner_question').on(table.questionId),
+  index('idx_leitner_review').on(table.nextReview),
+]);
+
+// 9. Stripe Subscriptions
+export const stripeSubscriptions = mysqlTable('stripe_subscriptions', {
+  id: varchar('id', { length: 255 }).primaryKey(),
+  userId: varchar('user_id', { length: 255 }).references(() => users.uid),
+  status: varchar('status', { length: 50 }),
+  priceId: varchar('price_id', { length: 255 }),
+  currentPeriodEnd: timestamp('current_period_end'),
+}, (table) => [
+  index('idx_stripe_user').on(table.userId),
+]);
+
+// 10. Admin Logs
+export const adminLogs = mysqlTable('admin_logs', {
+  id: int('id').primaryKey().autoincrement(),
+  adminId: varchar('admin_id', { length: 255 }).references(() => users.uid),
+  action: text('action').notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+}, (table) => [
+  index('idx_logs_admin').on(table.adminId),
+  index('idx_logs_created').on(table.createdAt),
+]);
+
+// 11. Yape Audits (Payment verification)
+export const yapeAudits = mysqlTable('yape_audits', {
+  id: int('id').primaryKey().autoincrement(),
+  userId: varchar('user_id', { length: 255 }).references(() => users.uid),
+  voucherUrl: varchar('voucher_url', { length: 512 }).notNull(),
+  status: mysqlEnum('status', ['PENDIENTE', 'APROBADO', 'RECHAZADO']).default('PENDIENTE').notNull(),
+  amount: int('amount').default(15),
+  school: varchar('school', { length: 50 }),
+  createdAt: timestamp('created_at').defaultNow(),
+}, (table) => [
+  index('idx_yape_user').on(table.userId),
+  index('idx_yape_status').on(table.status),
 ]);
 
 // 12. Courses
@@ -177,7 +177,7 @@ export const courseMaterials = mysqlTable('course_materials', {
   index('idx_materials_course').on(table.courseId),
 ]);
 
-// 14. Global Notifications
+// 14. Global Notifications / Broadcasts (Alerta Roja)
 export const globalNotifications = mysqlTable('global_notifications', {
   id: int('id').primaryKey().autoincrement(),
   title: varchar('title', { length: 255 }).notNull(),

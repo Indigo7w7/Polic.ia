@@ -84,6 +84,43 @@ export const adminRouter = router({
     };
   }),
 
+  // ─── DASHBOARD STATS (Detalle por membership/status) ───
+  getDashboardStats: adminProcedure.query(async () => {
+    const [counts] = await db.select({
+      total: sql<number>`count(${users.uid})`,
+      pro: sql<number>`sum(case when ${users.membership} = 'PRO' then 1 else 0 end)`,
+      free: sql<number>`sum(case when ${users.membership} = 'FREE' then 1 else 0 end)`,
+      active: sql<number>`sum(case when ${users.status} = 'ACTIVE' then 1 else 0 end)`,
+      blocked: sql<number>`sum(case when ${users.status} = 'BLOCKED' then 1 else 0 end)`,
+      online: sql<number>`sum(case when ${users.lastActive} >= NOW() - INTERVAL 5 MINUTE then 1 else 0 end)`,
+    }).from(users);
+
+    return {
+      totalUsers: Number(counts.total) || 0,
+      proUsers: Number(counts.pro) || 0,
+      freeUsers: Number(counts.free) || 0,
+      activeUsers: Number(counts.active) || 0,
+      blockedUsers: Number(counts.blocked) || 0,
+      onlineNow: Number(counts.online) || 0,
+    };
+  }),
+
+  // ─── BROADCAST (Alerta Roja activa) ───
+  getActiveBroadcast: adminProcedure.query(async () => {
+    const [active] = await db
+      .select()
+      .from(globalNotifications)
+      .where(
+        and(
+          sql`${globalNotifications.isActive} = 1`,
+          sql`(${globalNotifications.expiresAt} IS NULL OR ${globalNotifications.expiresAt} > NOW())`
+        )
+      )
+      .orderBy(sql`${globalNotifications.createdAt} desc`)
+      .limit(1);
+    return active || null;
+  }),
+
   // ─── USER MANAGEMENT (TAREA 2) ───
   getUsers: adminProcedure
     .input(z.object({ search: z.string().optional() }))

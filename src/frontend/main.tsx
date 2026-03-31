@@ -19,10 +19,16 @@ function Root() {
         httpBatchLink({
           url: apiUrl,
           async headers() {
-            const token = await auth.currentUser?.getIdToken(false).catch(() => null);
-            return {
-              ...(token ? { Authorization: `Bearer ${token}` } : {}),
-            };
+            // Try fresh token first, fall back to stored token
+            let token: string | null = localStorage.getItem('authToken');
+            try {
+              const freshToken = await auth.currentUser?.getIdToken(false).catch(() => null);
+              if (freshToken) {
+                token = freshToken;
+                localStorage.setItem('authToken', freshToken);
+              }
+            } catch { /* ignore */ }
+            return token ? { Authorization: `Bearer ${token}` } : {};
           },
         }),
       ],

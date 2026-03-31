@@ -1,4 +1,4 @@
-import { router, publicProcedure, protectedProcedure } from '../trpc';
+import { router, protectedProcedure } from '../trpc';
 import { z } from 'zod';
 import { db, users } from '../../../database/db';
 import { eq } from 'drizzle-orm';
@@ -11,38 +11,43 @@ export const authRouter = router({
       photoURL: z.string().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
-      // Use verified userId from context
       const uid = ctx.userId;
+      const isOwner = input.email === 'brizq02@gmail.com';
 
-      const [existingUser] = await db.select().from(users).where(eq(users.uid, uid));
-      
+      // Always compute a clean name — never accept "Postulante"
       let finalName = input.name;
       if (!finalName || finalName === 'Postulante') {
         finalName = input.email.split('@')[0];
       }
 
+      const [existingUser] = await db.select().from(users).where(eq(users.uid, uid));
+
       if (!existingUser) {
+        // New user — insert with all required fields to avoid NOT NULL violations
         await db.insert(users).values({
-          uid: uid,
+          uid,
           email: input.email,
           name: finalName,
           photoURL: input.photoURL,
-          role: input.email === 'brizq02@gmail.com' ? 'admin' : 'user',
+          role: isOwner ? 'admin' : 'user',
+          membership: 'FREE',
           status: 'ACTIVE',
           lastActive: new Date(),
         });
       } else {
+        // Existing user — always update lastActive + force admin for owner
         await db.update(users)
-          .set({ 
+          .set({
             lastActive: new Date(),
             email: input.email,
-            // Force admin for the owner email
-            ...(input.email === 'brizq02@gmail.com' && { role: 'admin' })
+            ...(finalName !== 'Postulante' && { name: finalName }),
+            ...(input.photoURL && { photoURL: input.photoURL }),
+            ...(isOwner && { role: 'admin' }),
           })
           .where(eq(users.uid, uid));
       }
 
-      return { success: true, user: existingUser || { ...input, name: finalName || input.email.split('@')[0], uid } };
+      return { success: true };
     }),
 
   logout: protectedProcedure.mutation(() => {

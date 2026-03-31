@@ -3,16 +3,14 @@ import { trpc } from '../../shared/utils/trpc';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { Header } from '../components/common/Header';
 import { Button } from '../components/ui/Button';
-import { 
-  Terminal, 
-  Users, 
-  ShieldAlert, 
-  Activity, 
+import {
+  Terminal,
+  Users,
+  ShieldAlert,
+  Activity,
   RefreshCcw,
   Search,
-  LogOut,
   UserX,
-  TrendingDown,
   TrendingUp,
   Upload,
   Book,
@@ -21,44 +19,110 @@ import {
   Lock,
   Unlock,
   Megaphone,
+  AlertTriangle,
+  X,
+  CheckCircle,
+  Zap,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { auth } from '@/src/firebase';
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
+import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer } from 'recharts';
 
+// ─── ALERTA ROJA MODAL ────────────────────────────────────────
+const BroadcastModal = ({ broadcast, onClose }: { broadcast: any; onClose: () => void }) => (
+  <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+    <div className="relative w-full max-w-lg bg-black border-2 border-red-500 rounded-xl shadow-[0_0_60px_rgba(239,68,68,0.5)] overflow-hidden">
+      <div className="absolute inset-0 bg-red-950/20 animate-pulse pointer-events-none" />
+      <div className="relative p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 bg-red-600 rounded-full flex items-center justify-center animate-pulse">
+            <AlertTriangle className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <div className="text-[9px] text-red-400 font-black tracking-[0.5em] uppercase">ALERTA GLOBAL ACTIVA</div>
+            <div className="text-lg font-black text-red-400 tracking-wider font-mono">{broadcast.title}</div>
+          </div>
+          <button onClick={onClose} className="ml-auto text-slate-500 hover:text-white transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="bg-red-950/40 border border-red-900 rounded-lg p-4 mb-4">
+          <p className="text-red-200 text-sm font-mono leading-relaxed">{broadcast.message}</p>
+        </div>
+        <div className="flex items-center justify-between text-[10px] font-mono">
+          <span className="text-red-500 uppercase tracking-wider">
+            TIPO: <span className="text-red-300 font-black">{broadcast.type}</span>
+          </span>
+          <button
+            onClick={onClose}
+            className="px-4 py-1.5 bg-red-600 hover:bg-red-500 text-white font-black text-[10px] tracking-widest uppercase rounded transition-colors"
+          >
+            ACUSADO RECIBO
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+);
+
+// ─── STAT CARD ────────────────────────────────────────────────
+const StatItem = ({ label, value, accent }: { label: string; value: number; accent?: string }) => (
+  <div className="border border-cyan-900/40 rounded p-3 space-y-1 bg-black/50">
+    <div className="text-[9px] text-cyan-700 uppercase tracking-[0.3em] font-mono">{label}</div>
+    <div className={`text-2xl font-black font-mono ${accent || 'text-cyan-400'}`}>{value}</div>
+  </div>
+);
+
+// ─── MAIN COMPONENT ───────────────────────────────────────────
 export const AdminCommandCenter = () => {
   const [activeTab, setActiveTab] = useState<'users' | 'exams'>('users');
   const [activeExamSchool, setActiveExamSchool] = useState<'EO' | 'EESTP'>('EO');
   const [searchTerm, setSearchTerm] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [dismissedBroadcast, setDismissedBroadcast] = useState<number | null>(null);
 
-  // Stats & Users with "Real-time" polling (10s)
+  // Queries
   const stats = trpc.admin.getAdminStats.useQuery(undefined, { refetchInterval: 10000 });
+  const dashStats = trpc.admin.getDashboardStats.useQuery(undefined, { refetchInterval: 10000 });
   const usersList = trpc.admin.getUsers.useQuery({ search: searchTerm }, { refetchInterval: 10000 });
-  
-  // Exam Management
+  const broadcastQuery = trpc.admin.getActiveBroadcast.useQuery(undefined, { refetchInterval: 10000 });
   const examsQuery = trpc.adminExams.getExams.useQuery();
   const uploadExam = trpc.adminExams.uploadExam.useMutation();
   const deleteExam = trpc.adminExams.deleteExam.useMutation();
-
   const toggleRole = trpc.admin.toggleAdminRole.useMutation();
   const updateMembership = trpc.admin.updateUserStatus.useMutation();
   const deleteUser = trpc.admin.deleteUser.useMutation();
   const sendBroadcast = trpc.admin.sendBroadcast.useMutation();
   const utils = trpc.useUtils();
 
+  // Active broadcast (not yet dismissed)
+  const activeBroadcast = broadcastQuery.data && broadcastQuery.data.id !== dismissedBroadcast
+    ? broadcastQuery.data
+    : null;
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await utils.admin.invalidate();
+    setTimeout(() => setRefreshing(false), 1500);
+  };
+
   const handleBroadcast = async () => {
-    const title = window.prompt('Título de la Alerta (ej. MANTENIMIENTO):');
+    const title = window.prompt('TÍTULO DE ALERTA (ej. MANTENIMIENTO CRÍTICO):');
     if (!title) return;
-    const message = window.prompt('Mensaje:');
+    const message = window.prompt('MENSAJE COMPLETO:');
     if (!message) return;
-    const typeStr = window.prompt('Tipo (INFO, WARNING, EVENT):', 'WARNING');
-    const type = (['INFO', 'WARNING', 'EVENT'].includes(typeStr?.toUpperCase() || '') ? typeStr?.toUpperCase() : 'WARNING') as any;
+    const typeStr = window.prompt('TIPO (INFO / WARNING / EVENT):', 'WARNING');
+    const type = (['INFO', 'WARNING', 'EVENT'].includes(typeStr?.toUpperCase() || '')
+      ? typeStr?.toUpperCase()
+      : 'WARNING') as any;
+    const hours = parseInt(window.prompt('DURACIÓN EN HORAS:', '2') || '2', 10);
 
     try {
-      await sendBroadcast.mutateAsync({ title, message, type });
-      toast.success('¡Alerta enviada a todas las unidades!');
-    } catch (e) {
+      await sendBroadcast.mutateAsync({ title, message, type, durationHours: hours });
+      toast.success('¡Alerta emitida a todas las unidades!');
+      utils.admin.getActiveBroadcast.invalidate();
+    } catch {
       toast.error('Error al emitir alerta roja');
     }
   };
@@ -66,23 +130,17 @@ export const AdminCommandCenter = () => {
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-
     setUploading(true);
     const reader = new FileReader();
     reader.onload = async (e) => {
       try {
         const content = JSON.parse(e.target?.result as string);
         if (!Array.isArray(content)) throw new Error('El JSON debe ser un array de preguntas');
-        
-        await uploadExam.mutateAsync({
-          school: activeExamSchool,
-          questions: content
-        });
-        
-        toast.success(`Examen subido correctamente para ${activeExamSchool}`);
+        await uploadExam.mutateAsync({ school: activeExamSchool, questions: content });
+        toast.success(`Nivel subido para ${activeExamSchool}`);
         examsQuery.refetch();
       } catch (err: any) {
-        toast.error(`Error al procesar JSON: ${err.message}`);
+        toast.error(`Error: ${err.message}`);
       } finally {
         setUploading(false);
         event.target.value = '';
@@ -92,33 +150,23 @@ export const AdminCommandCenter = () => {
   };
 
   const handleDeleteExam = async (id: number) => {
-    if (!window.confirm('¿Eliminar este nivel y todas sus preguntas?')) return;
+    if (!window.confirm('¿ELIMINAR ESTE NIVEL Y TODAS SUS PREGUNTAS?')) return;
     try {
       await deleteExam.mutateAsync({ examId: id });
-      toast.success('Examen eliminado');
+      toast.success('Nivel eliminado');
       examsQuery.refetch();
-    } catch (e) {
+    } catch {
       toast.error('Error al eliminar examen');
-    }
-  };
-
-  const handleToggleRole = async (uid: string, isAdmin: boolean) => {
-    try {
-      await toggleRole.mutateAsync({ uid, isAdmin: !isAdmin });
-      toast.success('Rol de seguridad actualizado');
-      utils.admin.getUsers.invalidate();
-    } catch (e) {
-      toast.error('Fallo en la actualización de privilegios');
     }
   };
 
   const handleManualPremium = async (targetUid: string, membership: 'FREE' | 'PRO') => {
     try {
       await updateMembership.mutateAsync({ targetUid, membership });
-      toast.success(`Rango actualizado a ${membership}`);
+      toast.success(`Rango actualizado → ${membership}`);
       utils.admin.getUsers.invalidate();
       utils.admin.getAdminStats.invalidate();
-    } catch (e) {
+    } catch {
       toast.error('Error en la gestión de membresía');
     }
   };
@@ -127,267 +175,356 @@ export const AdminCommandCenter = () => {
     const newStatus = currentStatus === 'ACTIVE' ? 'BLOCKED' : 'ACTIVE';
     try {
       await updateMembership.mutateAsync({ targetUid, status: newStatus });
-      toast.success(`Usuario marcado como ${newStatus}`);
+      toast.success(`Usuario → ${newStatus}`);
       utils.admin.getUsers.invalidate();
-    } catch (e) {
-      toast.error('Error al cambiar el estado del usuario');
+    } catch {
+      toast.error('Error al cambiar estado');
     }
   };
 
   const handleDeleteUser = async (uid: string) => {
-    if (!window.confirm('¿ESTÁ SEGURO DE ELIMINAR ESTE USUARIO?')) return;
+    if (!window.confirm('CONFIRMAR BORRADO FÍSICO DE USUARIO')) return;
     try {
       await deleteUser.mutateAsync({ uid });
-      toast.success('Usuario eliminado');
+      toast.success('Unidad eliminada del registro');
       utils.admin.getUsers.invalidate();
-    } catch (e) {
+    } catch {
       toast.error('Error al eliminar usuario');
     }
   };
 
   const filteredUsers = usersList.data || [];
   const schoolExams = examsQuery.data?.filter(e => e.school === activeExamSchool) || [];
+  const s = stats.data as any;
 
   return (
-    <div className="min-h-screen bg-[#020617] text-[#94a3b8] font-mono p-4 md:p-8">
+    <div className="min-h-screen bg-black text-cyan-400 font-mono">
+      {/* Broadcast Modal */}
+      {activeBroadcast && (
+        <BroadcastModal
+          broadcast={activeBroadcast}
+          onClose={() => setDismissedBroadcast(activeBroadcast.id)}
+        />
+      )}
+
       <Header showSchoolSelector={false} />
-      
-      <main className="max-w-7xl mx-auto p-4 md:p-8 space-y-8 relative z-10">
-        <div className="flex justify-between items-center mb-4">
-          <div className="bg-blue-600/20 border border-blue-500/50 p-2 rounded text-center">
-            <span className="text-[10px] text-blue-400 font-bold tracking-[0.5em] uppercase">MANDO CENTRAL OPERATIVO</span>
+
+      <main className="max-w-7xl mx-auto px-4 md:px-8 py-6 space-y-6">
+
+        {/* Top Bar */}
+        <div className="flex flex-col md:flex-row md:items-center gap-3 border border-cyan-900 bg-black rounded-xl px-5 py-3">
+          <div className="flex items-center gap-2 flex-1">
+            <Terminal className="w-4 h-4 text-cyan-500 animate-pulse" />
+            <span className="text-[11px] text-cyan-600 uppercase tracking-[0.4em]">MANDO CENTRAL OPERATIVO</span>
           </div>
-          <div className="bg-emerald-600/20 border border-emerald-500/50 p-2 rounded text-center">
-            <span className="text-[10px] text-emerald-400 font-black tracking-[0.2em] uppercase">SYNC STATUS: v03.30.G</span>
+          <div className="text-[10px] text-slate-600 font-mono">
+            [ID_OPERADOR: <span className="text-cyan-500 font-black">ADMIN_ROOT</span>]
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-ping" />
+            <span className="text-[9px] text-cyan-700 uppercase tracking-widest">SYNC ACTIVO</span>
           </div>
         </div>
-        <div className="flex bg-slate-900/50 p-1 rounded-xl border border-slate-800 w-fit">
-          <button 
-            onClick={() => setActiveTab('users')}
-            className={`px-6 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'users' ? 'bg-blue-600 text-white' : 'text-slate-500'}`}
-          >
-            Usuarios
-          </button>
-          <button 
-            onClick={() => setActiveTab('exams')}
-            className={`px-6 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'exams' ? 'bg-blue-600 text-white' : 'text-slate-500'}`}
-          >
-            Exámenes
-          </button>
+
+        {/* Stats Grid */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <StatItem label="Total Usuarios" value={s?.totalUsers || 0} />
+          <StatItem label="PRO Activos" value={s?.proUsers || 0} accent="text-amber-400" />
+          <StatItem label="Cuentas FREE" value={s?.freeUsers || 0} />
+          <StatItem label="En Línea (5m)" value={s?.onlineCount || 0} accent="text-emerald-400" />
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Stats Bar */}
-          <section className="lg:col-span-3 space-y-4">
-            <Card className="bg-slate-900/50 border-slate-800">
-              <CardContent className="p-6 space-y-4">
-                {['totalUsers', 'proUsers', 'freeUsers', 'onlineCount'].map((key) => (
-                  <div key={key}>
-                    <div className="text-[10px] text-slate-500 uppercase tracking-tighter">
-                      {key.replace(/([A-Z])/g, ' $1')}
-                    </div>
-                    <div className={`text-2xl font-black ${key === 'proUsers' ? 'text-amber-500' : 'text-white'}`}>
-                      {(stats.data as any)?.[key] || 0}
-                    </div>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
+        {/* Chart + Actions */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="lg:col-span-2 border border-cyan-900/50 bg-black rounded-xl p-4">
+            <div className="text-[9px] text-cyan-700 uppercase tracking-[0.4em] mb-3">DISTRIBUCIÓN FREE / PRO</div>
+            <div className="h-[220px] w-full min-h-[220px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={[
+                  { name: 'FREE', value: s?.freeUsers || 0 },
+                  { name: 'PRO', value: s?.proUsers || 0 },
+                  { name: 'ONLINE', value: s?.onlineCount || 0 },
+                ]}>
+                  <XAxis dataKey="name" stroke="#164e63" fontSize={10} fontFamily="monospace" />
+                  <Tooltip
+                    cursor={{ fill: '#0a0f1a' }}
+                    contentStyle={{ backgroundColor: '#000', border: '1px solid #164e63', fontFamily: 'monospace', fontSize: 11 }}
+                    labelStyle={{ color: '#22d3ee' }}
+                  />
+                  <Bar dataKey="value" fill="#0e7490" radius={[3, 3, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
 
-            <Card className="bg-slate-900/50 border-slate-800">
-              <CardContent className="p-4">
-                <div className="text-[10px] text-slate-500 uppercase tracking-tighter mb-2">Distribución</div>
-                <div style={{height:'300px',width:'100%',minHeight:'300px'}}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={[
-                      { name: 'FREE', value: (stats.data as any)?.freeUsers || 0 },
-                      { name: 'PRO', value: (stats.data as any)?.proUsers || 0 }
-                    ]}>
-                      <XAxis dataKey="name" stroke="#64748b" fontSize={10} />
-                      <Tooltip cursor={{fill: '#1e293b'}} contentStyle={{backgroundColor: '#0f172a', border: 'none'}} />
-                      <Bar dataKey="value" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
+          <div className="flex flex-col gap-3">
+            <button
+              onClick={handleBroadcast}
+              className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-red-950 border border-red-700 hover:bg-red-900 text-red-400 hover:text-red-300 font-black text-[11px] uppercase tracking-[0.3em] rounded-xl transition-all shadow-[0_0_20px_rgba(239,68,68,0.15)] hover:shadow-[0_0_30px_rgba(239,68,68,0.3)]"
+            >
+              <Megaphone className="w-4 h-4 animate-pulse" /> EMITIR ALERTA ROJA
+            </button>
+
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-cyan-950 border border-cyan-800 hover:bg-cyan-900 text-cyan-400 font-black text-[11px] uppercase tracking-[0.3em] rounded-xl transition-all disabled:opacity-50"
+            >
+              <RefreshCcw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+              {refreshing ? '> RECALCULANDO_DATOS...' : 'REFRESCAR MANDO'}
+            </button>
+
+            <div className="border border-cyan-900/40 bg-black/50 rounded-xl p-4 space-y-2 flex-1">
+              <div className="text-[9px] text-cyan-700 uppercase tracking-[0.3em] mb-2">ESTADO DB</div>
+              {[
+                { label: 'Usuarios activos', val: dashStats.data?.activeUsers || 0, accent: 'text-emerald-400' },
+                { label: 'Bloqueados', val: dashStats.data?.blockedUsers || 0, accent: 'text-red-400' },
+                { label: 'Online ahora', val: dashStats.data?.onlineNow || 0, accent: 'text-cyan-300' },
+              ].map(({ label, val, accent }) => (
+                <div key={label} className="flex justify-between text-[10px]">
+                  <span className="text-slate-600">{label}</span>
+                  <span className={`font-black ${accent}`}>{val}</span>
                 </div>
-              </CardContent>
-            </Card>
+              ))}
+            </div>
+          </div>
+        </div>
 
-            <Button className="w-full bg-red-600/90 hover:bg-red-600 gap-2 h-12 text-white shadow-[0_0_15px_rgba(220,38,38,0.3)] border border-red-500/50" onClick={handleBroadcast}>
-              <Megaphone className="w-5 h-5 animate-pulse" /> ALERTA ROJA (GLOBAL)
-            </Button>
+        {/* Tab Navigation */}
+        <div className="flex bg-black border border-cyan-900 rounded-xl p-1 w-fit">
+          {(['users', 'exams'] as const).map(tab => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`px-6 py-2 rounded-lg text-[11px] font-black uppercase tracking-widest transition-all font-mono ${
+                activeTab === tab
+                  ? 'bg-cyan-950 text-cyan-300 border border-cyan-700'
+                  : 'text-cyan-800 hover:text-cyan-600'
+              }`}
+            >
+              {tab === 'users' ? 'USUARIOS' : 'EXÁMENES'}
+            </button>
+          ))}
+        </div>
 
-            <Button className="w-full bg-blue-600 gap-2 h-12" onClick={() => stats.refetch()}>
-              <RefreshCcw className="w-4 h-4" /> REFRESCAR MANDO
-            </Button>
-          </section>
+        {/* Tab Content */}
+        {activeTab === 'users' ? (
+          <div className="border border-cyan-900/50 bg-black rounded-xl overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-cyan-900/40">
+              <div className="flex items-center gap-2">
+                <Users className="w-4 h-4 text-cyan-600" />
+                <span className="text-[11px] font-black uppercase tracking-widest text-cyan-500">REGISTRO DE UNIDADES</span>
+              </div>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-cyan-800" />
+                <input
+                  type="text"
+                  placeholder="buscar_unidad..."
+                  className="bg-black border border-cyan-900 rounded pl-9 pr-4 py-1.5 text-xs text-cyan-400 placeholder:text-cyan-900 w-52 focus:border-cyan-700 focus:outline-none font-mono"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
+            </div>
 
-          {/* Main Area */}
-          <section className="lg:col-span-9">
-            {activeTab === 'users' ? (
-              <Card className="bg-slate-900/40 border-slate-800 overflow-hidden">
-                <CardHeader className="p-6 border-b border-slate-800 flex flex-row items-center justify-between">
-                  <CardTitle className="text-white flex items-center gap-2 uppercase text-sm font-black">
-                    <Users className="w-4 h-4 text-blue-500" /> Base de Datos de Usuarios
-                  </CardTitle>
-                  <div className="relative w-64">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                    <input 
-                      type="text" 
-                      placeholder="Buscar..."
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-10 py-2 text-xs text-white"
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                    />
-                  </div>
-                </CardHeader>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left">
-                    <thead className="bg-slate-900/60 text-[10px] uppercase font-black text-slate-500">
-                      <tr>
-                        <th className="px-6 py-4">Usuario</th>
-                        <th className="px-6 py-4">Email</th>
-                        <th className="px-6 py-4">Rango</th>
-                        <th className="px-6 py-4">Estado</th>
-                        <th className="px-6 py-4">Última Conexión</th>
-                        <th className="px-6 py-4 text-right">Acciones</th>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead className="bg-cyan-950/20 text-[9px] uppercase tracking-widest text-cyan-700 font-mono">
+                  <tr>
+                    <th className="px-6 py-3">Unidad</th>
+                    <th className="px-6 py-3">Email</th>
+                    <th className="px-6 py-3">Rango</th>
+                    <th className="px-6 py-3">Estado</th>
+                    <th className="px-6 py-3">Última Señal</th>
+                    <th className="px-6 py-3 text-right">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-cyan-900/20">
+                  {filteredUsers.map((user) => {
+                    const isOnline = user.lastActive
+                      ? Date.now() - new Date(user.lastActive).getTime() < 5 * 60 * 1000
+                      : false;
+                    return (
+                      <tr key={user.uid} className="hover:bg-cyan-950/10 transition-colors">
+                        <td className="px-6 py-3">
+                          <div className="text-sm font-bold text-cyan-300">{user.name || 'UNIDAD_ANON'}</div>
+                          <div className="text-[9px] text-cyan-800">{user.uid.slice(0, 12)}...</div>
+                        </td>
+                        <td className="px-6 py-3 text-[10px] text-cyan-700">{user.email}</td>
+                        <td className="px-6 py-3">
+                          <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase border font-mono ${
+                            user.membership === 'PRO'
+                              ? 'bg-amber-950 text-amber-400 border-amber-800'
+                              : 'bg-black text-cyan-800 border-cyan-900'
+                          }`}>
+                            {user.membership}
+                          </span>
+                        </td>
+                        <td className="px-6 py-3">
+                          <div className={`flex items-center gap-1.5 text-[9px] font-black uppercase font-mono ${
+                            user.status === 'ACTIVE' ? 'text-emerald-400' : 'text-red-400'
+                          }`}>
+                            <div className={`w-1.5 h-1.5 rounded-full ${
+                              user.status === 'ACTIVE' ? 'bg-emerald-400 animate-pulse' : 'bg-red-500'
+                            }`} />
+                            {user.status}
+                          </div>
+                        </td>
+                        <td className="px-6 py-3">
+                          <div className={`text-[10px] flex items-center gap-1 font-mono ${isOnline ? 'text-cyan-400' : 'text-cyan-800'}`}>
+                            <div className={`w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-cyan-400 animate-ping' : 'bg-cyan-900'}`} />
+                            {isOnline ? 'ONLINE' : user.lastActive ? new Date(user.lastActive).toLocaleString() : 'N/A'}
+                          </div>
+                        </td>
+                        <td className="px-6 py-3">
+                          <div className="flex justify-end gap-1">
+                            <button
+                              onClick={() => handleManualPremium(user.uid, 'PRO')}
+                              className="px-2 py-1 text-[9px] font-black uppercase font-mono bg-amber-950 border border-amber-800 text-amber-400 hover:bg-amber-900 rounded transition-colors"
+                            >
+                              ↑PRO
+                            </button>
+                            <button
+                              onClick={() => handleManualPremium(user.uid, 'FREE')}
+                              className="px-2 py-1 text-[9px] font-black uppercase font-mono bg-black border border-cyan-900 text-cyan-700 hover:text-cyan-400 rounded transition-colors"
+                            >
+                              ↓FREE
+                            </button>
+                            <button
+                              onClick={() => handleToggleBlock(user.uid, user.status as any)}
+                              className={`px-2 py-1 text-[9px] font-black uppercase font-mono rounded border transition-colors ${
+                                user.status === 'ACTIVE'
+                                  ? 'bg-red-950 border-red-900 text-red-400 hover:bg-red-900'
+                                  : 'bg-emerald-950 border-emerald-900 text-emerald-400 hover:bg-emerald-900'
+                              }`}
+                            >
+                              {user.status === 'ACTIVE' ? 'BLOQUEAR' : 'ACTIVAR'}
+                            </button>
+                            <button
+                              onClick={() => handleDeleteUser(user.uid)}
+                              className="px-2 py-1 text-[9px] font-black font-mono bg-black border border-red-900/50 text-red-800 hover:text-red-400 hover:border-red-700 rounded transition-colors"
+                            >
+                              DEL
+                            </button>
+                          </div>
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-800/50">
-                      {filteredUsers.map((user) => {
-                        const isOnline = user.lastActive ? (Date.now() - new Date(user.lastActive).getTime() < 5 * 60 * 1000) : false;
-                        return (
-                        <tr key={user.uid} className="hover:bg-blue-500/5 transition-colors">
-                          <td className="px-6 py-4">
-                            <div className="text-sm font-bold text-slate-200">{user.name || 'Sin Nombre'}</div>
-                          </td>
-                          <td className="px-6 py-4 text-[10px] text-slate-500">{user.email}</td>
-                          <td className="px-6 py-4">
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase border ${user.membership === 'PRO' ? 'bg-amber-500/10 text-amber-500 border-amber-500/20 shadow-[0_0_10px_rgba(245,158,11,0.2)]' : 'bg-slate-800 text-slate-500 border-slate-700'}`}>
-                              {user.membership}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4">
-                            <div className={`px-2 py-0.5 rounded-full text-[9px] w-fit font-black uppercase tracking-widest border flex items-center gap-1 ${user.status === 'ACTIVE' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-red-500/10 text-red-400 border-red-500/20'}`}>
-                                {user.status}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4">
-                            <div className="flex flex-col gap-1 text-[10px]">
-                              <div className={`flex items-center gap-1 ${isOnline ? 'text-emerald-400' : 'text-slate-500'}`}>
-                                <span className={`w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
-                                {isOnline ? 'Online' : 'Offline'}
-                              </div>
-                              <div className="opacity-50 italic">
-                                {user.lastActive ? new Date(user.lastActive).toLocaleString() : 'N/A'}
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 text-right">
-                            <div className="flex justify-end gap-1">
-                              <Button size="sm" variant="outline" className="h-7 text-[9px] border-amber-500/30 text-amber-500 hover:bg-amber-500/10" onClick={() => handleManualPremium(user.uid, 'PRO')}>
-                                ASCENDER PRO
-                              </Button>
-                              <Button size="sm" variant="outline" className="h-7 text-[9px] border-slate-500/30 text-slate-500" onClick={() => handleManualPremium(user.uid, 'FREE')}>
-                                BAJAR FREE
-                              </Button>
-                              <Button size="sm" variant="destructive" className="h-7 text-[9px] border-red-500/30" onClick={() => handleToggleBlock(user.uid, user.status as any)}>
-                                {user.status === 'ACTIVE' ? 'BLOQUEAR' : 'DESBLOQUEAR'}
-                              </Button>
-                            </div>
-                          </td>
-                        </tr>
-                      )})}
-                    </tbody>
-                  </table>
-                </div>
-              </Card>
-            ) : (
-              <div className="space-y-6">
-                <div className="flex gap-4">
-                  {['EO', 'EESTP'].map(school => (
-                    <button 
-                      key={school}
-                      onClick={() => setActiveExamSchool(school as any)}
-                      className={`flex-1 p-4 rounded-xl border-2 transition-all font-black text-xs uppercase tracking-widest ${activeExamSchool === school ? 'border-blue-600 bg-blue-600/10 text-white' : 'border-slate-800 bg-slate-900/40 text-slate-500'}`}
-                    >
-                      {school === 'EO' ? 'Oficiales (EO PNP)' : 'Técnica (EESTP PNP)'}
-                    </button>
-                  ))}
-                </div>
+                    );
+                  })}
+                  {filteredUsers.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="px-6 py-12 text-center text-cyan-900 text-[10px] uppercase tracking-widest font-mono">
+                        {'> NO_DATA_FOUND_IN_REGISTRY'}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="flex gap-3">
+              {(['EO', 'EESTP'] as const).map(school => (
+                <button
+                  key={school}
+                  onClick={() => setActiveExamSchool(school)}
+                  className={`flex-1 p-3 rounded-xl border-2 transition-all font-black text-[11px] uppercase tracking-widest font-mono ${
+                    activeExamSchool === school
+                      ? 'border-cyan-700 bg-cyan-950/40 text-cyan-300'
+                      : 'border-cyan-900 bg-black text-cyan-800 hover:border-cyan-800'
+                  }`}
+                >
+                  {school === 'EO' ? 'OFICIALES (EO PNP)' : 'TÉCNICA (EESTP PNP)'}
+                </button>
+              ))}
+            </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Uploader */}
-                  <Card className="bg-slate-900/40 border-slate-800 border-dashed border-2">
-                    <CardContent className="p-8 flex flex-col items-center justify-center text-center">
-                      <div className="w-12 h-12 bg-blue-600/20 rounded-full flex items-center justify-center mb-4">
-                        <Upload className={`w-6 h-6 text-blue-500 ${uploading ? 'animate-bounce' : ''}`} />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Uploader */}
+              <div className="border-2 border-dashed border-cyan-900 bg-black rounded-xl p-8 flex flex-col items-center text-center">
+                <div className="w-12 h-12 bg-cyan-950 border border-cyan-800 rounded-full flex items-center justify-center mb-4">
+                  <Upload className={`w-5 h-5 text-cyan-500 ${uploading ? 'animate-bounce' : ''}`} />
+                </div>
+                <div className="text-sm font-black uppercase tracking-widest text-cyan-400 mb-2 font-mono">INGESTA DE NIVEL</div>
+                <p className="text-[10px] text-cyan-800 mb-6 font-mono leading-relaxed">
+                  Sube un archivo JSON con las preguntas para generar el siguiente nivel secuencial.
+                </p>
+                <input
+                  type="file"
+                  accept=".json"
+                  onChange={handleFileUpload}
+                  className="hidden"
+                  id="json-upload"
+                  disabled={uploading}
+                />
+                <label htmlFor="json-upload">
+                  <span className="px-6 py-2 bg-cyan-950 border border-cyan-700 text-cyan-300 font-black text-[11px] uppercase tracking-widest font-mono rounded-lg hover:bg-cyan-900 transition-colors cursor-pointer">
+                    {uploading ? '> PROCESANDO...' : '> SELECCIONAR_JSON'}
+                  </span>
+                </label>
+              </div>
+
+              {/* Level List */}
+              <div className="border border-cyan-900/50 bg-black rounded-xl overflow-hidden">
+                <div className="px-4 py-3 border-b border-cyan-900/40 flex items-center gap-2">
+                  <Book className="w-3.5 h-3.5 text-cyan-600" />
+                  <span className="text-[10px] font-black uppercase tracking-widest text-cyan-600 font-mono">
+                    NIVELES CARGADOS ({schoolExams.length})
+                  </span>
+                </div>
+                <div className="max-h-[300px] overflow-y-auto divide-y divide-cyan-900/20">
+                  {schoolExams.length === 0 ? (
+                    <div className="p-8 text-center text-cyan-900 text-[10px] uppercase font-mono">
+                      {'> NO_LEVELS_CONFIGURED'}
+                    </div>
+                  ) : (
+                    schoolExams.sort((a, b) => a.level - b.level).map(exam => (
+                      <div key={exam.id} className="px-4 py-3 flex items-center justify-between group hover:bg-cyan-950/10">
+                        <div className="flex items-center gap-3">
+                          <div className="text-cyan-600 font-black text-sm font-mono">
+                            #{exam.level.toString().padStart(2, '0')}
+                          </div>
+                          <div>
+                            <div className="text-[11px] font-bold text-cyan-400 font-mono">{exam.title}</div>
+                            <div className="text-[9px] text-cyan-800 font-mono">
+                              {new Date(exam.createdAt).toLocaleDateString()}
+                            </div>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => handleDeleteExam(exam.id)}
+                          className="opacity-0 group-hover:opacity-100 p-1.5 text-red-800 hover:text-red-400 border border-transparent hover:border-red-900 rounded transition-all"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </div>
-                      <h3 className="text-white font-black uppercase text-sm mb-2">Subir Nuevo Nivel</h3>
-                      <p className="text-xs text-slate-500 mb-6">Sube un archivo JSON con las preguntas para generar el siguiente nivel lineal automáticamente.</p>
-                      
-                      <input 
-                        type="file" 
-                        accept=".json" 
-                        onChange={handleFileUpload}
-                        className="hidden" 
-                        id="json-upload"
-                        disabled={uploading}
-                      />
-                      <label htmlFor="json-upload">
-                        <Button asChild className="bg-blue-600 hover:bg-blue-500 font-extrabold px-8">
-                          <span>{uploading ? 'PROCESANDO...' : 'SELECCIONAR JSON'}</span>
-                        </Button>
-                      </label>
-                    </CardContent>
-                  </Card>
-
-                  {/* Level List */}
-                  <Card className="bg-slate-900/40 border-slate-800 overflow-hidden">
-                    <CardHeader className="p-4 border-b border-slate-800 bg-slate-900/20">
-                      <CardTitle className="text-xs font-black uppercase tracking-widest flex items-center gap-2">
-                        <Book className="w-4 h-4 text-blue-500" /> Niveles Configurados ({schoolExams.length})
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="p-0 max-h-[400px] overflow-y-auto">
-                      {schoolExams.length === 0 ? (
-                        <div className="p-8 text-center text-slate-600 text-[10px] uppercase font-bold">
-                          No hay exámenes configurados
-                        </div>
-                      ) : (
-                        <div className="divide-y divide-slate-800/50">
-                          {schoolExams.sort((a, b) => a.level - b.level).map(exam => (
-                            <div key={exam.id} className="p-4 flex items-center justify-between group hover:bg-white/5">
-                              <div className="flex items-center gap-3">
-                                <div className="text-blue-500 font-black text-sm">#{exam.level.toString().padStart(2, '0')}</div>
-                                <div>
-                                  <div className="text-xs font-bold text-slate-200">{exam.title}</div>
-                                  <div className="text-[9px] text-slate-500 uppercase">{new Date(exam.createdAt).toLocaleDateString()}</div>
-                                </div>
-                              </div>
-                              <Button variant="ghost" size="sm" className="opacity-0 group-hover:opacity-100 h-8 w-8 p-0 text-red-500/50 hover:text-red-500 hover:bg-red-500/10" onClick={() => handleDeleteExam(exam.id)}>
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
+                    ))
+                  )}
                 </div>
               </div>
-            )}
-          </section>
-        </div>
+            </div>
+          </div>
+        )}
       </main>
 
-      <footer className="max-w-7xl mx-auto mt-12 p-6 rounded-xl bg-black border border-slate-800 font-mono text-[10px] text-emerald-500/50 flex justify-between items-center">
-        <div className="flex items-center gap-4">
-          <span className="animate-pulse">_</span>
-          <span>OPERATIVE SYNC V2.6 // LINEAR EXAM ENGINE // POLIC.IA TERMINAL</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-          <span>CONNECTED</span>
+      {/* Footer */}
+      <footer className="max-w-7xl mx-auto mt-8 mx-4 md:mx-8 p-4 border border-cyan-900/30 rounded-xl bg-black font-mono text-[10px]">
+        <div className="flex flex-wrap gap-4 items-center justify-between">
+          <div className="flex items-center gap-3 text-cyan-900">
+            <span className="animate-pulse text-cyan-700">$</span>
+            <span>polic.ia@admin-terminal:~#</span>
+            <span className="text-cyan-700">_</span>
+          </div>
+          <div className="flex items-center gap-4 text-[9px] text-cyan-900">
+            <span>USUARIOS: <span className="text-cyan-600">{s?.totalUsers || 0}</span></span>
+            <span>PRO: <span className="text-amber-600">{s?.proUsers || 0}</span></span>
+            <span>SIST: <span className="text-emerald-600">ONLINE</span></span>
+            <div className="flex items-center gap-1">
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+              <span className="text-emerald-700">CONNECTED</span>
+            </div>
+          </div>
         </div>
       </footer>
     </div>
