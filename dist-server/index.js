@@ -562,6 +562,27 @@ var userRouter = router({
       )
     ).orderBy(desc(globalNotifications.createdAt)).limit(1);
     return activeBroadcasts[0] || null;
+  }),
+  getCategoryStats: protectedProcedure.input(z2.object({ uid: z2.string() })).query(async ({ ctx, input }) => {
+    if (ctx.userId !== input.uid && ctx.userRole !== "admin") {
+      throw new TRPCError2({ code: "FORBIDDEN" });
+    }
+    const stats = await db.execute(sql`
+        SELECT 
+          la.name as area,
+          AVG(aa.is_correct) * 100 as score
+        FROM attempt_answers aa
+        JOIN exam_attempts ea ON aa.attempt_id = ea.id
+        JOIN exam_questions eq ON aa.question_id = eq.id
+        JOIN learning_areas la ON eq.area_id = la.id
+        WHERE ea.user_id = ${input.uid}
+        GROUP BY la.id, la.name
+      `);
+    const rows = Array.isArray(stats) ? stats[0] || stats : stats.rows || [];
+    return rows.map((r) => ({
+      area: r.area,
+      score: Math.round(Number(r.score || 0))
+    }));
   })
 });
 
@@ -1418,6 +1439,10 @@ async function ensureTablesExist() {
     await safeAddColumn("courses", "school_type", `ENUM('EO', 'EESTP', 'BOTH') DEFAULT 'BOTH'`);
     await safeAddColumn("admin_logs", "action", `TEXT NOT NULL`);
     await safeAddColumn("admin_logs", "admin_id", `VARCHAR(255)`);
+    await safeAddColumn("users", "honor_points", `INT DEFAULT 0 NOT NULL`);
+    await safeAddColumn("users", "merit_points", `INT DEFAULT 0 NOT NULL`);
+    await safeAddColumn("users", "current_streak", `INT DEFAULT 0 NOT NULL`);
+    await safeAddColumn("users", "last_streak_update", `TIMESTAMP NULL`);
     console.log("Database verification complete.");
     try {
       const examsDir = path.join(process.cwd(), "data", "exams");

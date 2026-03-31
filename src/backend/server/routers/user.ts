@@ -215,4 +215,32 @@ export const userRouter = router({
       
       return activeBroadcasts[0] || null;
     }),
+
+  getCategoryStats: protectedProcedure
+    .input(z.object({ uid: z.string() }))
+    .query(async ({ ctx, input }) => {
+      if (ctx.userId !== input.uid && ctx.userRole !== 'admin') {
+        throw new TRPCError({ code: 'FORBIDDEN' });
+      }
+
+      const stats = await db.execute(sql`
+        SELECT 
+          la.name as area,
+          AVG(aa.is_correct) * 100 as score
+        FROM attempt_answers aa
+        JOIN exam_attempts ea ON aa.attempt_id = ea.id
+        JOIN exam_questions eq ON aa.question_id = eq.id
+        JOIN learning_areas la ON eq.area_id = la.id
+        WHERE ea.user_id = ${input.uid}
+        GROUP BY la.id, la.name
+      `);
+
+      // Handle raw Drizzle/MySQL output
+      const rows = Array.isArray(stats) ? (stats[0] || stats) : ((stats as any).rows || []);
+      
+      return (rows as any[]).map(r => ({
+        area: r.area,
+        score: Math.round(Number(r.score || 0))
+      }));
+    }),
 });

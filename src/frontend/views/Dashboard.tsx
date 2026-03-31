@@ -16,6 +16,14 @@ import { Header } from '../components/common/Header';
 import { ExamDocument, LeitnerDocument } from '../../shared/types';
 import { toast } from 'sonner';
 import { motion } from 'motion/react';
+import { 
+  Radar, 
+  RadarChart, 
+  PolarGrid, 
+  PolarAngleAxis, 
+  PolarRadiusAxis, 
+  ResponsiveContainer 
+} from 'recharts';
 import { isExamUnlocked, type ExamLevel } from '../../database/data/examenes_config';
 
 const ResourceButton: React.FC<{ title: string; url: string }> = ({ title, url }) => (
@@ -49,15 +57,27 @@ export const Dashboard: React.FC = () => {
   const leitnerStats = trpc.leitner.getStats.useQuery({ userId: uid || '' }, { enabled: !!uid });
   const levelsQuery = trpc.exam.getLevels.useQuery();
   const broadcastQuery = trpc.user.getLastBroadcast.useQuery(undefined, { refetchInterval: 60000 });
+  const categoryStatsQuery = trpc.user.getCategoryStats.useQuery({ uid: uid || '' }, { enabled: !!uid });
 
   const metricsLoading = userStats.isLoading || leitnerStats.isLoading;
+  
+  // Calcular weakestArea en base a categoryStats
+  let weakestArea = null;
+  if (categoryStatsQuery.data && categoryStatsQuery.data.length > 0) {
+    const sorted = [...categoryStatsQuery.data].sort((a, b) => a.score - b.score);
+    // Solo si tiene menos del 50% lo consideramos una vulnerabilidad crítica
+    if (sorted[0].score < 50) {
+      weakestArea = sorted[0].area;
+    }
+  }
+
   const metrics: Metrics = {
     leitnerCount: leitnerStats.data?.count || 0,
     avgScore: Math.round(Number(userStats.data?.averageScore || 0) * 100),
     examCount: userStats.data?.totalAttempts || 0,
     bestScore: Math.round(Number(userStats.data?.bestScore || 0) * 100),
     lastExamDate: userStats.data?.lastExamDate ? new Date(userStats.data.lastExamDate).toLocaleDateString('es-PE') : null,
-    weakestArea: null, // To be implemented with more complex query if needed
+    weakestArea,
   };
 
   const utils = trpc.useUtils();
@@ -219,19 +239,72 @@ export const Dashboard: React.FC = () => {
               ))}
             </div>
 
-            {/* Weakness alert */}
-            {metrics.weakestArea && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}>
-                <Card className="bg-red-950/10 border-red-900/30 overflow-hidden relative">
-                  <div className="absolute top-0 left-0 w-1 h-full bg-red-600" />
-                  <CardContent className="p-5 flex items-center gap-4">
-                    <div className="p-3 bg-red-600/15 rounded-xl shrink-0"><Brain className="w-6 h-6 text-red-400" /></div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-red-400 mb-1">Zona de Vulnerabilidad Detectada</p>
-                      <p className="text-white font-bold truncate">{metrics.weakestArea}</p>
-                    </div>
-                    <Button variant="primary" className="bg-red-600 hover:bg-red-500 shrink-0 text-sm" onClick={() => navigate('/poligono')}>Repasar</Button>
+            {/* Weakness alert and Radar Chart */}
+            {categoryStatsQuery.data && categoryStatsQuery.data.length > 0 && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Radar Chart */}
+                <Card className="bg-slate-900/40 border-slate-800">
+                  <CardHeader className="py-3 px-4 border-b border-slate-800/50">
+                    <CardTitle className="text-[10px] font-black uppercase tracking-widest text-slate-500 flex items-center gap-2">
+                      <Target className="w-3.5 h-3.5 text-blue-400" /> Radar de Aptitud
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-0 h-[220px]">
+                    {categoryStatsQuery.data.length >= 3 ? (
+                      <ResponsiveContainer width="100%" height={220} minHeight={220}>
+                        <RadarChart cx="50%" cy="50%" outerRadius="70%" data={categoryStatsQuery.data.map(d => ({ ...d, fullMark: 100 }))}>
+                          <PolarGrid stroke="#334155" />
+                          <PolarAngleAxis dataKey="area" tick={{ fill: '#94a3b8', fontSize: 9, fontFamily: 'monospace' }} />
+                          <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
+                          <Radar name="Aciertos" dataKey="score" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.4} />
+                        </RadarChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div className="flex items-center justify-center h-full text-[10px] text-slate-500 font-mono italic uppercase px-4 text-center">
+                        Requiere actividad en al menos 3 áreas distintas para generar el radar
+                      </div>
+                    )}
                   </CardContent>
+                </Card>
+
+                {/* Priority Mission */}
+                <Card className="bg-slate-900/40 border-slate-800 flex flex-col justify-center relative overflow-hidden">
+                  {metrics.weakestArea ? (
+                    <>
+                      <div className="absolute top-0 right-0 w-32 h-32 bg-red-500/10 rounded-full blur-3xl" />
+                      <CardContent className="p-5 relative z-10">
+                        <div className="flex items-center gap-3 mb-3">
+                          <div className="p-2.5 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400">
+                            <Brain className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <p className="text-[9px] font-black uppercase tracking-widest text-red-400">Brecha Táctica</p>
+                            <h3 className="text-sm font-bold text-slate-200">Reforzar {metrics.weakestArea}</h3>
+                          </div>
+                        </div>
+                        <p className="text-xs text-slate-400 mb-4 leading-relaxed">
+                          La IA ha detectado un índice de eficacia menor al 50% en esta área según tus últimos operativos.
+                        </p>
+                        <Button variant="primary" className="w-full bg-red-600 hover:bg-red-500 text-xs py-2 shadow-lg shadow-red-900/20" onClick={() => navigate('/poligono')}>
+                          Iniciar Entrenamiento Correctivo
+                        </Button>
+                      </CardContent>
+                    </>
+                  ) : (
+                    <>
+                      <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full blur-3xl" />
+                      <CardContent className="p-5 relative z-10 text-center flex flex-col items-center justify-center h-full">
+                        <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-400 mb-3 inline-flex">
+                          <CheckCircle2 className="w-6 h-6" />
+                        </div>
+                        <h3 className="text-sm font-bold text-slate-200 mb-1">Sin Brechas Críticas</h3>
+                        <p className="text-xs text-slate-400 mb-4">Mantienes una eficacia superior al 50% en todas las áreas de estudio. ¡Excelente perfil!</p>
+                        <Button variant="outline" className="text-xs border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10" onClick={() => navigate('/poligono')}>
+                          Mantenimiento Rutinario
+                        </Button>
+                      </CardContent>
+                    </>
+                  )}
                 </Card>
               </motion.div>
             )}

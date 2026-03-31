@@ -251,6 +251,12 @@ async function ensureTablesExist() {
     await safeAddColumn('admin_logs', 'action', `TEXT NOT NULL`); 
     await safeAddColumn('admin_logs', 'admin_id', `VARCHAR(255)`); 
     
+    // Gamification Columns
+    await safeAddColumn('users', 'honor_points', `INT DEFAULT 0 NOT NULL`);
+    await safeAddColumn('users', 'merit_points', `INT DEFAULT 0 NOT NULL`);
+    await safeAddColumn('users', 'current_streak', `INT DEFAULT 0 NOT NULL`);
+    await safeAddColumn('users', 'last_streak_update', `TIMESTAMP NULL`);
+    
     console.log('Database verification complete.');
 
     // Auto-ingest initial levels if they exist and are missing from DB

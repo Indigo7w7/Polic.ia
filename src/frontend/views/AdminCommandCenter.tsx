@@ -461,7 +461,7 @@ export const AdminCommandCenter = () => {
           <div className="lg:col-span-2 border border-cyan-900/50 bg-black rounded-xl p-4">
             <div className="text-[9px] text-cyan-700 uppercase tracking-[0.4em] mb-3">DISTRIBUCIÓN FREE / PRO / ONLINE</div>
             <div className="h-[200px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height={200} minHeight={200}>
                 <BarChart data={[
                   { name: 'FREE',   value: s?.freeUsers   || 0 },
                   { name: 'PRO',    value: s?.proUsers    || 0 },
