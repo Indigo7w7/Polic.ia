@@ -1375,6 +1375,7 @@ async function ensureTablesExist() {
     await safeAddColumn("global_notifications", "expires_at", `TIMESTAMP NULL`);
     await safeAddColumn("courses", "school_type", `ENUM('EO', 'EESTP', 'BOTH') DEFAULT 'BOTH'`);
     await safeAddColumn("admin_logs", "action", `TEXT NOT NULL`);
+    await safeAddColumn("admin_logs", "admin_id", `VARCHAR(255)`);
     console.log("Database verification complete.");
     try {
       const examsDir = path.join(process.cwd(), "data", "exams");
