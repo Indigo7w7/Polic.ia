@@ -1244,11 +1244,6 @@ async function ensureTablesExist() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
-    try {
-      await poolConnection.execute(`ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_edited BOOLEAN NOT NULL DEFAULT FALSE`);
-    } catch (alterError) {
-      console.log("Profile_edited column check skipped.");
-    }
     await poolConnection.execute(`
       CREATE TABLE IF NOT EXISTS exam_questions (
         id INT PRIMARY KEY AUTO_INCREMENT,
@@ -1303,16 +1298,6 @@ async function ensureTablesExist() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
-    try {
-      await poolConnection.execute(`ALTER TABLE exams ADD COLUMN IF NOT EXISTS is_demo BOOLEAN NOT NULL DEFAULT FALSE`);
-    } catch (alterError) {
-      console.log("Is_demo column check skipped.");
-    }
-    try {
-      await poolConnection.execute(`ALTER TABLE exam_questions ADD COLUMN IF NOT EXISTS exam_id INT`);
-    } catch (alterError) {
-      console.log("Exam_id column check skipped.");
-    }
     await poolConnection.execute(`
       CREATE TABLE IF NOT EXISTS courses (
         id INT PRIMARY KEY AUTO_INCREMENT,

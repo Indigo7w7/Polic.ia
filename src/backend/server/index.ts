@@ -96,12 +96,7 @@ async function ensureTablesExist() {
       )
     `);
 
-    // Ensure profile_edited column exists in case the table was created previously
-    try {
-      await pool.execute(`ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_edited BOOLEAN NOT NULL DEFAULT FALSE`);
-    } catch (alterError) {
-      console.log('Profile_edited column check skipped.');
-    }
+    // Base tables created...
 
     // Exam Questions table
     await pool.execute(`
@@ -166,20 +161,6 @@ async function ensureTablesExist() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
-
-    // Ensure is_demo exists in case the table was created previously
-    try {
-      await pool.execute(`ALTER TABLE exams ADD COLUMN IF NOT EXISTS is_demo BOOLEAN NOT NULL DEFAULT FALSE`);
-    } catch (alterError) {
-      console.log('Is_demo column check skipped.');
-    }
-
-    // Ensure exam_id exists in exam_questions
-    try {
-      await pool.execute(`ALTER TABLE exam_questions ADD COLUMN IF NOT EXISTS exam_id INT`);
-    } catch (alterError) {
-      console.log('Exam_id column check skipped.');
-    }
 
     // Courses table
     await pool.execute(`
