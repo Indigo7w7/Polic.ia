@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
-import { Brain, RotateCcw, CheckCircle2, XCircle, Loader2, Info, ArrowLeft, Lock } from 'lucide-react';
+import { Brain, RotateCcw, CheckCircle2, XCircle, Loader2, Info, ArrowLeft, Lock, Trophy, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { trpc } from '../../shared/utils/trpc';
 import { useNavigate } from 'react-router-dom';
@@ -25,6 +25,7 @@ export const Flashcards: React.FC = () => {
   const [isFlipped, setIsFlipped] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [sessionErrors, setSessionErrors] = useState(0);
+  const [showLevelUp, setShowLevelUp] = useState(false);
 
   // tRPC Hooks
   const pendingCards = trpc.leitner.getPending.useQuery({ userId: uid || '' }, { enabled: !!uid });
@@ -50,12 +51,18 @@ export const Flashcards: React.FC = () => {
         success,
       });
 
+      if (success) {
+        setShowLevelUp(true);
+        // Ocultar después de un tiempo corto
+        setTimeout(() => setShowLevelUp(false), 1200);
+      }
+
       // Move to next card
       setIsFlipped(false);
       setTimeout(() => {
         setCurrentIndex(prev => prev + 1);
         setProcessing(false);
-      }, 300);
+      }, 400);
     } catch (error) {
       console.error('Error updating card:', error);
       setProcessing(false);
@@ -167,6 +174,25 @@ export const Flashcards: React.FC = () => {
                     </p>
                   </CardContent>
                 </Card>
+                {/* Level Up Overlay */}
+                <AnimatePresence>
+                  {showLevelUp && (
+                    <motion.div 
+                      initial={{ scale: 0.5, opacity: 0 }}
+                      animate={{ scale: 1.1, opacity: 1 }}
+                      exit={{ scale: 1.5, opacity: 0 }}
+                      className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-emerald-500/20 backdrop-blur-sm rounded-2xl border-4 border-emerald-500 shadow-[0_0_40px_rgba(16,185,129,0.4)]"
+                    >
+                      <Trophy className="w-20 h-20 text-emerald-400 mb-2 drop-shadow-lg" />
+                      <div className="text-2xl font-black text-white uppercase tracking-[0.2em] drop-shadow-md">
+                        LEVEL UP
+                      </div>
+                      <div className="text-xs font-bold text-emerald-300 mt-2 uppercase tracking-widest bg-emerald-900/50 px-3 py-1 rounded-full">
+                        Memoria Fortalecida
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </motion.div>
             </div>
 

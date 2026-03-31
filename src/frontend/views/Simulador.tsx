@@ -4,7 +4,7 @@ import { useExamStore } from '../store/useExamStore';
 import { Card, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { TimerRing } from '../components/ui/TimerRing';
-import { ChevronRight, ChevronLeft, Send, ShieldAlert, Grid3X3, Skull, BrainCircuit } from 'lucide-react';
+import { ChevronRight, ChevronLeft, Send, ShieldAlert, Grid3X3, Skull, BrainCircuit, CheckCircle2 } from 'lucide-react';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { motion, AnimatePresence } from 'motion/react';
 import { useLocation } from 'react-router-dom';
@@ -31,6 +31,12 @@ export const Simulador: React.FC = () => {
   const [showExitModal, setShowExitModal] = useState(false);
   const [showMap, setShowMap] = useState(false);
   const [direction, setDirection] = useState<1 | -1>(1);
+  const [showImmediateFeedback, setShowImmediateFeedback] = useState(false);
+
+  // Reset feedback state when question changes
+  useEffect(() => {
+    setShowImmediateFeedback(false);
+  }, [currentQuestionIndex]);
 
   const TOTAL_TIME = 1800;
 
@@ -275,7 +281,7 @@ export const Simulador: React.FC = () => {
                   </span>
                 )}
               </div>
-              <h2 className="text-xl md:text-2xl font-bold leading-relaxed text-white">
+              <h2 className={`text-xl md:text-2xl font-bold leading-relaxed ${(isDanger || isMuerteSubita) ? 'text-white drop-shadow-md' : 'text-slate-100'}`}>
                 {currentQuestion.text}
               </h2>
             </div>
@@ -283,7 +289,8 @@ export const Simulador: React.FC = () => {
             <div className="space-y-3">
               {currentQuestion.options.map((opcion, idx) => {
                 const isSelected = selectedAnswerIndex === idx;
-                const showFeedback = isPracticeMode && selectedAnswerIndex !== undefined;
+                const isPractice = isPracticeMode || (examLevelId && parseInt(examLevelId) < 3);
+                const showFeedback = (isPractice && selectedAnswerIndex !== undefined) || showImmediateFeedback;
                 const isCorrect = idx === currentQuestion.correctOptionIndex;
 
                 let btnClass = isSelected
@@ -320,14 +327,14 @@ export const Simulador: React.FC = () => {
                   className={`w-full text-left p-5 rounded-2xl border transition-all duration-200 flex items-center gap-4 min-h-[64px] ${btnClass}`}
                 >
                   <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-sm font-black shrink-0 transition-colors ${letterClass}`}>
-                    {String.fromCharCode(65 + idx)}
+                    {showFeedback && isCorrect ? <CheckCircle2 className="w-5 h-5" /> : String.fromCharCode(65 + idx)}
                   </div>
                   <span className="text-sm md:text-base font-medium leading-snug">{opcion}</span>
                 </motion.button>
               )})}
             </div>
             
-            {isPracticeMode && selectedAnswerIndex !== undefined && (
+            {(isPracticeMode || (examLevelId && parseInt(examLevelId) < 3) || showImmediateFeedback) && selectedAnswerIndex !== undefined && (
               <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mt-6 p-4 bg-slate-900/80 rounded-xl border border-slate-700 shadow-inner">
                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2 flex items-center gap-2">
                    <BrainCircuit className="w-4 h-4 text-amber-400" /> Reporte de Inteligencia
@@ -336,7 +343,10 @@ export const Simulador: React.FC = () => {
                  {selectedAnswerIndex === currentQuestion.correctOptionIndex ? (
                    <div className="mt-3 text-emerald-400 font-bold text-xs">¡Excelente decisión táctica!</div>
                  ) : (
-                   <div className="mt-3 text-red-400 font-bold text-xs">Revisa la justificación para evitar fallos en combate real.</div>
+                    <div className="mt-3 text-red-400 font-bold text-xs flex items-center gap-2">
+                      <ShieldAlert className="w-3.5 h-3.5" /> 
+                      Revisa la justificación para evitar fallos en combate real.
+                    </div>
                  )}
               </motion.div>
             )}

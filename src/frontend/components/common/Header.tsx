@@ -2,8 +2,9 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useUserStore } from '../../store/useUserStore';
 import { auth } from '@/src/firebase';
-import { Shield, Trophy, Zap, LogOut } from 'lucide-react';
+import { Shield, Trophy, Zap, LogOut, Medal, Target } from 'lucide-react';
 import { trpc } from '../../../shared/utils/trpc';
+import { usePlayerRank } from '../../hooks/usePlayerRank';
 
 interface HeaderProps {
   showSchoolSelector?: boolean;
@@ -11,8 +12,9 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({ showSchoolSelector = true }) => {
   const navigate = useNavigate();
-  const { role, isPremiumActive, modalidad_postulacion, photoURL, name } = useUserStore();
+  const { role, isPremiumActive, modalidad_postulacion, photoURL, name, honorPoints, meritPoints } = useUserStore();
   const isPremium = isPremiumActive();
+  const { rankName, rankColor } = usePlayerRank();
   
   const activeCountQuery = trpc.admin.getActiveCount.useQuery(undefined, {
     refetchInterval: 30000,
@@ -71,25 +73,27 @@ export const Header: React.FC<HeaderProps> = ({ showSchoolSelector = true }) => 
           </button>
         )}
         
-        {role !== 'admin' && (
-          <div className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 border transition-all duration-500 ${
-            isPremium
-              ? 'bg-amber-500 text-slate-900 border-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.4)] animate-pulse'
-              : 'bg-slate-800 text-slate-500 border-slate-700'
-          }`}>
-            {isPremium ? (
-              <>
-                <Trophy className="w-3.5 h-3.5 fill-current" />
-                <span>AGENTE ÉLITE</span>
-              </>
-            ) : (
-              <>
-                <Zap className="w-3 h-3 text-slate-500" />
-                <span>Rango Base</span>
-              </>
-            )}
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+           <div className="flex flex-col items-end mr-1">
+             <div className="flex items-center gap-1 px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/20 rounded-md text-[9px] font-black text-emerald-400">
+               <Medal className="w-2.5 h-2.5" /> {honorPoints || 0} PH
+             </div>
+             <div className="flex items-center gap-1 px-2 py-0.5 bg-blue-500/10 border border-blue-500/20 rounded-md text-[9px] font-black text-blue-400 mt-1">
+               <Shield className="w-2.5 h-2.5" /> {meritPoints || 0} PM
+             </div>
+           </div>
+
+           {role !== 'admin' && (
+             <div className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 border transition-all duration-500 ${
+               isPremium
+                 ? `bg-slate-900 border-amber-400/50 shadow-[0_0_15px_rgba(245,158,11,0.2)]`
+                 : 'bg-slate-800 text-slate-500 border-slate-700'
+             }`}>
+               <Trophy className={`w-3.5 h-3.5 fill-current ${rankColor}`} />
+               <span className={rankColor}>{rankName}</span>
+             </div>
+           )}
+        </div>
         
         {role === 'admin' && (
           <div className="px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 bg-red-500/10 text-red-500 border border-red-500/30">

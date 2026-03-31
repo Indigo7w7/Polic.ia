@@ -113,7 +113,7 @@ export const SchoolSelector: React.FC = () => {
             Hola, <span className="text-blue-400">{displayName}</span>
           </h1>
           <p className="text-slate-300 text-sm max-w-sm mx-auto leading-relaxed">
-            Elige a qué escuela postulas. Adaptaremos todo el material de estudio y los simulacros a tu objetivo.
+            Elige tu objetivo estratégico. Adaptaremos el entrenamiento a tu meta, o puedes explorar ambos caminos si aún no decides.
           </p>
           <div className="bg-slate-800/50 border border-slate-700/50 p-4 rounded-xl text-left text-xs text-slate-400 space-y-2 max-w-sm mx-auto shadow-inner">
             <p><strong className="text-blue-400">EO (Oficiales):</strong> Exámenes con mayor profundidad teórica y de ciencias. Carrera de 5 años. Jerarquía de mando.</p>
@@ -148,6 +148,16 @@ export const SchoolSelector: React.FC = () => {
               </div>
             </motion.button>
           ))}
+
+          <motion.button
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.8 }}
+            onClick={() => handleSelect(null)}
+            className="w-full py-4 text-xs font-black uppercase tracking-widest text-slate-500 hover:text-white transition-colors border border-dashed border-slate-800 rounded-2xl hover:border-slate-600 bg-slate-900/20"
+          >
+            Omitir por ahora (Modo Explorador)
+          </motion.button>
         </div>
 
         {/* Footer */}

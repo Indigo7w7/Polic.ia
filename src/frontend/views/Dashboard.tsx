@@ -98,7 +98,7 @@ export const Dashboard: React.FC = () => {
     ? `¡Adelante, Futuro Cadete ${firstName}!`
     : modalidad_postulacion === 'EESTP'
       ? `¡Vamos con todo, Futuro Alumno PNP ${firstName}!`
-      : `Bienvenido, ${firstName}`;
+      : `Modo Explorador: ${firstName}`;
 
   /* ── Render a school track section ── */
   const renderExamTrack = (
@@ -194,6 +194,16 @@ export const Dashboard: React.FC = () => {
         <main className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* LEFT COLUMN */}
           <div className="lg:col-span-8 space-y-6">
+            {!modalidad_postulacion && role !== 'admin' && (
+              <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="p-4 bg-blue-600/10 border border-blue-500/30 rounded-2xl flex items-center gap-4">
+                <div className="p-3 bg-blue-600/20 rounded-xl"><Sparkles className="w-5 h-5 text-blue-400" /></div>
+                <div className="flex-1">
+                  <h3 className="text-sm font-black uppercase tracking-widest text-blue-400">Objetivo por Definir</h3>
+                  <p className="text-xs text-slate-400">Estás viendo contenido de Oficiales y Especialistas. Define tu escuela para un entrenamiento enfocado.</p>
+                </div>
+                <Button onClick={() => navigate('/seleccionar-escuela')} variant="outline" className="text-[9px] border-blue-500/40 text-blue-400 px-3 py-1.5 uppercase font-black">Definir Éxito</Button>
+              </motion.div>
+            )}
 
             {broadcastQuery.data && (
               <motion.div 

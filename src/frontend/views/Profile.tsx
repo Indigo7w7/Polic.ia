@@ -5,16 +5,19 @@ import { updateProfile as firebaseUpdateProfile } from 'firebase/auth';
 import { useUserStore } from '../store/useUserStore';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, User, Save, Loader2, Sparkles, AlertCircle } from 'lucide-react';
+import { ArrowLeft, User, Save, Loader2, Sparkles, AlertCircle, Medal, Target, Shield, Trophy } from 'lucide-react';
 import { Card, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
+import { usePlayerRank } from '../hooks/usePlayerRank';
+import { RankShield } from '../components/RankShield';
 
 const MILITARY_SEEDS = ['Alpha', 'Bravo', 'Delta', 'Echo', 'Falcon', 'Ghost', 'Hunter', 'Iron', 'Justice', 'Knight', 'Major', 'Nova', 'Oscar', 'Patriot', 'Ranger', 'Strike', 'Titan', 'Vanguard', 'Wolf', 'X-ray'];
 
 export const Profile: React.FC = () => {
-  const { uid, name, photoURL, age, city, profileEdited, setUserData, isPremiumActive } = useUserStore();
+  const { uid, name, photoURL, age, city, profileEdited, setUserData, isPremiumActive, honorPoints, meritPoints } = useUserStore();
   const navigate = useNavigate();
   const isPremium = isPremiumActive();
+  const { rankName, rankIcon, rankColor, totalPoints, nextRankPoints, progressToNext } = usePlayerRank();
   
   const [newName, setNewName] = useState(name === 'Invitado' ? '' : name);
   const [newAge, setNewAge] = useState(age ? String(age) : '');
@@ -135,14 +138,54 @@ export const Profile: React.FC = () => {
             <div className="space-y-5">
               <div>
                 <label className="block text-xs uppercase tracking-widest font-bold text-slate-400 mb-2">
-                  Rango Táctico
+                  Rango y Estatus Militar
                 </label>
-                <div className="px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl font-bold flex items-center justify-between shadow-inner">
-                  <span>{isPremium ? 'Agente Élite PRO' : 'Postulante Base'}</span>
-                  {isPremium 
-                    ? <span className="text-[10px] bg-amber-500/10 text-amber-500 px-2 py-1 rounded font-black tracking-widest uppercase border border-amber-500/20 shadow-[0_0_10px_rgba(245,158,11,0.2)]">Rango Confirmado</span>
-                    : <button onClick={() => navigate('/yape-checkout')} className="text-[10px] bg-cyan-900/30 hover:bg-cyan-800 border border-cyan-800/50 text-cyan-400 px-2 py-1 rounded tracking-widest uppercase transition-colors">Solicitar Ascenso</button>
-                  }
+                <div className="p-5 bg-slate-950 border border-slate-800 rounded-2xl shadow-inner space-y-4">
+                  <div className="flex items-center gap-4">
+                    <RankShield rankName={rankName} rankIcon={rankIcon} rankColor={rankColor} size={32} />
+                    <div className="flex-1">
+                      <div className="flex justify-between items-end mb-1">
+                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-tighter">Puntos Totales: {totalPoints}</span>
+                        {nextRankPoints && (
+                          <span className="text-[9px] font-bold text-slate-500 uppercase">Siguiente: {nextRankPoints} pts</span>
+                        )}
+                      </div>
+                      <div className="h-2 bg-slate-900 rounded-full border border-slate-800 overflow-hidden">
+                        <div 
+                          className={`h-full transition-all duration-1000 ${rankColor.replace('text', 'bg')}`}
+                          style={{ width: `${progressToNext}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 pt-2">
+                    <div className="px-3 py-2 bg-slate-900/50 border border-slate-800 rounded-xl flex items-center justify-between">
+                       <div className="flex items-center gap-2">
+                         <Medal className="w-3.5 h-3.5 text-emerald-400" />
+                         <span className="text-[10px] font-bold text-slate-400 uppercase">Honor</span>
+                       </div>
+                       <span className="text-xs font-black text-emerald-400">{honorPoints || 0}</span>
+                    </div>
+                    <div className="px-3 py-2 bg-slate-900/50 border border-slate-800 rounded-xl flex items-center justify-between">
+                       <div className="flex items-center gap-2">
+                         <Target className="w-3.5 h-3.5 text-blue-400" />
+                         <span className="text-[10px] font-bold text-slate-400 uppercase">Mérito</span>
+                       </div>
+                       <span className="text-xs font-black text-blue-400">{meritPoints || 0}</span>
+                    </div>
+                  </div>
+
+                  {isPremium ? (
+                    <div className="flex items-center gap-2 px-3 py-2 bg-amber-500/10 border border-amber-500/20 rounded-xl">
+                      <Trophy className="w-4 h-4 text-amber-500" />
+                      <span className="text-[9px] font-black text-amber-500 uppercase tracking-widest">Postulante Élite PRO Certificado</span>
+                    </div>
+                  ) : (
+                    <Button onClick={() => navigate('/yape-checkout')} className="w-full py-2 bg-cyan-900/40 hover:bg-cyan-800 text-cyan-400 border border-cyan-800/50 text-[9px] font-black tracking-widest uppercase rounded-xl">
+                      Membresía PRO: Impulso de Rango
+                    </Button>
+                  )}
                 </div>
               </div>
 

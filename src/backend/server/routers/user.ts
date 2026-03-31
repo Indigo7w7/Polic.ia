@@ -135,9 +135,14 @@ export const userRouter = router({
     }),
 
   getRanking: protectedProcedure
-    .query(async () => {
-      // El nuevo ranking basado en: (Promedio de Notas * 0.7) + (Honor/Esfuerzo Leitner PM)
-      // Pero para simplificar y alinear al brief: ordenaremos primariamente por meritPoints.
+    .input(z.object({ school: z.enum(['EO', 'EESTP']).optional() }))
+    .query(async ({ input }) => {
+      let filters = [sql`${users.meritPoints} > 0 OR ${users.honorPoints} > 0`];
+
+      if (input.school) {
+        filters.push(eq(users.school, input.school));
+      }
+
       const topScores = await db.select({
         uid: users.uid,
         name: users.name,
@@ -148,7 +153,7 @@ export const userRouter = router({
         bestScore: sql<number>`(SELECT MAX(score) FROM ${examAttempts} WHERE user_id = ${users.uid})`,
       })
       .from(users)
-      .where(sql`${users.meritPoints} > 0 OR ${users.honorPoints} > 0`)
+      .where(and(...filters))
       .orderBy(desc(users.meritPoints), desc(users.honorPoints))
       .limit(100);
 
