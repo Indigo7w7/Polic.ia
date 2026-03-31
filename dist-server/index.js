@@ -52,6 +52,10 @@ var users = mysqlTable("users", {
   age: int("age"),
   city: varchar("city", { length: 100 }),
   profileEdited: boolean("profile_edited").default(false).notNull(),
+  honorPoints: int("honor_points").default(0).notNull(),
+  meritPoints: int("merit_points").default(0).notNull(),
+  currentStreak: int("current_streak").default(0).notNull(),
+  lastStreakUpdate: timestamp("last_streak_update"),
   createdAt: timestamp("created_at").defaultNow()
 }, (table) => [
   index("idx_users_membership").on(table.membership),
@@ -455,8 +459,33 @@ var userRouter = router({
       ...user,
       role: ctx.userRole,
       // ALWAYS use the context role (it's the source of truth)
-      photoURL: user.photoURL
+      photoURL: user.photoURL,
+      honorPoints: user.honorPoints || 0,
+      meritPoints: user.meritPoints || 0,
+      currentStreak: user.currentStreak || 0
     };
+  }),
+  claimDailyLeitner: protectedProcedure.input(z2.object({ uid: z2.string() })).mutation(async ({ ctx, input }) => {
+    if (ctx.userId !== input.uid) throw new TRPCError2({ code: "FORBIDDEN" });
+    const [user] = await db.select().from(users).where(eq3(users.uid, input.uid));
+    if (!user) throw new TRPCError2({ code: "NOT_FOUND" });
+    const now = /* @__PURE__ */ new Date();
+    const lastUpdate = user.lastStreakUpdate ? new Date(user.lastStreakUpdate) : /* @__PURE__ */ new Date(0);
+    const hoursSinceLastUpdate = (now.getTime() - lastUpdate.getTime()) / (1e3 * 60 * 60);
+    if (hoursSinceLastUpdate < 20) {
+      throw new TRPCError2({ code: "BAD_REQUEST", message: "Ya reclamaste tu recompensa diaria" });
+    }
+    let streak = hoursSinceLastUpdate < 48 ? user.currentStreak + 1 : 1;
+    let pointsToGive = 50;
+    if (streak % 5 === 0) {
+      pointsToGive += 200;
+    }
+    await db.update(users).set({
+      honorPoints: sql`${users.honorPoints} + ${pointsToGive}`,
+      currentStreak: streak,
+      lastStreakUpdate: now
+    }).where(eq3(users.uid, input.uid));
+    return { success: true, pointsAwarded: pointsToGive, newStreak: streak };
   }),
   selectSchool: protectedProcedure.input(z2.object({ uid: z2.string(), school: z2.enum(["EO", "EESTP"]) })).mutation(async ({ ctx, input }) => {
     if (ctx.userId !== input.uid) {
@@ -487,8 +516,11 @@ var userRouter = router({
       uid: users.uid,
       name: users.name,
       photoURL: users.photoURL,
-      bestScore: sql`max(${examAttempts.score})`
-    }).from(examAttempts).innerJoin(users, eq3(examAttempts.userId, users.uid)).groupBy(users.uid).orderBy(sql`max(${examAttempts.score}) desc`).limit(100);
+      school: users.school,
+      meritPoints: users.meritPoints,
+      honorPoints: users.honorPoints,
+      bestScore: sql`(SELECT MAX(score) FROM ${examAttempts} WHERE user_id = ${users.uid})`
+    }).from(users).where(sql`${users.meritPoints} > 0 OR ${users.honorPoints} > 0`).orderBy(desc(users.meritPoints), desc(users.honorPoints)).limit(100);
     return topScores;
   }),
   updateProfile: protectedProcedure.input(z2.object({
@@ -618,7 +650,17 @@ var examRouter = router({
           }
         }
       }
-      return { success: true, attemptId: attempt.insertId };
+      const [stats] = await tx.select({ bestScore: sql2`MAX(${examAttempts.score})` }).from(examAttempts).where(eq4(examAttempts.userId, input.userId));
+      const previousBest = stats?.bestScore || 0;
+      let meritPointsEarned = 0;
+      if (input.passed) meritPointsEarned += 100;
+      if (input.score > previousBest && input.score > 0) {
+        meritPointsEarned += 300;
+      }
+      if (meritPointsEarned > 0) {
+        await tx.update(users).set({ meritPoints: sql2`${users.meritPoints} + ${meritPointsEarned}` }).where(eq4(users.uid, input.userId));
+      }
+      return { success: true, attemptId: attempt.insertId, meritPointsEarned };
     });
     return result;
   }),
