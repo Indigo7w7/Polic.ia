@@ -16,9 +16,20 @@ const app = express();
 const port = process.env.PORT || 3001;
 
 app.use(cors({
-  origin: '*', // Allow all origins
+  origin: true, // Dynamically allow the origin of the request
   credentials: true
 }));
+
+// Error handling for unexpected crashes
+process.on('uncaughtException', (err) => {
+  console.error('[FATAL] Uncaught Exception:', err);
+  // Give time for logs to flush before exit
+  setTimeout(() => process.exit(1), 500);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[FATAL] Unhandled Rejection at:', promise, 'reason:', reason);
+});
 
 // Global Request Logger for diagnostics
 app.use((req, _res, next) => {
