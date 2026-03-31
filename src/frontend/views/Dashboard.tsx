@@ -199,25 +199,22 @@ export const Dashboard: React.FC = () => {
               </motion.div>
             )}
 
-            {/* Metrics row */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {/* Metrics row - Renderizado compacto para reducir densidad */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
               {[
-                { icon: <BrainCircuit className="w-5 h-5 text-cyan-400" />, label: 'Misiones Pendientes', value: metricsLoading ? '—' : metrics.leitnerCount.toString(), sub: 'Flashcards por repasar' },
-                { icon: <Trophy className="w-5 h-5 text-amber-400" />, label: 'Eficiencia Máxima', value: metricsLoading ? '—' : `${metrics.bestScore}%`, sub: 'Pico histórico' },
-                { icon: <BarChart3 className="w-5 h-5 text-emerald-400" />, label: 'Tasa de Acierto', value: metricsLoading ? '—' : `${metrics.avgScore}%`, sub: `${metrics.examCount} simulacros` },
-                { icon: <Clock className="w-5 h-5 text-purple-400" />, label: 'Última Incursión', value: metricsLoading ? '—' : (metrics.lastExamDate || 'Sin datos'), sub: 'Fecha de operación' },
+                { icon: <BrainCircuit className="w-4 h-4 text-cyan-400" />, label: 'Repasos', value: metricsLoading ? '—' : metrics.leitnerCount.toString() },
+                { icon: <Trophy className="w-4 h-4 text-amber-400" />, label: 'Récord', value: metricsLoading ? '—' : `${metrics.bestScore}%` },
+                { icon: <BarChart3 className="w-4 h-4 text-emerald-400" />, label: 'Promedio', value: metricsLoading ? '—' : `${metrics.avgScore}%` },
+                { icon: <Clock className="w-4 h-4 text-purple-400" />, label: 'Última vez', value: metricsLoading ? '—' : (metrics.lastExamDate || '--') },
               ].map((m, i) => (
-                <motion.div key={m.label} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.08 }}>
-                  <Card className="bg-slate-900/80 border-slate-800 hover:border-slate-700 transition-colors">
-                    <CardContent className="pt-5 pb-4">
-                      <div className="flex items-center justify-between mb-2">
-                        {m.icon}
-                        <span className="text-[9px] font-black uppercase tracking-widest text-slate-600">{m.label}</span>
-                      </div>
-                      <div className="text-2xl font-black tabular-nums">{m.value}</div>
-                      <p className="text-[10px] text-slate-500 mt-0.5">{m.sub}</p>
-                    </CardContent>
-                  </Card>
+                <motion.div key={i} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.08 }}>
+                  <div className="bg-slate-900/60 border border-slate-800/80 rounded-xl p-3 flex items-center gap-3 hover:bg-slate-800 transition-colors">
+                    <div className="p-2 bg-slate-950/50 rounded-lg shadow-inner">{m.icon}</div>
+                    <div>
+                      <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">{m.label}</p>
+                      <p className="text-sm font-bold text-slate-200 leading-none mt-1">{m.value}</p>
+                    </div>
+                  </div>
                 </motion.div>
               ))}
             </div>

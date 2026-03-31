@@ -15,6 +15,10 @@ export const users = mysqlTable('users', {
   age: int('age'),
   city: varchar('city', { length: 100 }),
   profileEdited: boolean('profile_edited').default(false).notNull(),
+  honorPoints: int('honor_points').default(0).notNull(),
+  meritPoints: int('merit_points').default(0).notNull(),
+  currentStreak: int('current_streak').default(0).notNull(),
+  lastStreakUpdate: timestamp('last_streak_update'),
   createdAt: timestamp('created_at').defaultNow(),
 }, (table) => [
   index('idx_users_membership').on(table.membership),

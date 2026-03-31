@@ -8,6 +8,7 @@ import { calcularProximoRepaso } from '../../shared/core/leitnerEngine';
 import { useUserStore } from '../store/useUserStore';
 import { trpc } from '../../shared/utils/trpc';
 import { toast } from 'sonner';
+import { triggerTacticalVictory } from '../utils/sounds';
 
 interface LocationState {
   answers: Record<string, number>;
@@ -51,12 +52,18 @@ export const Resultados: React.FC = () => {
 
         const scorePercentage = questions.length > 0 ? (correctCount / questions.length) : 0;
 
-        await submitAttempt.mutateAsync({
+        const response = await submitAttempt.mutateAsync({
           userId: uid,
           score: Math.round(scorePercentage * 100),
           passed: scorePercentage >= 0.55,
           answers: processedAnswers,
         });
+
+        if (response.meritPointsEarned && response.meritPointsEarned > 0) {
+          useUserStore.getState().addMeritPoints(response.meritPointsEarned);
+          toast.success(`Hazaña Táctica: +${response.meritPointsEarned} Puntos de Mérito (PM)`, { icon: '🏅' });
+          triggerTacticalVictory(response.meritPointsEarned > 100 ? 2 : 1);
+        }
 
         if (state.examLevelId) {
           registrarExamen(state.examLevelId, scorePercentage);
@@ -98,15 +105,14 @@ export const Resultados: React.FC = () => {
   return (
     <div className="min-h-screen bg-[#0f172a] text-[#f8fafc] p-4 md:p-8 font-sans">
       <div className="max-w-4xl mx-auto space-y-6">
-        <header className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-slate-800 border-4 border-slate-700 mb-4">
-            {isSaving ? (
-              <Loader2 className="w-10 h-10 text-blue-400 animate-spin" />
-            ) : (
-              <Trophy className={`w-10 h-10 ${scorePercentage >= 70 ? 'text-amber-400' : 'text-slate-400'}`} />
-            )}
+        <header className="text-center mb-8 relative">
+          <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-slate-800 border-4 border-slate-700 mb-4 shadow-[0_0_20px_rgba(0,0,0,0.5)]">
+            <Trophy className={`w-10 h-10 ${scorePercentage >= 70 ? 'text-amber-400 drop-shadow-[0_0_10px_rgba(251,191,36,0.5)]' : 'text-slate-400'}`} />
           </div>
-          <h1 className="text-3xl font-bold text-white mb-2">Resultados del Simulacro</h1>
+          <h1 className="text-3xl font-bold text-white mb-2 flex items-center justify-center gap-3">
+            Resultados del Simulacro
+            {isSaving && <Loader2 className="w-5 h-5 text-blue-400 animate-spin" />}
+          </h1>
           <p className="text-slate-400">Has completado el examen predictivo.</p>
         </header>
 

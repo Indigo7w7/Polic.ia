@@ -50,8 +50,47 @@ export const userRouter = router({
       return { 
         ...user, 
         role: ctx.userRole, // ALWAYS use the context role (it's the source of truth)
-        photoURL: user.photoURL 
+        photoURL: user.photoURL,
+        honorPoints: user.honorPoints || 0,
+        meritPoints: user.meritPoints || 0,
+        currentStreak: user.currentStreak || 0,
       };
+    }),
+
+  claimDailyLeitner: protectedProcedure
+    .input(z.object({ uid: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      if (ctx.userId !== input.uid) throw new TRPCError({ code: 'FORBIDDEN' });
+      
+      const [user] = await db.select().from(users).where(eq(users.uid, input.uid));
+      if (!user) throw new TRPCError({ code: 'NOT_FOUND' });
+
+      const now = new Date();
+      const lastUpdate = user.lastStreakUpdate ? new Date(user.lastStreakUpdate) : new Date(0);
+      
+      // Reset at midnight local ideally, but here we can just do 20 hours diff as "next day" for simplicity
+      const hoursSinceLastUpdate = (now.getTime() - lastUpdate.getTime()) / (1000 * 60 * 60);
+      
+      if (hoursSinceLastUpdate < 20) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Ya reclamaste tu recompensa diaria' });
+      }
+
+      let streak = hoursSinceLastUpdate < 48 ? user.currentStreak + 1 : 1;
+      let pointsToGive = 50; // default for daily Leitner
+      
+      if (streak % 5 === 0) {
+        pointsToGive += 200; // Streak bonus
+      }
+
+      await db.update(users)
+        .set({ 
+          honorPoints: sql`${users.honorPoints} + ${pointsToGive}`,
+          currentStreak: streak,
+          lastStreakUpdate: now 
+        })
+        .where(eq(users.uid, input.uid));
+
+      return { success: true, pointsAwarded: pointsToGive, newStreak: streak };
     }),
 
   selectSchool: protectedProcedure
@@ -97,16 +136,20 @@ export const userRouter = router({
 
   getRanking: protectedProcedure
     .query(async () => {
+      // El nuevo ranking basado en: (Promedio de Notas * 0.7) + (Honor/Esfuerzo Leitner PM)
+      // Pero para simplificar y alinear al brief: ordenaremos primariamente por meritPoints.
       const topScores = await db.select({
         uid: users.uid,
         name: users.name,
         photoURL: users.photoURL,
-        bestScore: sql<number>`max(${examAttempts.score})`,
+        school: users.school,
+        meritPoints: users.meritPoints,
+        honorPoints: users.honorPoints,
+        bestScore: sql<number>`(SELECT MAX(score) FROM ${examAttempts} WHERE user_id = ${users.uid})`,
       })
-      .from(examAttempts)
-      .innerJoin(users, eq(examAttempts.userId, users.uid))
-      .groupBy(users.uid)
-      .orderBy(sql`max(${examAttempts.score}) desc`)
+      .from(users)
+      .where(sql`${users.meritPoints} > 0 OR ${users.honorPoints} > 0`)
+      .orderBy(desc(users.meritPoints), desc(users.honorPoints))
       .limit(100);
 
       return topScores;

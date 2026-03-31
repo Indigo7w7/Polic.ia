@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { trpc } from '../../shared/utils/trpc';
 import { useNavigate } from 'react-router-dom';
 import { useUserStore } from '../store/useUserStore';
+import { playUIClick } from '../utils/sounds';
 
 interface Flashcard {
   id: number;
@@ -40,6 +41,8 @@ export const Flashcards: React.FC = () => {
     if (!success) {
       setSessionErrors(prev => prev + 1);
     }
+    
+    playUIClick();
 
     try {
       await updateCardMutation.mutateAsync({
@@ -132,7 +135,7 @@ export const Flashcards: React.FC = () => {
             {/* Flashcard Container */}
             <div 
               className="relative h-[400px] w-full perspective-1000 cursor-pointer"
-              onClick={() => setIsFlipped(!isFlipped)}
+              onClick={() => { playUIClick(); setIsFlipped(!isFlipped); }}
             >
               <motion.div
                 className="w-full h-full relative preserve-3d transition-all duration-500"

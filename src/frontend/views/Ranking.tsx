@@ -10,6 +10,13 @@ export const Ranking: React.FC = () => {
   const rankingQuery = trpc.user.getRanking.useQuery();
   const ranking = rankingQuery.data || [];
 
+  const getRankTitle = (pm: number) => {
+    if (pm >= 5000) return { title: 'General de División', color: 'text-amber-400' };
+    if (pm >= 3000) return { title: 'Coronel / Comandante', color: 'text-emerald-400' };
+    if (pm >= 1000) return { title: 'Suboficial / Alférez', color: 'text-cyan-400' };
+    return { title: 'Cadete Recluta', color: 'text-slate-400' };
+  };
+
   return (
     <div className="min-h-screen bg-[#060d1a] p-4 md:p-8 text-white font-sans">
       <header className="max-w-4xl mx-auto flex items-center gap-4 mb-8">
@@ -19,21 +26,16 @@ export const Ranking: React.FC = () => {
         <div>
           <h1 className="text-2xl font-black tracking-tight flex items-center gap-2">
             <Trophy className="w-6 h-6 text-yellow-500" />
-            Ranking Nacional de Postulantes
+            Ranking de Élite (Rango y Honor)
           </h1>
           <p className="text-xs text-slate-400 uppercase tracking-widest font-bold mt-1">
-            Los mejores prospectos para la PNP 2025
+            Basado en Puntos de Mérito (Simulacros) y Honor (Leitner)
           </p>
         </div>
       </header>
 
       <main className="max-w-4xl mx-auto">
         <Card className="bg-slate-900/50 border-slate-800 shadow-2xl">
-          <CardHeader className="border-b border-slate-800 pb-4">
-            <CardTitle className="text-sm font-bold uppercase tracking-[0.2em] text-slate-500">
-              Tabla de Honor
-            </CardTitle>
-          </CardHeader>
           <CardContent className="p-0">
             {rankingQuery.isLoading ? (
               <div className="p-20 text-center animate-pulse text-slate-600 uppercase font-black tracking-widest">
@@ -45,25 +47,29 @@ export const Ranking: React.FC = () => {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full">
+                <table className="w-full text-left">
                   <thead>
-                    <tr className="bg-slate-950/50">
-                      <th className="px-6 py-4 text-left text-[10px] font-black uppercase tracking-widest text-slate-500">Puesto</th>
-                      <th className="px-6 py-4 text-left text-[10px] font-black uppercase tracking-widest text-slate-500">Postulante</th>
-                      <th className="px-6 py-4 text-right text-[10px] font-black uppercase tracking-widest text-slate-500">Puntaje Máx.</th>
+                    <tr className="bg-slate-950/50 border-b border-slate-800">
+                      <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-500">Posición</th>
+                      <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-500">Postulante</th>
+                      <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-500">Escuela</th>
+                      <th className="px-6 py-4 text-right text-[10px] font-black uppercase tracking-widest text-slate-500">PM (Mérito)</th>
+                      <th className="px-6 py-4 text-right text-[10px] font-black uppercase tracking-widest text-slate-500">PH (Honor)</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800">
-                    {ranking.map((user, idx) => (
+                    {ranking.map((user, idx) => {
+                      const rank = getRankTitle(user.meritPoints || 0);
+                      return (
                       <tr key={user.uid} className="hover:bg-blue-600/5 transition-colors group">
                         <td className="px-6 py-4 whitespace-nowrap">
-                          {idx === 0 ? <Medal className="w-6 h-6 text-yellow-500" /> :
-                           idx === 1 ? <Medal className="w-6 h-6 text-slate-300" /> :
-                           idx === 2 ? <Medal className="w-6 h-6 text-amber-600" /> :
+                          {idx === 0 ? <Medal className="w-6 h-6 text-yellow-500 drop-shadow-md" /> :
+                           idx === 1 ? <Medal className="w-6 h-6 text-slate-300 drop-shadow-md" /> :
+                           idx === 2 ? <Medal className="w-6 h-6 text-amber-600 drop-shadow-md" /> :
                            <span className="text-slate-500 font-mono font-bold pl-2">#{(idx + 1).toString().padStart(2, '0')}</span>}
                         </td>
                         <td className="px-6 py-4 flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-xl overflow-hidden bg-slate-800 border-2 border-slate-700 group-hover:border-blue-500/50 transition-colors">
+                          <div className="w-10 h-10 rounded-xl overflow-hidden bg-slate-800 border-2 border-slate-700">
                             {user.photoURL ? (
                               <img src={user.photoURL} alt={user.name!} className="w-full h-full object-cover" />
                             ) : (
@@ -76,18 +82,28 @@ export const Ranking: React.FC = () => {
                             <div className="font-bold text-slate-100 group-hover:text-white transition-colors">
                               {user.name || 'Anónimo'}
                             </div>
-                            <div className="text-[10px] text-slate-500 uppercase tracking-wider font-bold">
-                              Aspirante Activo
+                            <div className={`text-[10px] uppercase tracking-wider font-bold ${rank.color}`}>
+                              {rank.title}
                             </div>
                           </div>
                         </td>
+                        <td className="px-6 py-4">
+                          <span className="px-2 py-1 bg-slate-800/50 rounded text-xs font-bold text-slate-400 border border-slate-700 uppercase">
+                            {user.school || 'Indefinida'}
+                          </span>
+                        </td>
                         <td className="px-6 py-4 text-right">
-                          <div className="text-xl font-black text-blue-400 group-hover:text-blue-300 transition-colors font-mono">
-                            {user.bestScore.toFixed(1)}
+                          <div className="text-base font-black text-blue-400 font-mono">
+                            {user.meritPoints} <span className="text-[10px] text-blue-400/50 uppercase">PM</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <div className="text-base font-black text-emerald-400 font-mono">
+                            {user.honorPoints} <span className="text-[10px] text-emerald-400/50 uppercase">PH</span>
                           </div>
                         </td>
                       </tr>
-                    ))}
+                    )})}
                   </tbody>
                 </table>
               </div>

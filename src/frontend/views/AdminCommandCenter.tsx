@@ -133,16 +133,6 @@ const MaterialManager = ({ examId, onClose }: { examId: number; onClose: () => v
   const utils = trpc.useUtils();
   const navigate = useNavigate();
 
-  const handleLogout = async () => {
-    try {
-      await auth.signOut();
-      localStorage.removeItem('authToken');
-      navigate('/');
-      toast.success('Sesión administrativa finalizada');
-    } catch {
-      toast.error('Error al cerrar sesión');
-    }
-  };
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -272,6 +262,18 @@ export const AdminCommandCenter = () => {
   const deleteUser          = trpc.admin.deleteUser.useMutation();
   const sendBroadcast       = trpc.admin.sendBroadcast.useMutation();
   const utils               = trpc.useUtils();
+  const navigate            = useNavigate();
+
+  const handleLogout = async () => {
+    try {
+      await auth.signOut();
+      localStorage.removeItem('authToken');
+      navigate('/');
+      toast.success('Sesión administrativa finalizada');
+    } catch {
+      toast.error('Error al cerrar sesión');
+    }
+  };
 
   // Active broadcast
   const activeBroadcast = broadcastQ.data && broadcastQ.data.id !== dismissedBroadcast ? broadcastQ.data : null;

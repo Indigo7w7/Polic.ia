@@ -109,12 +109,16 @@ export const SchoolSelector: React.FC = () => {
           >
             <Sparkles className="w-8 h-8 text-white" />
           </motion.div>
-          <h1 className="text-3xl font-black tracking-tight">
+          <h1 className="text-3xl font-black tracking-tight drop-shadow-md">
             Hola, <span className="text-blue-400">{displayName}</span>
           </h1>
-          <p className="text-slate-400 text-sm max-w-sm mx-auto leading-relaxed">
-            Elige tu camino. Tu programa se adaptará completamente a tu meta de ingreso.
+          <p className="text-slate-300 text-sm max-w-sm mx-auto leading-relaxed">
+            Elige a qué escuela postulas. Adaptaremos todo el material de estudio y los simulacros a tu objetivo.
           </p>
+          <div className="bg-slate-800/50 border border-slate-700/50 p-4 rounded-xl text-left text-xs text-slate-400 space-y-2 max-w-sm mx-auto shadow-inner">
+            <p><strong className="text-blue-400">EO (Oficiales):</strong> Exámenes con mayor profundidad teórica y de ciencias. Carrera de 5 años. Jerarquía de mando.</p>
+            <p><strong className="text-emerald-400">EESTP (Suboficiales):</strong> Enfoque operativo y técnico policial. Carrera más corta. Primera línea de acción.</p>
+          </div>
         </div>
 
         {/* School Cards */}
@@ -147,8 +151,8 @@ export const SchoolSelector: React.FC = () => {
         </div>
 
         {/* Footer */}
-        <p className="text-center text-[10px] text-slate-600 uppercase tracking-widest font-bold">
-          Esta elección es permanente e irreversible para tu cuenta
+        <p className="text-center text-[10px] text-slate-500 uppercase tracking-widest flex items-center justify-center gap-2">
+          <Shield className="w-3 h-3" /> Configuración Inicial del Sistema Guardián
         </p>
       </motion.div>
     </div>

@@ -24,10 +24,15 @@ export interface UserState {
   role: 'user' | 'admin';
   status: 'ACTIVE' | 'BLOCKED';
   examProgress: Record<string, ExamProgress>;
+  honorPoints: number;
+  meritPoints: number;
+  currentStreak: number;
   setUserData: (data: Partial<UserState>) => void;
   activarPremium: (timestampExpiracion: string) => void;
   isPremiumActive: () => boolean;
   registrarExamen: (examId: string, score: number) => void;
+  addHonorPoints: (pts: number) => void;
+  addMeritPoints: (pts: number) => void;
 }
 
 export const useUserStore = create<UserState>()(
@@ -46,6 +51,9 @@ export const useUserStore = create<UserState>()(
       role: 'user',
       status: 'ACTIVE',
       examProgress: {},
+      honorPoints: 0,
+      meritPoints: 0,
+      currentStreak: 0,
 
       setUserData: (data) => set((state) => ({ ...state, ...data })),
 
@@ -74,15 +82,28 @@ export const useUserStore = create<UserState>()(
           },
         },
       })),
+
+      addHonorPoints: (pts: number) => set((state) => ({
+        ...state,
+        honorPoints: state.honorPoints + pts
+      })),
+
+      addMeritPoints: (pts: number) => set((state) => ({
+        ...state,
+        meritPoints: state.meritPoints + pts
+      })),
     }),
     {
-      name: 'policia-pro-v1', // RENAME FOR FORCED RESET
+      name: 'policia-pro-v2', // RENAME FOR FORCED RESET
       partialize: (state) => ({ 
         modalidad_postulacion: state.modalidad_postulacion,
         role: state.role,
         estado_financiero: state.estado_financiero,
         fecha_expiracion_premium: state.fecha_expiracion_premium,
-        examProgress: state.examProgress 
+        examProgress: state.examProgress,
+        honorPoints: state.honorPoints,
+        meritPoints: state.meritPoints,
+        currentStreak: state.currentStreak,
       }),
     }
   )

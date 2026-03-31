@@ -4,15 +4,17 @@ import { useExamStore } from '../store/useExamStore';
 import { Card, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { TimerRing } from '../components/ui/TimerRing';
-import { ChevronRight, ChevronLeft, Send, ShieldAlert, Grid3X3, Skull } from 'lucide-react';
+import { ChevronRight, ChevronLeft, Send, ShieldAlert, Grid3X3, Skull, BrainCircuit } from 'lucide-react';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { motion, AnimatePresence } from 'motion/react';
 import { useLocation } from 'react-router-dom';
+import { playUIClick } from '../utils/sounds';
 
 export const Simulador: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const isMuerteSubita = location.state?.isMuerteSubita || false;
+  const isPracticeMode = location.state?.isPracticeMode || false;
   const examLevelId = location.state?.examLevelId || null;
   const {
     examenActivo,
@@ -80,6 +82,7 @@ export const Simulador: React.FC = () => {
   }, [respuestasUsuario, tiempoRestante, examenActivo]);
 
   const goTo = (idx: number) => {
+    playUIClick();
     setDirection(idx > currentQuestionIndex ? 1 : -1);
     setCurrentQuestionIndex(idx);
     setShowMap(false);
@@ -123,11 +126,11 @@ export const Simulador: React.FC = () => {
 
   return (
     <div
-      className={`min-h-screen text-[#f8fafc] flex flex-col font-mono relative overflow-hidden transition-colors duration-700 ${isDanger ? 'bg-[#1e0505]' : 'bg-[#020617]'}`}
+      className={`min-h-screen text-[#f8fafc] flex flex-col font-mono relative overflow-hidden transition-colors duration-700 ${isDanger ? 'bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-red-950/40 via-[#1a0505] to-[#0a0202]' : 'bg-[#020617]'}`}
     >
       {/* TACTICAL OVERLAY: SCANLINES & NOISE */}
       <div className="fixed inset-0 pointer-events-none z-[60] opacity-[0.03] mix-blend-overlay bg-[url('https://grainy-gradients.vercel.app/noise.svg')] bg-repeat" />
-      <div className="fixed inset-0 pointer-events-none z-[60] bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,0,0.06))] bg-[length:100%_2px,3px_100%] pointer-events-none" />
+      <div className="fixed inset-0 pointer-events-none z-[60] bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,0,0.06))] bg-[length:100%_2px,3px_100%]" />
       
       {/* DEATH PULSE FRAME */}
       {isMuerteSubita && (
@@ -266,6 +269,11 @@ export const Simulador: React.FC = () => {
                     <Skull className="w-3 h-3" /> MUERTE SÚBITA
                   </span>
                 )}
+                {isPracticeMode && (
+                  <span className="px-3 py-1 bg-emerald-500/10 text-emerald-400 text-[10px] font-black uppercase tracking-widest rounded-full border border-emerald-500/20">
+                    Modo Práctica
+                  </span>
+                )}
               </div>
               <h2 className="text-xl md:text-2xl font-bold leading-relaxed text-white">
                 {currentQuestion.text}
@@ -273,32 +281,65 @@ export const Simulador: React.FC = () => {
             </div>
 
             <div className="space-y-3">
-              {currentQuestion.options.map((opcion, idx) => (
+              {currentQuestion.options.map((opcion, idx) => {
+                const isSelected = selectedAnswerIndex === idx;
+                const showFeedback = isPracticeMode && selectedAnswerIndex !== undefined;
+                const isCorrect = idx === currentQuestion.correctOptionIndex;
+
+                let btnClass = isSelected
+                      ? 'bg-cyan-600/20 border-cyan-500 text-cyan-50 shadow-[0_0_15px_rgba(34,211,238,0.2)]'
+                      : 'bg-slate-900/50 border-slate-800 text-slate-300 hover:border-slate-600 hover:bg-slate-800/60';
+                
+                let letterClass = isSelected ? 'bg-white/20 text-white' : 'bg-slate-800 text-slate-500';
+
+                if (showFeedback) {
+                  if (isCorrect) {
+                     btnClass = 'bg-emerald-600/20 border-emerald-500 text-emerald-50 shadow-[0_0_15px_rgba(16,185,129,0.2)]';
+                     letterClass = 'bg-emerald-500/80 text-white';
+                  } else if (isSelected) {
+                     btnClass = 'bg-red-600/20 border-red-500 text-red-50';
+                     letterClass = 'bg-red-500/80 text-white';
+                  } else {
+                     btnClass = 'bg-slate-900/50 border-slate-800 text-slate-500 opacity-50';
+                  }
+                }
+
+                return (
                 <motion.button
                   key={idx}
                   whileTap={{ scale: 0.98 }}
+                  disabled={showFeedback}
                   onClick={() => {
+                    playUIClick();
                     registrarRespuesta(currentQuestion.id, idx);
                     if (isMuerteSubita && currentQuestion.correctOptionIndex !== idx) {
                       finalizarExamen();
                       navigate('/resultados', { state: { answers: { ...respuestasUsuario, [currentQuestion.id]: idx }, questions: preguntas } });
                     }
                   }}
-                  className={`w-full text-left p-5 rounded-2xl border transition-all duration-200 flex items-center gap-4 min-h-[64px] ${
-                    selectedAnswerIndex === idx
-                      ? 'bg-cyan-600/20 border-cyan-500 text-cyan-50 shadow-[0_0_15px_rgba(34,211,238,0.2)]'
-                      : 'bg-slate-900/50 border-slate-800 text-slate-300 hover:border-slate-600 hover:bg-slate-800/60'
-                  }`}
+                  className={`w-full text-left p-5 rounded-2xl border transition-all duration-200 flex items-center gap-4 min-h-[64px] ${btnClass}`}
                 >
-                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-sm font-black shrink-0 transition-colors ${
-                    selectedAnswerIndex === idx ? 'bg-white/20 text-white' : 'bg-slate-800 text-slate-500'
-                  }`}>
+                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-sm font-black shrink-0 transition-colors ${letterClass}`}>
                     {String.fromCharCode(65 + idx)}
                   </div>
                   <span className="text-sm md:text-base font-medium leading-snug">{opcion}</span>
                 </motion.button>
-              ))}
+              )})}
             </div>
+            
+            {isPracticeMode && selectedAnswerIndex !== undefined && (
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mt-6 p-4 bg-slate-900/80 rounded-xl border border-slate-700 shadow-inner">
+                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2 flex items-center gap-2">
+                   <BrainCircuit className="w-4 h-4 text-amber-400" /> Reporte de Inteligencia
+                 </p>
+                 <p className="text-slate-300 text-sm leading-relaxed">{currentQuestion.justification}</p>
+                 {selectedAnswerIndex === currentQuestion.correctOptionIndex ? (
+                   <div className="mt-3 text-emerald-400 font-bold text-xs">¡Excelente decisión táctica!</div>
+                 ) : (
+                   <div className="mt-3 text-red-400 font-bold text-xs">Revisa la justificación para evitar fallos en combate real.</div>
+                 )}
+              </motion.div>
+            )}
           </motion.div>
         </AnimatePresence>
       </main>

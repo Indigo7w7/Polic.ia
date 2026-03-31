@@ -1,7 +1,7 @@
 import { router, protectedProcedure } from '../trpc';
 import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
-import { db, exams, examAttempts, attemptAnswers, leitnerCards, examQuestions } from '../../../database/db';
+import { db, users, exams, examAttempts, attemptAnswers, leitnerCards, examQuestions } from '../../../database/db';
 import { eq, desc, and, sql } from 'drizzle-orm';
 
 export const examRouter = router({
@@ -111,7 +111,26 @@ export const examRouter = router({
           }
         }
 
-        return { success: true, attemptId: attempt.insertId };
+        // 3. Calculo de Puntos de Merito (PM)
+        const [stats] = await tx.select({ bestScore: sql<number>`MAX(${examAttempts.score})` })
+          .from(examAttempts).where(eq(examAttempts.userId, input.userId));
+        const previousBest = stats?.bestScore || 0;
+        
+        let meritPointsEarned = 0;
+        if (input.passed) meritPointsEarned += 100; // Por aprobar (> 55% que internamente equivale a 11/20)
+        
+        // Si anterior era >0 y ahora lo superó, o si es primera vez y sacó buena nota
+        if (input.score > previousBest && input.score > 0) {
+          meritPointsEarned += 300; // Por romper récord personal
+        }
+
+        if (meritPointsEarned > 0) {
+           await tx.update(users) // Changed db.users to users
+             .set({ meritPoints: sql`${users.meritPoints} + ${meritPointsEarned}` })
+             .where(eq(users.uid, input.userId));
+        }
+
+        return { success: true, attemptId: attempt.insertId, meritPointsEarned };
       });
 
       return result;
