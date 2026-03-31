@@ -1,4 +1,4 @@
-import { db, learningAreas, learningContent } from './index.ts';
+import { db, learningAreas, learningContent } from './index';
 
 async function seed() {
   console.log('🌱 Seeding database...');

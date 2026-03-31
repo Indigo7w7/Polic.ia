@@ -1,17 +1,22 @@
 {
   "compilerOptions": {
     "target": "ESNext",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
     "outDir": "dist-server",
     "rootDir": "src",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    },
     "strict": false,
     "skipLibCheck": true,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "resolveJsonModule": true,
-    "isolatedModules": true
+    "isolatedModules": true,
+    "allowImportingTsExtensions": false
   },
-  "include": ["src/backend/**/*", "src/database/**/*"],
+  "include": ["src/backend/**/*", "src/database/**/*", "src/shared/**/*"],
   "exclude": ["node_modules", "dist", "dist-server"]
 }
