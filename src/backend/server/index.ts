@@ -27,9 +27,8 @@ app.use((req, _res, next) => {
 });
 app.use(express.json());
 
-app.get('/', (req, res) => {
-  res.send('POLIC.ia API Server - Sistema de Entrenamiento de Élite Operativo. El backend está en línea.');
-});
+// Serve static frontend files from 'dist' folder
+const distPath = path.join(process.cwd(), 'dist');
 
 app.use(
   '/trpc',
@@ -42,6 +41,29 @@ app.use(
 app.get('/health', (req, res) => {
   res.send('Server is running and healthy!');
 });
+
+// If dist folder exists, serve static files and handle SPA routing
+if (fs.existsSync(distPath)) {
+  console.log(`[SYS] Serving frontend from ${distPath}`);
+  app.use(express.static(distPath));
+  
+  // SPA fallback for all other routes
+  app.get('*', (req, res) => {
+    // Exclude API calls or TRPC
+    if (req.path.startsWith('/trpc')) return;
+    
+    const indexPath = path.join(distPath, 'index.html');
+    if (fs.existsSync(indexPath)) {
+      res.sendFile(indexPath);
+    } else {
+      res.send('POLIC.ia API Server - Sistema de Entrenamiento de Élite Operativo. Build folder found but index.html missing.');
+    }
+  });
+} else {
+  app.get('/', (req, res) => {
+    res.send('POLIC.ia API Server - Sistema de Entrenamiento de Élite Operativo. El backend está en línea. Nota: Build del frontend no detectado.');
+  });
+}
 
 import pool from './firebaseAdmin';
 
