@@ -222,19 +222,6 @@ async function ensureTablesExist() {
       )
     `);
 
-    // Yape Audits table
-    await pool.execute(`
-      CREATE TABLE IF NOT EXISTS yape_audits (
-        id INT PRIMARY KEY AUTO_INCREMENT,
-        user_id VARCHAR(255) NOT NULL,
-        amount INT NOT NULL,
-        voucher_url TEXT NOT NULL,
-        school VARCHAR(50),
-        status ENUM('PENDIENTE', 'APROBADO', 'RECHAZADO') DEFAULT 'PENDIENTE',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
     // TAREA 1 (SQL): ALTER_TABLE_users_ADD_COLUMN_IF_NOT_EXISTS...
     try {
       await pool.execute(`

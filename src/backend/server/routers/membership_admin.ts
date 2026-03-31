@@ -1,35 +1,11 @@
-import { router, protectedProcedure, adminProcedure, publicProcedure } from '../trpc';
+import { router, adminProcedure, publicProcedure } from '../trpc';
 import { z } from 'zod';
-import { db, users, adminLogs, yapeAudits, examQuestions, learningAreas, learningContent, globalNotifications } from '../../../database/db';
+import { db, users, adminLogs, examQuestions, learningAreas, learningContent, globalNotifications } from '../../../database/db';
 import { eq, sql, and, like, or } from 'drizzle-orm';
 import { TRPCError } from '@trpc/server';
 
-export const membershipRouter = router({
-  submitVoucher: protectedProcedure
-    .input(z.object({
-      userId: z.string(),
-      voucherUrl: z.string(),
-      amount: z.number().default(15),
-      school: z.string().optional(),
-    }))
-    .mutation(async ({ ctx, input }) => {
-      if (ctx.userId !== input.userId) {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Unauthorized voucher submission' });
-      }
-      
-      await db.insert(yapeAudits).values({
-        userId: input.userId,
-        voucherUrl: input.voucherUrl,
-        amount: input.amount,
-        school: input.school,
-        status: 'PENDIENTE',
-      });
-      return { success: true };
-    }),
-});
-
 export const adminRouter = router({
-  // ─── BROADCAST (Alerta Roja) — PUBLIC para acceso universal ───
+  // ─── BROADCAST (Alerta Roja) ───
   getActiveBroadcast: publicProcedure.query(async () => {
     const [active] = await db
       .select()
@@ -44,34 +20,6 @@ export const adminRouter = router({
       .limit(1);
     return active || null;
   }),
-
-  // ─── VOUCHERS ───
-  getVouchers: adminProcedure.query(async () => {
-    return await db.select().from(yapeAudits).orderBy(sql`${yapeAudits.createdAt} desc`);
-  }),
-  
-  updateVoucherStatus: adminProcedure
-    .input(z.object({
-      id: z.number(),
-      status: z.enum(['APROBADO', 'RECHAZADO']),
-      reason: z.string().optional()
-    }))
-    .mutation(async ({ input }) => {
-      await db.update(yapeAudits)
-        .set({ status: input.status })
-        .where(eq(yapeAudits.id, input.id));
-
-      if (input.status === 'APROBADO') {
-        const [voucher] = await db.select().from(yapeAudits).where(eq(yapeAudits.id, input.id));
-        if (voucher) {
-          const expiration = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-          await db.update(users)
-            .set({ membership: 'PRO', premiumExpiration: expiration, ...(voucher.school ? { school: voucher.school as any } : {}) })
-            .where(eq(users.uid, voucher.userId));
-        }
-      }
-      return { success: true };
-    }),
 
   // ─── STATS ───
   getAdminStats: adminProcedure.query(async () => {
@@ -211,7 +159,6 @@ export const adminRouter = router({
     .input(z.object({ uid: z.string() }))
     .mutation(async ({ input }) => {
       console.log(`[ADMIN] DELETING USER: ${input.uid}`);
-      // In a real app we might want to delete related data, but for now we delete from users
       await db.delete(users).where(eq(users.uid, input.uid));
       await db.insert(adminLogs).values({
         action: `DELETE_USER: Removed ${input.uid} from system`,
@@ -234,7 +181,6 @@ export const adminRouter = router({
       });
 
       const [updatedUser] = await db.select().from(users).where(eq(users.uid, input.uid));
-
       return { success: true, user: updatedUser };
     }),
 
@@ -393,12 +339,10 @@ export const adminRouter = router({
     })))
     .mutation(async ({ input }) => {
       if (input.length === 0) return { success: true, count: 0 };
-      
       await db.insert(examQuestions).values(input);
       await db.insert(adminLogs).values({
         action: `Bulk ingested ${input.length} questions`,
       });
-
       return { success: true, count: input.length };
     }),
 

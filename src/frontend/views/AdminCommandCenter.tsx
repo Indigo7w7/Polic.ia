@@ -230,7 +230,7 @@ const StatItem = ({ label, value, accent }: { label: string; value: number; acce
 
 // ─── MAIN COMPONENT ───────────────────────────────────────────
 export const AdminCommandCenter = () => {
-  const [activeTab, setActiveTab] = useState<'users' | 'exams' | 'vouchers' | 'courses' | 'logs'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'exams' | 'courses' | 'logs'>('users');
   const [activeExamSchool, setActiveExamSchool] = useState<'EO' | 'EESTP'>('EO');
   const [searchTerm, setSearchTerm] = useState('');
   const [uploading, setUploading] = useState(false);
@@ -247,12 +247,10 @@ export const AdminCommandCenter = () => {
   const usersList    = trpc.admin.getUsers.useQuery({ search: searchTerm }, { refetchInterval: 15000 });
   const broadcastQ   = trpc.admin.getActiveBroadcast.useQuery(undefined, { refetchInterval: 15000 });
   const examsQuery   = trpc.adminExams.getExams.useQuery();
-  const vouchersQ    = trpc.admin.getVouchers.useQuery(undefined, { enabled: activeTab === 'vouchers' });
   const logsQuery    = trpc.admin.getLogs.useQuery({ limit: 50 }, { enabled: activeTab === 'logs', refetchInterval: 15000 });
   const footerLogs   = trpc.admin.getLogs.useQuery({ limit: 5 });
 
   // ─── Mutations ───
-  const updateVoucherStatus = trpc.admin.updateVoucherStatus.useMutation();
   const uploadExam          = trpc.adminExams.uploadExam.useMutation();
   const deleteExam          = trpc.adminExams.deleteExam.useMutation();
   const toggleRole          = trpc.admin.toggleAdminRole.useMutation();
@@ -365,19 +363,6 @@ export const AdminCommandCenter = () => {
     }
   };
 
-  const handleVoucherAction = async (voucherId: number, status: 'APROBADO' | 'RECHAZADO') => {
-    setProcessingId(voucherId);
-    try {
-      await updateVoucherStatus.mutateAsync({ id: voucherId, status });
-      toast.success(`Voucher ${status.toLowerCase()}`);
-      vouchersQ.refetch();
-      utils.admin.getAdminStats.invalidate();
-    } catch {
-      toast.error('Error al procesar voucher');
-    } finally {
-      setProcessingId(null);
-    }
-  };
 
   const s = stats.data as any;
   const schoolExams = examsQuery.data?.filter(e => e.school === activeExamSchool) || [];
@@ -507,7 +492,6 @@ export const AdminCommandCenter = () => {
           {([
             { id: 'users',   label: 'USUARIOS',   icon: <Users       className="w-3.5 h-3.5" /> },
             { id: 'exams',   label: 'EXÁMENES',   icon: <Book        className="w-3.5 h-3.5" /> },
-            { id: 'vouchers',label: 'VOUCHERS',   icon: <Database    className="w-3.5 h-3.5" /> },
             { id: 'courses', label: 'CURSOS',     icon: <GraduationCap className="w-3.5 h-3.5" /> },
             { id: 'logs',    label: 'SYS LOGS',   icon: <ClipboardList className="w-3.5 h-3.5" /> },
           ] as const).map(tab => (
@@ -755,78 +739,6 @@ export const AdminCommandCenter = () => {
           </div>
         )}
 
-        {/* ══════════════════════ VOUCHERS TAB ══════════════════════ */}
-        {activeTab === 'vouchers' && (
-          <div className="border border-cyan-900/50 bg-black rounded-xl overflow-hidden">
-            <div className="flex items-center gap-2 px-5 py-3 border-b border-amber-900/30 bg-amber-950/5">
-              <Database className="w-4 h-4 text-amber-500" />
-              <span className="text-[11px] font-black uppercase tracking-widest text-amber-500">AUDITORÍA DE PAGOS — YAPE</span>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead className="bg-amber-950/10 text-[9px] uppercase tracking-widest text-amber-700 font-mono">
-                  <tr>
-                    <th className="px-5 py-3">Usuario</th>
-                    <th className="px-5 py-3">Monto</th>
-                    <th className="px-5 py-3">Estado</th>
-                    <th className="px-5 py-3">Fecha</th>
-                    <th className="px-5 py-3 text-right">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-amber-900/15">
-                  {vouchersQ.data?.map((v) => (
-                    <tr key={v.id} className="hover:bg-amber-950/5 transition-colors">
-                      <td className="px-5 py-3 font-mono text-[10px] text-amber-200/50">{v.userId}</td>
-                      <td className="px-5 py-3 text-[12px] font-black text-emerald-400">S/ {v.amount}.00</td>
-                      <td className="px-5 py-3">
-                        <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase border font-mono ${
-                          v.status === 'APROBADO'  ? 'bg-emerald-950 text-emerald-400 border-emerald-800' :
-                          v.status === 'RECHAZADO' ? 'bg-red-950 text-red-400 border-red-900' :
-                          'bg-amber-500/10 text-amber-400 border-amber-900/50'
-                        }`}>{v.status}</span>
-                      </td>
-                      <td className="px-5 py-3 text-[10px] text-slate-600 font-mono">
-                        {new Date(v.createdAt).toLocaleString('es-PE', { dateStyle: 'short', timeStyle: 'short' })}
-                      </td>
-                      <td className="px-5 py-3">
-                        <div className="flex justify-end gap-2">
-                          <button onClick={() => setLightboxUrl(v.voucherUrl)} className="p-1.5 bg-black border border-cyan-900 text-cyan-500 hover:text-cyan-300 rounded">
-                            <ImageIcon className="w-3.5 h-3.5" />
-                          </button>
-                          {v.status === 'PENDIENTE' && (
-                            <>
-                              <button
-                                onClick={() => handleVoucherAction(v.id, 'APROBADO')}
-                                disabled={processingId === v.id}
-                                className="p-1.5 bg-emerald-950 border border-emerald-800 text-emerald-400 hover:bg-emerald-900 rounded disabled:opacity-50"
-                              >
-                                {processingId === v.id ? <RefreshCcw className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-                              </button>
-                              <button
-                                onClick={() => handleVoucherAction(v.id, 'RECHAZADO')}
-                                disabled={processingId === v.id}
-                                className="p-1.5 bg-red-950 border border-red-900 text-red-400 hover:bg-red-900 rounded disabled:opacity-50"
-                              >
-                                <X className="w-3.5 h-3.5" />
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                  {vouchersQ.data?.length === 0 && (
-                    <tr>
-                      <td colSpan={5} className="p-14 text-center text-slate-700 text-[10px] uppercase font-mono italic">
-                        {'> SIN_PAGOS_PENDIENTES'}
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
 
         {/* ══════════════════════ COURSES TAB ══════════════════════ */}
         {activeTab === 'courses' && (
