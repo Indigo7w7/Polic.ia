@@ -8,9 +8,11 @@
     "server:dev": "tsx watch src/backend/server/index.ts",
     "db:generate": "drizzle-kit generate:mysql",
     "db:push": "drizzle-kit push:mysql",
-    "build": "vite build",
+    "build": "vite build && pnpm run build:server",
     "build:web": "tsc --noEmit && vite build",
-    "start": "tsx src/backend/server/index.ts",
+    "build:server": "tsc -p tsconfig.server.json",
+    "start": "NODE_ENV=production node dist-server/backend/server/index.js",
+    "dev:server": "tsx watch src/backend/server/index.ts",
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit"

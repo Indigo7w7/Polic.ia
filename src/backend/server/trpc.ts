@@ -37,10 +37,12 @@ export const createContext = async ({ req, res }: CreateExpressContextOptions) =
       }
       
       if (userId) {
+        console.log(`[DB-LOOKUP] Fetching user ${userId} from database...`);
         const [user] = await db.select({ 
           role: users.role,
           email: users.email 
         }).from(users).where(eq(users.uid, userId));
+        console.log(`[DB-LOOKUP] Success: User found? ${!!user}`);
         
         if (user) {
           // Sync role from DB unless it's the owner (who is always admin)
