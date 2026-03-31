@@ -761,15 +761,16 @@ var adminRouter = router({
     const [questionsStats] = await db.select({
       total: sql4`count(${examQuestions.id})`
     }).from(examQuestions);
-    return {
-      totalUsers: Number(userCounts.total) || 0,
-      proUsers: Number(userCounts.premium) || 0,
-      freeUsers: Number(userCounts.free) || 0,
-      onlineCount: Number(userCounts.activeUsers) || 0,
-      dailyRevenue: Number(revenueObj.dailyIncome) || 0,
-      totalQuestions: Number(questionsStats.total) || 0,
+    const stats = {
+      totalUsers: Number(userCounts?.total) || 0,
+      proUsers: Number(userCounts?.premium) || 0,
+      freeUsers: Number(userCounts?.free) || 0,
+      onlineCount: Number(userCounts?.activeUsers) || 0,
+      dailyRevenue: Number(revenueObj?.dailyIncome) || 0,
+      totalQuestions: Number(questionsStats?.total) || 0,
       totalContent: 0
     };
+    return stats;
   }),
   // ─── DASHBOARD STATS ───
   getDashboardStats: adminProcedure.query(async () => {
@@ -782,12 +783,12 @@ var adminRouter = router({
       online: sql4`sum(case when ${users.lastActive} >= NOW() - INTERVAL 5 MINUTE then 1 else 0 end)`
     }).from(users);
     return {
-      totalUsers: Number(counts.total) || 0,
-      proUsers: Number(counts.pro) || 0,
-      freeUsers: Number(counts.free) || 0,
-      activeUsers: Number(counts.active) || 0,
-      blockedUsers: Number(counts.blocked) || 0,
-      onlineNow: Number(counts.online) || 0
+      totalUsers: Number(counts?.total) || 0,
+      proUsers: Number(counts?.pro) || 0,
+      freeUsers: Number(counts?.free) || 0,
+      activeUsers: Number(counts?.active) || 0,
+      blockedUsers: Number(counts?.blocked) || 0,
+      onlineNow: Number(counts?.online) || 0
     };
   }),
   // ─── USER MANAGEMENT ───
