@@ -26,8 +26,10 @@ import {
   Image as ImageIcon,
   Check,
   ClipboardList,
+  LogOut,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useNavigate } from 'react-router-dom';
 import { auth, storage } from '@/src/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer } from 'recharts';
@@ -129,6 +131,18 @@ const MaterialManager = ({ examId, onClose }: { examId: number; onClose: () => v
   const addMaterial = trpc.adminExams.addMaterial.useMutation();
   const deleteMaterial = trpc.adminExams.deleteMaterial.useMutation();
   const utils = trpc.useUtils();
+  const navigate = useNavigate();
+
+  const handleLogout = async () => {
+    try {
+      await auth.signOut();
+      localStorage.removeItem('authToken');
+      navigate('/');
+      toast.success('Sesión administrativa finalizada');
+    } catch {
+      toast.error('Error al cerrar sesión');
+    }
+  };
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -417,6 +431,15 @@ export const AdminCommandCenter = () => {
             <span className="text-[11px] text-cyan-600 uppercase tracking-[0.4em]">MANDO CENTRAL — POLIC.ia</span>
           </div>
           <div className="text-[10px] text-slate-700 font-mono">[OPERADOR: <span className="text-cyan-500 font-black">ADMIN_ROOT</span>]</div>
+          
+          <button 
+            onClick={handleLogout}
+            className="flex items-center gap-2 px-3 py-1 bg-red-950/20 border border-red-900/30 text-red-500 hover:bg-red-900 group transition-all rounded"
+          >
+            <LogOut className="w-3.5 h-3.5 group-hover:animate-pulse" />
+            <span className="text-[9px] font-black uppercase tracking-widest">DESC_SESION</span>
+          </button>
+
           <div className="flex items-center gap-1">
             <div className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-ping" />
             <span className="text-[9px] text-cyan-700 uppercase tracking-widest">SYNC ACTIVO</span>
