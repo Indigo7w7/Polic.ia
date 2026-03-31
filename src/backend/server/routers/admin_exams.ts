@@ -3,12 +3,14 @@ import { z } from 'zod';
 import { db, exams, examQuestions, examMaterials } from '../../../database/db';
 import { eq, and, desc, sql } from 'drizzle-orm';
 import { TRPCError } from '@trpc/server';
+import { ingestLocalExams } from '../utils/examIngest';
 
 export const adminExamRouter = router({
   /** Upload a new exam level */
   uploadExam: adminProcedure
     .input(z.object({
       school: z.enum(['EO', 'EESTP']),
+      level: z.number().optional(),
       title: z.string().optional(),
       isDemo: z.boolean().optional().default(false),
       questions: z.array(z.object({
@@ -20,27 +22,42 @@ export const adminExamRouter = router({
       })),
     }))
     .mutation(async ({ input }) => {
-      // 1. Determine the next level for this school
-      const [lastExam] = await db.select()
-        .from(exams)
-        .where(eq(exams.school, input.school))
-        .orderBy(desc(exams.level))
-        .limit(1);
+      // 1. Determine level (use provided or auto-increment)
+      let finalLevel = input.level;
+      if (!finalLevel) {
+        const [lastExam] = await db.select()
+          .from(exams)
+          .where(eq(exams.school, input.school))
+          .orderBy(desc(exams.level))
+          .limit(1);
+        finalLevel = (lastExam?.level || 0) + 1;
+      }
       
-      const nextLevel = (lastExam?.level || 0) + 1;
-      const finalTitle = input.title || `Nivel ${nextLevel.toString().padStart(2, '0')}`;
+      const finalTitle = input.title || `Nivel ${finalLevel.toString().padStart(2, '0')}`;
 
-      // 2. Perform atomic insertion
+      // 2. Perform atomic insertion with potential overwrite
       return await db.transaction(async (tx) => {
-        // Create the exam container
-        const [newExam] = await tx.insert(exams).values({
-          school: input.school,
-          level: nextLevel,
-          title: finalTitle,
-          isDemo: input.isDemo,
-        });
+        // Check for existing
+        let [existing]: any[] = await tx.select().from(exams)
+          .where(and(eq(exams.school, input.school), eq(exams.level, finalLevel)));
+        
+        if (existing) {
+          // Overwrite: delete questions first
+          await tx.delete(examQuestions).where(eq(examQuestions.examId, existing.id));
+          // Update title/isDemo if changed
+          await tx.update(exams).set({ title: finalTitle, isDemo: input.isDemo }).where(eq(exams.id, existing.id));
+        } else {
+          // Create new
+          const [newExam] = await tx.insert(exams).values({
+            school: input.school,
+            level: finalLevel,
+            title: finalTitle,
+            isDemo: input.isDemo,
+          });
+          existing = { id: newExam.insertId };
+        }
 
-        const examId = newExam.insertId;
+        const examId = (existing as any).id;
 
         // Insert questions linked to this exam
         if (input.questions.length > 0) {
@@ -52,13 +69,21 @@ export const adminExamRouter = router({
               options: q.options,
               correctOption: q.correctOption,
               difficulty: q.difficulty,
-              schoolType: input.school, // Align with question table convention
+              schoolType: input.school,
             }))
           );
         }
 
-        return { success: true, level: nextLevel, examId };
+        return { success: true, level: finalLevel, examId };
       });
+    }),
+
+  /** Force sync with local JSON files */
+  syncLocalExams: adminProcedure
+    .input(z.object({ overwrite: z.boolean().default(false) }))
+    .mutation(async ({ input }) => {
+      const results = await ingestLocalExams(input.overwrite);
+      return { success: true, results };
     }),
 
   /** Get all exams for management */

@@ -256,6 +256,7 @@ export const AdminCommandCenter = () => {
 
   // ─── Mutations ───
   const uploadExam          = trpc.adminExams.uploadExam.useMutation();
+  const syncLocalExams      = trpc.adminExams.syncLocalExams.useMutation();
   const deleteExam          = trpc.adminExams.deleteExam.useMutation();
   const toggleRole          = trpc.admin.toggleAdminRole.useMutation();
   const updateMembership    = trpc.admin.updateUserStatus.useMutation();
@@ -310,9 +311,25 @@ export const AdminCommandCenter = () => {
     reader.onload = async (e) => {
       try {
         const content = JSON.parse(e.target?.result as string);
-        if (!Array.isArray(content)) throw new Error('El JSON debe ser un array de preguntas');
-        await uploadExam.mutateAsync({ school: activeExamSchool, questions: content });
-        toast.success(`Nivel subido para ${activeExamSchool}`);
+        
+        // If content is an object with questions and potentially a level/title
+        if (content && typeof content === 'object' && !Array.isArray(content)) {
+          await uploadExam.mutateAsync({ 
+            school: activeExamSchool, 
+            questions: content.questions || [],
+            level: content.level,
+            title: content.title,
+            isDemo: content.isDemo
+          });
+        } 
+        // If content is just an array of questions (legacy mode)
+        else if (Array.isArray(content)) {
+          await uploadExam.mutateAsync({ school: activeExamSchool, questions: content });
+        } else {
+          throw new Error('Formato de JSON no reconocido');
+        }
+        
+        toast.success(`Nivel sincronizado para ${activeExamSchool}`);
         examsQuery.refetch();
       } catch (err: any) {
         toast.error(`Error: ${err.message}`);
@@ -322,6 +339,22 @@ export const AdminCommandCenter = () => {
       }
     };
     reader.readAsText(file);
+  };
+
+  const handleSyncLocal = async () => {
+    if (!window.confirm('¿SINCRONIZAR ARCHIVOS LOCALES? Esto cargará los niveles 01 y 02 de EO/EESTP desde el código.')) return;
+    setRefreshing(true);
+    try {
+      const res = await syncLocalExams.mutateAsync({ overwrite: true });
+      const summary = res.results.map(r => `${r.file}: ${r.success ? 'OK' : 'FAIL'}`).join('\n');
+      console.log('[SYNC] Results:', res.results);
+      toast.success('Sincronización masiva completada');
+      examsQuery.refetch();
+    } catch (err: any) {
+      toast.error(`Error de sincronización: ${err.message}`);
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   const handleDeleteExam = async (id: number) => {
@@ -667,7 +700,6 @@ export const AdminCommandCenter = () => {
         {/* ══════════════════════ EXAMS TAB ══════════════════════ */}
         {activeTab === 'exams' && (
           <div className="space-y-4">
-            {/* School selector */}
             <div className="flex gap-3">
               {(['EO', 'EESTP'] as const).map(school => (
                 <button
@@ -682,6 +714,14 @@ export const AdminCommandCenter = () => {
                   {school === 'EO' ? '⬡ OFICIALES (EO PNP)' : '◈ TÉCNICA (EESTP PNP)'}
                 </button>
               ))}
+              <button
+                onClick={handleSyncLocal}
+                disabled={refreshing}
+                className="px-6 rounded-xl border-2 border-dashed border-cyan-800 bg-cyan-950/20 text-cyan-500 font-black text-[10px] uppercase tracking-widest hover:border-cyan-600 transition-all disabled:opacity-30"
+              >
+                <Database className={`w-4 h-4 mx-auto mb-1 ${refreshing ? 'animate-spin' : ''}`} />
+                Sincronizar Locales
+              </button>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

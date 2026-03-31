@@ -42,15 +42,27 @@ if (serviceAccountPath && firebaseProjectId) {
   }
 }
 
-const app = initializeApp({
-  credential: cert(serviceAccount),
-  projectId: firebaseProjectId,
-}, 'polic-ia-admin');
+let adminAuth: any = null;
+let firebaseAdminAuth: any = null;
+let firestoreDb: any = null;
+let storage: any = null;
 
-export const adminAuth = getAuth(app);
-export const firebaseAdminAuth = adminAuth;
-export const db = getFirestore(app);
-export const storage = getStorage(app);
+if (serviceAccount) {
+  const app = initializeApp({
+    credential: cert(serviceAccount),
+    projectId: firebaseProjectId,
+  }, 'polic-ia-admin');
+
+  adminAuth = getAuth(app);
+  firebaseAdminAuth = adminAuth;
+  firestoreDb = getFirestore(app);
+  storage = getStorage(app);
+} else {
+  console.warn('RUNNING WITHOUT FIREBASE ADMIN: Auth and DB features will be unavailable.');
+}
+
+export { adminAuth, firebaseAdminAuth, storage };
+export const db = firestoreDb;
 
 // Reuse the shared database pool for consistency
 export { poolConnection as default } from '../../database/db';
