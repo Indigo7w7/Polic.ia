@@ -1484,11 +1484,25 @@ import path2 from "path";
 dotenv2.config();
 var app = express();
 var port = process.env.PORT || 3001;
+var allowedOrigins = [
+  "https://polic-ia-7bf7e.web.app",
+  "https://polic-ia-7bf7e.firebaseapp.com",
+  "http://localhost:3000",
+  "http://localhost:5173"
+];
 app.use(cors({
-  origin: "*",
+  origin: function(origin, callback) {
+    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "X-TRPC-Source", "X-Requested-With"]
+  allowedHeaders: ["Content-Type", "Authorization", "X-TRPC-Source", "X-Requested-With"],
+  preflightContinue: false,
+  optionsSuccessStatus: 204
 }));
 app.use(express.json());
 app.use(
@@ -1505,15 +1519,6 @@ var distPath = path2.join(process.cwd(), "dist");
 if (fs2.existsSync(distPath)) {
   console.log(`[SYS] \u2705 Serving frontend from ${distPath}`);
   app.use(express.static(distPath));
-  app.get("*", (req, res) => {
-    if (req.path.startsWith("/trpc") || req.path.startsWith("/health")) return;
-    const indexPath = path2.join(distPath, "index.html");
-    if (fs2.existsSync(indexPath)) {
-      res.sendFile(indexPath);
-    } else {
-      res.status(404).send("[SYS] index.html not found in dist/.");
-    }
-  });
 }
 async function ensureTablesExist() {
   try {
@@ -1594,8 +1599,7 @@ async function startServer() {
   }
   app.listen(port, () => {
     console.log(`[SYS] \u{1F680} tRPC server ONLINE at port ${port}`);
-    console.log(`[SYS]    BUILD_SIG: 04.01.H_ULTIMATE_CORS`);
-    console.log(`[SYS]    dist/ present: ${fs2.existsSync(distPath)}`);
+    console.log(`[SYS]    BUILD_SIG: 04.01.H_FINAL_CORS_FIX`);
   });
 }
 startServer();

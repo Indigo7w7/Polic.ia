@@ -15,19 +15,33 @@ import { ingestLocalExams } from './utils/examIngest';
 const app = express();
 const port = process.env.PORT || 3001;
 
-// ─── CORS: ULTIMATE FIX ──────────────────────────────────────
-// This wildcard ensures NO preflight blocks from Firebase Hosting
+// ─── CORS: FIXED CONFIGURATION ───────────────────────────────
+// Credentials: true + Origin: '*' is NOT allowed by browsers.
+// We must specify the exact origin to allow authentication.
+const allowedOrigins = [
+  'https://polic-ia-7bf7e.web.app',
+  'https://polic-ia-7bf7e.firebaseapp.com',
+  'http://localhost:3000',
+  'http://localhost:5173'
+];
+
 app.use(cors({
-  origin: '*', 
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-TRPC-Source', 'X-Requested-With']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-TRPC-Source', 'X-Requested-With'],
+  preflightContinue: false,
+  optionsSuccessStatus: 204
 }));
 
-// Express config
 app.use(express.json());
 
-// tRPC
 app.use(
   '/trpc',
   trpcExpress.createExpressMiddleware({
@@ -40,20 +54,10 @@ app.get('/health', (req, res) => {
   res.send('Server is running and healthy!');
 });
 
-// Static path
 const distPath = path.join(process.cwd(), 'dist');
 if (fs.existsSync(distPath)) {
   console.log(`[SYS] ✅ Serving frontend from ${distPath}`);
   app.use(express.static(distPath));
-  app.get('*', (req, res) => {
-    if (req.path.startsWith('/trpc') || req.path.startsWith('/health')) return;
-    const indexPath = path.join(distPath, 'index.html');
-    if (fs.existsSync(indexPath)) {
-      res.sendFile(indexPath);
-    } else {
-      res.status(404).send('[SYS] index.html not found in dist/.');
-    }
-  });
 }
 
 async function ensureTablesExist() {
@@ -150,8 +154,7 @@ async function startServer() {
 
   app.listen(port, () => {
     console.log(`[SYS] 🚀 tRPC server ONLINE at port ${port}`);
-    console.log(`[SYS]    BUILD_SIG: 04.01.H_ULTIMATE_CORS`);
-    console.log(`[SYS]    dist/ present: ${fs.existsSync(distPath)}`);
+    console.log(`[SYS]    BUILD_SIG: 04.01.H_FINAL_CORS_FIX`);
   });
 }
 

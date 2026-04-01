@@ -302,6 +302,7 @@ export const AdminCommandCenter = () => {
   const createArea          = trpc.adminCourses.createLearningArea.useMutation();
   const deleteArea          = trpc.adminCourses.deleteLearningArea.useMutation();
   const uploadSyllabus      = trpc.adminCourses.uploadLearningJSON.useMutation();
+  const syllabusAreas   = trpc.adminCourses.getLearningAreas.useQuery();
   const deleteContentUnit   = trpc.adminCourses.deleteLearningContent.useMutation();
 
   const utils               = trpc.useUtils();
@@ -897,7 +898,7 @@ export const AdminCommandCenter = () => {
                 </div>
               </div>
               <div className="divide-y divide-cyan-900/15 overflow-y-auto max-h-[500px]">
-                {trpc.adminCourses.getLearningAreas.useQuery().data?.map(area => (
+                {syllabusAreas.data?.map(area => (
                   <div 
                     key={area.id} 
                     className={`px-4 py-3 flex items-center justify-between group cursor-pointer transition-colors ${
@@ -998,7 +999,7 @@ export const AdminCommandCenter = () => {
           </div>
           <div className="flex items-center gap-1.5">
             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
-            <span className="text-[9px] text-emerald-700 uppercase tracking-widest">VER: 04.01.A</span>
+            <span className="text-[9px] text-emerald-700 uppercase tracking-widest">VER: 04.01.H</span>
           </div>
         </div>
       </footer>
