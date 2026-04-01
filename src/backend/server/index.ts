@@ -163,6 +163,27 @@ async function ensureTablesExist() {
       )
     `);
 
+    // New: Learning Areas table
+    await pool.execute(`
+      CREATE TABLE IF NOT EXISTS learning_areas (
+        id INT PRIMARY KEY AUTO_INCREMENT,
+        name VARCHAR(100) NOT NULL,
+        icon VARCHAR(50)
+      )
+    `);
+
+    // New: Learning Content table
+    await pool.execute(`
+      CREATE TABLE IF NOT EXISTS learning_content (
+        id INT PRIMARY KEY AUTO_INCREMENT,
+        area_id INT,
+        title VARCHAR(255) NOT NULL,
+        body TEXT NOT NULL,
+        level INT DEFAULT 1,
+        school_type ENUM('EO', 'EESTP', 'BOTH') DEFAULT 'BOTH'
+      )
+    `);
+
     // Courses table
     await pool.execute(`
       CREATE TABLE IF NOT EXISTS courses (
