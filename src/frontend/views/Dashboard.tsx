@@ -15,7 +15,7 @@ import { useExamManager } from '../hooks/useExamManager';
 import { Header } from '../components/common/Header';
 import { ExamDocument, LeitnerDocument } from '../../shared/types';
 import { toast } from 'sonner';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { 
   Radar, 
   RadarChart, 
@@ -56,17 +56,20 @@ export const Dashboard: React.FC = () => {
   // tRPC Queries
   const userStats = trpc.user.getStats.useQuery({ uid: uid || '' }, { enabled: !!uid });
   const leitnerStats = trpc.leitner.getStats.useQuery({ userId: uid || '' }, { enabled: !!uid });
+  const rankingQuery = trpc.user.getRanking.useQuery({ school: modalidad_postulacion || undefined }, { enabled: !!uid });
   const levelsQuery = trpc.exam.getLevels.useQuery();
   const broadcastQuery = trpc.user.getLastBroadcast.useQuery(undefined, { refetchInterval: 60000 });
   const categoryStatsQuery = trpc.user.getCategoryStats.useQuery({ uid: uid || '' }, { enabled: !!uid });
 
   const metricsLoading = userStats.isLoading || leitnerStats.isLoading;
   
+  // Rank Position
+  const rankPos = rankingQuery.data?.findIndex(r => r.uid === uid) + 1 || '--';
+
   // Calcular weakestArea en base a categoryStats
   let weakestArea = null;
   if (categoryStatsQuery.data && categoryStatsQuery.data.length > 0) {
     const sorted = [...categoryStatsQuery.data].sort((a, b) => a.score - b.score);
-    // Solo si tiene menos del 50% lo consideramos una vulnerabilidad crítica
     if (sorted[0].score < 50) {
       weakestArea = sorted[0].area;
     }
@@ -81,19 +84,11 @@ export const Dashboard: React.FC = () => {
     weakestArea,
   };
 
-  const utils = trpc.useUtils();
   const { startingExam, startLevel } = useExamManager();
 
-
-  /* ── Start a level-based exam ── */
-
-
-  /* ── School filtering ── */
-  const isFree = !isPremium;
   const showEO = modalidad_postulacion === 'EO' || modalidad_postulacion === null;
   const showEESTP = modalidad_postulacion === 'EESTP' || modalidad_postulacion === null;
 
-  /* ── Personalized welcome ── */
   const firstName = name === 'Invitado' ? 'Postulante' : name.split(' ')[0];
   const currentRank = getMilitaryRank(honorPoints, modalidad_postulacion);
   const rankStyle = getRankColor(honorPoints);
@@ -104,7 +99,6 @@ export const Dashboard: React.FC = () => {
       ? `¡Vamos con todo, ${currentRank} PNP ${firstName}!`
       : `Modo Explorador: ${firstName}`;
 
-  /* ── Render a school track section ── */
   const renderExamTrack = (
     examList: ExamLevel[],
     trackLabel: string,
@@ -115,7 +109,7 @@ export const Dashboard: React.FC = () => {
     <div className="space-y-3">
       <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 flex items-center gap-2">
         {trackIcon} {trackLabel}
-        {isFree && <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-1.5 py-0.5 rounded text-[8px] font-black uppercase ml-auto">PRO</span>}
+        {!isPremium && <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-1.5 py-0.5 rounded text-[8px] font-black uppercase ml-auto">PRO</span>}
       </p>
       {examList.map((level, idx) => {
         const levelId = level.id.toString();
@@ -143,7 +137,6 @@ export const Dashboard: React.FC = () => {
             } ${!!startingExam ? 'opacity-60 pointer-events-none' : ''}`}
           >
             <div className="relative z-10 flex items-center gap-4">
-              {/* Level number */}
               <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-lg font-black shrink-0 ${
                 progress?.passed
                   ? 'bg-emerald-500/20 text-emerald-400'
@@ -154,7 +147,6 @@ export const Dashboard: React.FC = () => {
                 {progress?.passed ? <CheckCircle2 className="w-6 h-6" /> : isLocked || needsPreviousPass ? <Lock className="w-5 h-5" /> : <Play className="w-5 h-5 fill-current" />}
               </div>
 
-              {/* Text content */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
                   <h3 className={`text-base font-black truncate ${unlocked ? 'text-white' : 'text-slate-500'}`}>
@@ -168,33 +160,18 @@ export const Dashboard: React.FC = () => {
                   <div className="flex items-center gap-1">
                     <FileText size={12} className={unlocked ? 'text-white/60' : 'text-slate-700'} />
                     <span className={`text-[10px] font-bold uppercase tracking-wider ${unlocked ? 'text-white/60' : 'text-slate-700'}`}>
-                      {level.totalPreguntas} Reactivos
+                      {level.totalPreguntas || 20} Reactivos
                     </span>
                   </div>
                   <div className="flex items-center gap-1">
                     <Clock size={12} className={unlocked ? 'text-white/60' : 'text-slate-700'} />
                     <span className={`text-[10px] font-bold uppercase tracking-wider ${unlocked ? 'text-white/60' : 'text-slate-700'}`}>
-                      {level.tiempoLimite} Minutos
+                      {level.tiempoLimite || 30} Minutos
                     </span>
                   </div>
                 </div>
               </div>
-
-              {/* Action Button */}
-              {!isLocked && !needsPreviousPass && (
-                <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                   <ChevronRight className="w-5 h-5 text-white" />
-                </div>
-              )}
             </div>
-
-            {/* Background elements */}
-            {unlocked && (
-              <>
-                <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -mr-16 -mt-16 transition-transform group-hover:scale-150 duration-500" />
-                <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/5 rounded-full -ml-12 -mb-12 transition-transform group-hover:scale-150 duration-500" />
-              </>
-            )}
           </motion.button>
         );
       })}
@@ -202,20 +179,15 @@ export const Dashboard: React.FC = () => {
   );
 
   return (
-    <div className="min-h-screen bg-[#020617] text-slate-200 selection:bg-blue-500/30">
+    <div className="min-h-screen bg-[#020617] text-slate-200">
       <Header />
       
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
         
-        {/* ── BROADCAST ALERT ── */}
+        {/* BROADCAST ALERT */}
         <AnimatePresence>
           {broadcastQuery.data && (
-            <motion.div 
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              className="overflow-hidden"
-            >
+            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
               <div className="flex items-center gap-3 p-4 bg-red-950/20 border border-red-500/30 rounded-2xl mb-8 relative overflow-hidden group">
                 <div className="absolute inset-0 bg-red-500/5 animate-pulse" />
                 <div className="relative z-10 w-10 h-10 bg-red-500/10 rounded-xl flex items-center justify-center shrink-0">
@@ -230,34 +202,33 @@ export const Dashboard: React.FC = () => {
           )}
         </AnimatePresence>
 
-        {/* ── PROFILE & METRICS ── */}
+        {/* PROFILE & METRICS */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           
-          {/* Welcome and Summary */}
           <div className="lg:col-span-8 space-y-6">
             <div className="flex flex-col md:flex-row md:items-center gap-6 p-6 bg-slate-900/40 border border-slate-800 rounded-3xl relative overflow-hidden">
                <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/5 rounded-full blur-[80px]" />
                
                <div className="relative shrink-0 flex flex-col items-center gap-2">
-                <div className="w-24 h-24 rounded-full border-2 border-blue-500/30 p-1.5 bg-slate-900 shadow-2xl relative">
+                <div className="w-24 h-24 rounded-full border-2 border-blue-500/30 p-1.5 bg-slate-900 relative">
                   {photoURL ? (
-                    <img src={photoURL} alt={name} className="w-full h-full rounded-full object-cover grayscale-[0.3]" />
+                    <img src={photoURL} alt={name} className="w-full h-full rounded-full object-cover" />
                   ) : (
                     <div className="w-full h-full rounded-full bg-slate-800 flex items-center justify-center text-slate-500">
                       <Shield size={40} />
                     </div>
                   )}
                   {isPremium && (
-                    <div className="absolute -bottom-1 -right-1 w-8 h-8 bg-amber-500 rounded-full border-4 border-slate-900 flex items-center justify-center shadow-lg">
+                    <div className="absolute -bottom-1 -right-1 w-8 h-8 bg-amber-500 rounded-full border-4 border-slate-900 flex items-center justify-center">
                       <Star className="w-4 h-4 text-white fill-current" />
                     </div>
                   )}
                 </div>
                 <div className="flex flex-col items-center">
-                  <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Mérito Total</span>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Puesto Ranking</span>
                   <div className="flex items-center gap-1 text-amber-500">
                     <Trophy className="w-3.5 h-3.5" />
-                    <span className="text-sm font-bold">{userStats.data?.meritPoints || 0}</span>
+                    <span className="text-sm font-bold">#{rankPos}</span>
                   </div>
                 </div>
               </div>
@@ -270,55 +241,44 @@ export const Dashboard: React.FC = () => {
                   <div className={`px-3 py-1 border rounded-lg text-[10px] font-black uppercase tracking-widest inline-block ${rankStyle}`}>
                      {currentRank}
                   </div>
+                  <span className="text-[8px] text-slate-800 font-mono">v.04.01.H</span>
                 </div>
-                <p className="text-sm text-slate-400 mt-1 max-w-[500px]">
-                  {isPremium 
-                    ? "Unidad de Élite - Rango PRO [Acceso Total]"
-                    : "Unidad en Entrenamiento - Rango FREE [Acceso Limitado]"
-                  }
+                <p className="text-sm text-slate-400 mt-1">
+                  {isPremium ? "Unidad de Élite - Rango PRO [Acceso Total]" : "Unidad en Entrenamiento - Rango FREE"}
                 </p>
                 <div className="mt-4 flex flex-wrap justify-center md:justify-start gap-4">
-                  {[
-                    { label: 'Exámenes', val: metrics.examCount, icon: <FileText size={12}/> },
-                    { label: 'Promedio', val: `${metrics.avgScore}%`, icon: <TrendingUp size={12}/> },
-                    { label: 'Flashcards', val: metrics.leitnerCount, icon: <Brain size={12}/> }
-                  ].map(m => (
-                    <div key={m.label} className="flex items-center gap-2 px-3 py-1.5 bg-slate-800/40 rounded-full border border-slate-700/50">
-                      <span className="text-blue-400">{m.icon}</span>
-                      <span className="text-[11px] font-black uppercase text-slate-300">{m.val} <span className="text-slate-600 ml-1">{m.label}</span></span>
-                    </div>
-                  ))}
+                  <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-800/40 rounded-full border border-slate-700/50">
+                    <Trophy size={12} className="text-amber-500" />
+                    <span className="text-[11px] font-black uppercase text-slate-300">{(userStats.data as any)?.meritPoints || 0} <span className="text-slate-600 ml-1">Mérito</span></span>
+                  </div>
+                  <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-800/40 rounded-full border border-slate-700/50">
+                    <Star size={12} className="text-emerald-500" />
+                    <span className="text-[11px] font-black uppercase text-slate-300">{(userStats.data as any)?.honorPoints || 0} <span className="text-slate-600 ml-1">Honor</span></span>
+                  </div>
                 </div>
               </div>
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               {[
-                { label: 'Mejor Nota', val: `${metrics.bestScore}%`, icon: <Trophy className="text-amber-500" /> },
-                { label: 'Último Tes', val: metrics.lastExamDate || 'N/A', icon: <Clock className="text-blue-500" /> },
+                { label: 'Exámenes', val: metrics.examCount, icon: <FileText className="text-blue-400" /> },
+                { label: 'Promedio', val: `${metrics.avgScore}%`, icon: <Zap className="text-amber-400" /> },
                 { label: 'Leitner', val: metrics.leitnerCount, icon: <BrainCircuit className="text-purple-500" /> },
-                { label: 'Puntos Honor', val: userStats.data?.honorPoints || 0, icon: <Star className="text-emerald-500" /> },
+                { label: 'Mejor Nota', val: `${metrics.bestScore}%`, icon: <CheckCircle2 className="text-emerald-500" /> },
               ].map((stat, i) => (
-                <motion.div 
-                  key={stat.label} 
-                  initial={{ opacity: 0, y: 10 }} 
-                  animate={{ opacity: 1, y: 0 }} 
-                  transition={{ delay: 0.1 * i }}
-                  className="bg-slate-900/40 border border-slate-800 p-4 rounded-2xl hover:border-slate-700 transition-all group"
-                >
+                <motion.div key={stat.label} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 * i }} className="bg-slate-900/40 border border-slate-800 p-4 rounded-2xl">
                   <div className="flex items-center gap-2 mb-2">
-                    <div className="group-hover:scale-110 transition-transform">{stat.icon}</div>
+                    {stat.icon}
                     <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">{stat.label}</span>
                   </div>
-                  <div className="text-xl font-black text-white group-hover:text-blue-400 transition-colors uppercase tracking-tight">{stat.val}</div>
+                  <div className="text-xl font-black text-white uppercase tracking-tight">{stat.val}</div>
                 </motion.div>
               ))}
             </div>
 
-            {/* Weakness alert and Radar Chart */}
+            {/* Radar and Weakness */}
             {categoryStatsQuery.data && categoryStatsQuery.data.length > 0 && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Radar Chart */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Card className="bg-slate-900/40 border-slate-800">
                   <CardHeader className="py-3 px-4 border-b border-slate-800/50">
                     <CardTitle className="text-[10px] font-black uppercase tracking-widest text-slate-500 flex items-center gap-2">
@@ -328,88 +288,47 @@ export const Dashboard: React.FC = () => {
                   <CardContent className="p-0 h-[220px]">
                     {categoryStatsQuery.data.length >= 3 ? (
                       <ResponsiveContainer width="100%" height={220} minHeight={220}>
-                        <RadarChart cx="50%" cy="50%" outerRadius="70%" data={categoryStatsQuery.data.map(d => ({ ...d, fullMark: 100 }))}>
+                        <RadarChart cx="50%" cy="50%" outerRadius="70%" data={categoryStatsQuery.data}>
                           <PolarGrid stroke="#334155" />
-                          <PolarAngleAxis dataKey="area" tick={{ fill: '#94a3b8', fontSize: 9, fontFamily: 'monospace' }} />
-                          <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
+                          <PolarAngleAxis dataKey="area" tick={{ fill: '#94a3b8', fontSize: 9 }} />
                           <Radar name="Aciertos" dataKey="score" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.4} />
                         </RadarChart>
                       </ResponsiveContainer>
                     ) : (
-                      <div className="flex items-center justify-center h-full text-[10px] text-slate-500 font-mono italic uppercase px-4 text-center">
-                        Requiere actividad en al menos 3 áreas distintas para generar el radar
-                      </div>
+                      <div className="flex items-center justify-center h-full text-[10px] text-slate-500 italic px-4 text-center">Datos Insuficientes</div>
                     )}
                   </CardContent>
                 </Card>
 
-                {/* Priority Mission */}
-                <Card className="bg-slate-900/40 border-slate-800 flex flex-col justify-center relative overflow-hidden">
+                <Card className="bg-slate-900/40 border-slate-800 p-5 flex flex-col justify-center">
                   {metrics.weakestArea ? (
                     <>
-                      <div className="absolute top-0 right-0 w-32 h-32 bg-red-500/10 rounded-full blur-3xl" />
-                      <CardContent className="p-5 relative z-10">
-                        <div className="flex items-center gap-3 mb-3">
-                          <div className="p-2.5 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400">
-                            <Brain className="w-5 h-5" />
-                          </div>
-                          <div>
-                            <p className="text-[9px] font-black uppercase tracking-widest text-red-400">Brecha Táctica</p>
-                            <h3 className="text-sm font-bold text-slate-200">Reforzar {metrics.weakestArea}</h3>
-                          </div>
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className="p-2.5 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400"><Brain className="w-5 h-5" /></div>
+                        <div>
+                          <p className="text-[9px] font-black uppercase text-red-400">Brecha Táctica</p>
+                          <h3 className="text-sm font-bold text-slate-200">Reforzar {metrics.weakestArea}</h3>
                         </div>
-                        <p className="text-xs text-slate-400 mb-4 leading-relaxed">
-                          La IA ha detectado un índice de eficacia menor al 50% en esta área según tus últimos operativos.
-                        </p>
-                        <Button variant="primary" className="w-full bg-red-600 hover:bg-red-500 text-xs py-2 shadow-lg shadow-red-900/20" onClick={() => navigate('/poligono')}>
-                          Iniciar Entrenamiento Correctivo
-                        </Button>
-                      </CardContent>
+                      </div>
+                      <p className="text-xs text-slate-400 mb-4 leading-relaxed">Índice de eficacia inferior al 50%. Inicie entrenamiento correctivo.</p>
+                      <Button variant="primary" className="w-full bg-red-600 hover:bg-red-500 text-xs py-2" onClick={() => navigate('/poligono')}>Iniciar Correctivo</Button>
                     </>
                   ) : (
-                    <>
-                      <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full blur-3xl" />
-                      <CardContent className="p-5 relative z-10 text-center flex flex-col items-center justify-center h-full">
-                        <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-400 mb-3 inline-flex">
-                          <CheckCircle2 className="w-6 h-6" />
-                        </div>
-                        <h3 className="text-sm font-bold text-slate-200 mb-1">Sin Brechas Críticas</h3>
-                        <p className="text-xs text-slate-400 mb-4">Mantienes una eficacia superior al 50% en todas las áreas de estudio. ¡Excelente perfil!</p>
-                        <Button variant="outline" className="text-xs border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10" onClick={() => navigate('/poligono')}>
-                          Mantenimiento Rutinario
-                        </Button>
-                      </CardContent>
-                    </>
+                    <div className="text-center flex flex-col items-center">
+                      <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-400 mb-3"><CheckCircle2 className="w-6 h-6" /></div>
+                      <h3 className="text-sm font-bold text-slate-200 mb-1">Sin Brechas Críticas</h3>
+                      <p className="text-xs text-slate-400">Eficacia superior al 50% en todas las áreas.</p>
+                    </div>
                   )}
                 </Card>
-              </motion.div>
+              </div>
             )}
-
-            {/* FREE user upsell - HIDDEN FOR PRO */}
-            {!isPremium && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.35 }}>
-                <div className="bg-gradient-to-r from-blue-950/40 to-slate-900/60 border border-blue-500/20 rounded-2xl p-5 flex items-center gap-4">
-                  <div className="p-3 bg-blue-600/20 rounded-xl shrink-0"><ShieldAlert className="w-6 h-6 text-amber-400" /></div>
-                  <div className="flex-1">
-                    <h3 className="text-amber-400 font-black text-sm mb-0.5">Más exámenes y herramientas te esperan</h3>
-                    <p className="text-slate-400 text-xs leading-relaxed">
-                      Desbloquea simulacros completos de 100 preguntas, <span className="text-white font-medium">Polígono Cognitivo Leitner</span>, y más.
-                    </p>
-                  </div>
-                  <Button variant="primary" className="bg-amber-600 hover:bg-amber-500 text-slate-900 border-none px-6" onClick={() => navigate('/yape-checkout')}>Mejorar Ahora</Button>
-                </div>
-              </motion.div>
-            )}
-
           </div>
 
-          {/* Lateral Actions and Quick Access */}
           <div className="lg:col-span-4 space-y-6">
-            
-            {/* Secondary Nav Grid */}
             <div className="grid grid-cols-2 gap-3">
               {[
-                { icon: <BookOpen className="w-5 h-5 text-cyan-400" />, label: 'Base de Datos', path: '/galeria', premium: false },
+                { icon: <BookOpen className="w-5 h-5 text-cyan-400" />, label: 'Libreria', path: '/galeria', premium: false },
                 { icon: <RotateCcw className="w-5 h-5 text-red-400" />, label: 'Anti-Fallo', path: '/reentrenamiento', premium: true },
                 { icon: <Shield className="w-5 h-5 text-red-500" />, label: 'Entrevista IA', path: '/entrevista', premium: true },
                 { icon: <BrainCircuit className="w-5 h-5 text-purple-400" />, label: 'Polígono', path: '/poligono', premium: true },
@@ -418,19 +337,15 @@ export const Dashboard: React.FC = () => {
               ].map(item => (
                 <button
                   key={item.label}
-                  onClick={() => {
-                    if (item.premium && !isPremium) { navigate('/yape-checkout'); return; }
-                    navigate(item.path);
-                  }}
-                  className="flex flex-col items-center justify-center p-4 bg-slate-900/40 border border-slate-800 rounded-2xl hover:bg-slate-800/40 hover:scale-[1.03] active:scale-95 transition-all group"
+                  onClick={() => { if (item.premium && !isPremium) { navigate('/yape-checkout'); return; } navigate(item.path); }}
+                  className="flex flex-col items-center justify-center p-4 bg-slate-900/40 border border-slate-800 rounded-2xl hover:bg-slate-800/40 hover:scale-[1.03] transition-all"
                 >
-                  <div className="mb-2 group-hover:scale-110 transition-transform">{item.icon}</div>
-                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 group-hover:text-white transition-colors">{item.label}</span>
+                  <div className="mb-2">{item.icon}</div>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">{item.label}</span>
                 </button>
               ))}
             </div>
 
-            {/* Resources Section */}
             <Card className="bg-slate-900/40 border-slate-800">
               <CardHeader className="py-4 border-b border-slate-800/50">
                 <CardTitle className="text-xs font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
@@ -438,77 +353,40 @@ export const Dashboard: React.FC = () => {
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-4 space-y-3">
-                <ResourceButton title="Prospecto de Admisión 2025" url="https://policia.ia/manuales/prospecto-2025.pdf" />
-                <ResourceButton title="Tabla de Talla y Peso" url="https://policia.ia/manuales/requisitos-fisicos.pdf" />
-                <ResourceButton title="Guía de Doctrina Policial" url="https://policia.ia/manuales/doctrina-nacional.pdf" />
+                <ResourceButton title="Prospecto de Admisión 2025" url="#" />
+                <ResourceButton title="Guía de Doctrina Policial" url="#" />
               </CardContent>
             </Card>
-
-            {/* Support section */}
-            <div className="p-6 bg-gradient-to-br from-slate-900 to-slate-800 border border-slate-700 rounded-3xl text-center">
-              <div className="w-12 h-12 bg-blue-500/10 rounded-full flex items-center justify-center mx-auto mb-4 border border-blue-500/20">
-                <Shield className="text-blue-400 w-6 h-6" />
-              </div>
-              <h3 className="text-sm font-black uppercase tracking-widest mb-1 text-white">¿Necesitas Ayuda?</h3>
-              <p className="text-xs text-slate-400 mb-4">Nuestro equipo técnico está listo para asistirte en tu preparación.</p>
-              <Button variant="outline" className="w-full text-xs py-2 border-slate-600 hover:bg-white hover:text-slate-900 transition-all font-black uppercase tracking-widest">
-                Contactar Soporte
-              </Button>
-            </div>
           </div>
         </div>
 
-        {/* ── EXAM TRACKS ── */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          
-          {/* EO PNP SECTION */}
+        {/* EXAM TRACKS */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-8 border-t border-slate-800">
           {showEO && (
             <div className="space-y-6">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-blue-500/10 border border-blue-500/20 rounded-xl text-blue-400">
-                  <GraduationCap className="w-6 h-6" />
-                </div>
+                <div className="p-2 bg-blue-500/10 border border-blue-500/20 rounded-xl text-blue-400"><GraduationCap className="w-6 h-6" /></div>
                 <div>
-                  <h2 className="text-xl font-black text-white uppercase tracking-tighter">Escuela de Oficiales (EO)</h2>
-                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Ruta de Mando Gubernamental</p>
+                  <h2 className="text-xl font-black text-white uppercase tracking-tighter">Oficiales (EO)</h2>
+                  <p className="text-[10px] font-black tracking-widest text-slate-500 uppercase">Ruta de Mando</p>
                 </div>
               </div>
-              
-              {renderExamTrack(
-                levelsQuery.data?.filter(l => l.school === 'EO') || [],
-                'Fase de Evaluación: Oficiales',
-                <Zap size={14} className="text-amber-500" />,
-                'from-blue-600/20 to-blue-900/10',
-                'border-blue-500/30'
-              )}
+              {renderExamTrack((levelsQuery.data?.filter(l => l.school === 'EO') || []) as any, 'Fase Evaluación', <Zap size={14} className="text-amber-500" />, 'from-blue-600/20 to-blue-900/10', '')}
             </div>
           )}
-
-          {/* EESTP PNP SECTION */}
           {showEESTP && (
             <div className="space-y-6">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-400">
-                  <Shield size={6} className="w-6 h-6" />
-                </div>
+                <div className="p-2 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-400"><Shield className="w-6 h-6" /></div>
                 <div>
-                  <h2 className="text-xl font-black text-white uppercase tracking-tighter">Escuela Técnica (EESTP)</h2>
-                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Fuerza Operativa de la Nación</p>
+                  <h2 className="text-xl font-black text-white uppercase tracking-tighter">Técnica (EESTP)</h2>
+                  <p className="text-[10px] font-black tracking-widest text-slate-500 uppercase">Fuerza Operativa</p>
                 </div>
               </div>
-
-              {renderExamTrack(
-                levelsQuery.data?.filter(l => l.school === 'EESTP') || [],
-                'Fase de Evaluación: Suboficiales',
-                <Shield size={14} className="text-emerald-500" />,
-                'from-emerald-600/20 to-emerald-900/10',
-                'border-emerald-500/30'
-              )}
+              {renderExamTrack((levelsQuery.data?.filter(l => l.school === 'EESTP') || []) as any, 'Fase Evaluación', <Shield size={14} className="text-emerald-500" />, 'from-emerald-600/20 to-emerald-900/10', '')}
             </div>
           )}
-
         </div>
-
       </main>
     </div>
   );

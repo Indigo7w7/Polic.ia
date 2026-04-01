@@ -121,6 +121,11 @@ export const userRouter = router({
         throw new TRPCError({ code: 'FORBIDDEN', message: 'Unauthorized access to stats' });
       }
       
+      const [user] = await db.select({
+        honorPoints: users.honorPoints,
+        meritPoints: users.meritPoints
+      }).from(users).where(eq(users.uid, input.uid));
+
       const stats = await db.select({
         totalAttempts: sql<number>`count(${examAttempts.id})`,
         averageScore: sql<number>`avg(${examAttempts.score})`,
@@ -131,7 +136,11 @@ export const userRouter = router({
       .from(examAttempts)
       .where(eq(examAttempts.userId, input.uid));
 
-      return stats[0] || { totalAttempts: 0, averageScore: 0, bestScore: 0, lastExamDate: null, passedCount: 0 };
+      return {
+        ...(stats[0] || { totalAttempts: 0, averageScore: 0, bestScore: 0, lastExamDate: null, passedCount: 0 }),
+        honorPoints: user?.honorPoints || 0,
+        meritPoints: user?.meritPoints || 0
+      };
     }),
 
   getRanking: protectedProcedure

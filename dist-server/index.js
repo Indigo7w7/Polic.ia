@@ -519,6 +519,10 @@ var userRouter = router({
     if (ctx.userId !== input.uid && ctx.userRole !== "admin") {
       throw new TRPCError2({ code: "FORBIDDEN", message: "Unauthorized access to stats" });
     }
+    const [user] = await db.select({
+      honorPoints: users.honorPoints,
+      meritPoints: users.meritPoints
+    }).from(users).where(eq3(users.uid, input.uid));
     const stats = await db.select({
       totalAttempts: sql`count(${examAttempts.id})`,
       averageScore: sql`avg(${examAttempts.score})`,
@@ -526,7 +530,11 @@ var userRouter = router({
       lastExamDate: sql`max(${examAttempts.startedAt})`,
       passedCount: sql`sum(case when ${examAttempts.passed} = 1 then 1 else 0 end)`
     }).from(examAttempts).where(eq3(examAttempts.userId, input.uid));
-    return stats[0] || { totalAttempts: 0, averageScore: 0, bestScore: 0, lastExamDate: null, passedCount: 0 };
+    return {
+      ...stats[0] || { totalAttempts: 0, averageScore: 0, bestScore: 0, lastExamDate: null, passedCount: 0 },
+      honorPoints: user?.honorPoints || 0,
+      meritPoints: user?.meritPoints || 0
+    };
   }),
   getRanking: protectedProcedure.input(z2.object({ school: z2.enum(["EO", "EESTP"]).optional() })).query(async ({ input }) => {
     let filters = [sql`${users.meritPoints} > 0 OR ${users.honorPoints} > 0`];
@@ -1476,22 +1484,25 @@ import path2 from "path";
 dotenv2.config();
 var app = express();
 var port = process.env.PORT || 3001;
+var allowedOrigins = [
+  "https://polic-ia-7bf7e.web.app",
+  "https://polic-ia-7bf7e.firebaseapp.com",
+  "http://localhost:3000",
+  "http://localhost:5173"
+];
 app.use(cors({
-  origin: true,
-  // Dynamically allow the origin of the request
-  credentials: true
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.warn(`[CORS] Blocked request from: ${origin}`);
+      callback(null, true);
+    }
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "x-trpc-source"]
 }));
-process.on("uncaughtException", (err) => {
-  console.error("[FATAL] Uncaught Exception:", err);
-  setTimeout(() => process.exit(1), 500);
-});
-process.on("unhandledRejection", (reason, promise) => {
-  console.error("[FATAL] Unhandled Rejection at:", promise, "reason:", reason);
-});
-app.use((req, _res, next) => {
-  console.log(`[REQ] ${req.method} ${req.path} from ${req.headers.origin || "no-origin"} (IP: ${req.ip})`);
-  next();
-});
 app.use(express.json());
 app.use(
   "/trpc",
@@ -1513,13 +1524,8 @@ if (fs2.existsSync(distPath)) {
     if (fs2.existsSync(indexPath)) {
       res.sendFile(indexPath);
     } else {
-      res.status(404).send("[SYS] index.html not found in dist/. Run npm run build first.");
+      res.status(404).send("[SYS] index.html not found in dist/.");
     }
-  });
-} else {
-  console.warn("[SYS] \u26A0\uFE0F  dist/ not found \u2014 frontend NOT being served. Run npm run build on Railway.");
-  app.get("/", (_req, res) => {
-    res.send("POLIC.ia API OK \u2014 Frontend not bundled. Run npm run build.");
   });
 }
 async function ensureTablesExist() {
@@ -1534,56 +1540,34 @@ async function ensureTablesExist() {
         role ENUM('user', 'admin') NOT NULL DEFAULT 'user',
         school ENUM('EO', 'EESTP'),
         membership ENUM('FREE', 'PRO') NOT NULL DEFAULT 'FREE',
+        status ENUM('ACTIVE', 'BLOCKED') NOT NULL DEFAULT 'ACTIVE',
         premium_expiration TIMESTAMP NULL,
         last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        profile_edited BOOLEAN NOT NULL DEFAULT FALSE,
         age INT,
         city VARCHAR(100),
+        profile_edited BOOLEAN NOT NULL DEFAULT FALSE,
+        honor_points INT DEFAULT 0 NOT NULL,
+        merit_points INT DEFAULT 0 NOT NULL,
+        current_streak INT DEFAULT 0 NOT NULL,
+        last_streak_update TIMESTAMP NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
     await poolConnection.execute(`
-      CREATE TABLE IF NOT EXISTS exam_questions (
+      CREATE TABLE IF NOT EXISTS learning_areas (
         id INT PRIMARY KEY AUTO_INCREMENT,
-        exam_id INT,
-        area_id INT DEFAULT 1,
-        question TEXT NOT NULL,
-        options JSON NOT NULL,
-        correct_option INT NOT NULL,
-        explanation TEXT,
-        difficulty ENUM('EASY', 'MEDIUM', 'HARD') DEFAULT 'MEDIUM',
-        school_type ENUM('EO', 'EESTP', 'BOTH') DEFAULT 'BOTH',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        name VARCHAR(100) NOT NULL,
+        icon VARCHAR(50)
       )
     `);
     await poolConnection.execute(`
-      CREATE TABLE IF NOT EXISTS exam_attempts (
+      CREATE TABLE IF NOT EXISTS learning_content (
         id INT PRIMARY KEY AUTO_INCREMENT,
-        user_id VARCHAR(255) NOT NULL,
-        score FLOAT NOT NULL,
-        passed BOOLEAN NOT NULL,
-        started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        ended_at TIMESTAMP NULL
-      )
-    `);
-    await poolConnection.execute(`
-      CREATE TABLE IF NOT EXISTS attempt_answers (
-        id INT PRIMARY KEY AUTO_INCREMENT,
-        attempt_id INT NOT NULL,
-        question_id INT NOT NULL,
-        chosen_option INT NOT NULL,
-        is_correct BOOLEAN NOT NULL
-      )
-    `);
-    await poolConnection.execute(`
-      CREATE TABLE IF NOT EXISTS leitner_cards (
-        id INT PRIMARY KEY AUTO_INCREMENT,
-        user_id VARCHAR(255) NOT NULL,
-        question_id INT NOT NULL,
+        area_id INT,
+        title VARCHAR(255) NOT NULL,
+        body TEXT NOT NULL,
         level INT DEFAULT 1,
-        next_review TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        last_reviewed TIMESTAMP NULL,
-        UNIQUE KEY user_question (user_id, question_id)
+        school_type ENUM('EO', 'EESTP', 'BOTH') DEFAULT 'BOTH'
       )
     `);
     await poolConnection.execute(`
@@ -1597,128 +1581,34 @@ async function ensureTablesExist() {
       )
     `);
     await poolConnection.execute(`
-      CREATE TABLE IF NOT EXISTS courses (
+      CREATE TABLE IF NOT EXISTS exam_questions (
         id INT PRIMARY KEY AUTO_INCREMENT,
-        title VARCHAR(255) NOT NULL,
-        description TEXT,
-        thumbnail_url VARCHAR(512),
-        level ENUM('BASICO', 'INTERMEDIO', 'AVANZADO') DEFAULT 'BASICO',
+        exam_id INT,
+        area_id INT,
+        question TEXT NOT NULL,
+        options JSON NOT NULL,
+        correct_option INT NOT NULL,
+        explanation TEXT,
+        difficulty ENUM('EASY', 'MEDIUM', 'HARD') DEFAULT 'MEDIUM',
         school_type ENUM('EO', 'EESTP', 'BOTH') DEFAULT 'BOTH',
-        is_published BOOLEAN NOT NULL DEFAULT FALSE,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-      )
-    `);
-    await poolConnection.execute(`
-      CREATE TABLE IF NOT EXISTS course_materials (
-        id INT PRIMARY KEY AUTO_INCREMENT,
-        course_id INT NOT NULL,
-        title VARCHAR(255) NOT NULL,
-        type ENUM('PDF', 'VIDEO', 'EXAM', 'LINK', 'TEXT') NOT NULL,
-        content_url VARCHAR(512),
-        \`order\` INT DEFAULT 0,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE
-      )
-    `);
-    await poolConnection.execute(`
-      CREATE TABLE IF NOT EXISTS global_notifications (
-        id INT PRIMARY KEY AUTO_INCREMENT,
-        title VARCHAR(255) NOT NULL,
-        message TEXT NOT NULL,
-        type ENUM('INFO', 'WARNING', 'EVENT') DEFAULT 'INFO',
-        is_active BOOLEAN NOT NULL DEFAULT TRUE,
-        expires_at TIMESTAMP NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
-    await poolConnection.execute(`
-      CREATE TABLE IF NOT EXISTS admin_logs (
-        id INT PRIMARY KEY AUTO_INCREMENT,
-        action TEXT NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-    const safeAddColumn = async (table, column, definition) => {
-      try {
-        const [rows] = await poolConnection.execute(
-          `SELECT COUNT(*) as count FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
-          [table, column]
-        );
-        const count = rows[0]?.count ?? 0;
-        if (count === 0) {
-          await poolConnection.execute(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
-          console.log(`[MIGRATION] Added column '${column}' to '${table}'.`);
-        }
-      } catch (e) {
-        console.error(`[MIGRATION] Failed to add column '${column}' to '${table}':`, e.message);
-      }
-    };
-    await safeAddColumn("users", "status", `VARCHAR(50) DEFAULT 'ACTIVE'`);
-    await safeAddColumn("users", "membership", `ENUM('FREE','PRO') NOT NULL DEFAULT 'FREE'`);
-    await safeAddColumn("users", "last_active", `TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`);
-    await safeAddColumn("users", "profile_edited", `BOOLEAN NOT NULL DEFAULT FALSE`);
-    await safeAddColumn("users", "premium_expiration", `TIMESTAMP NULL`);
-    await safeAddColumn("users", "age", `INT`);
-    await safeAddColumn("users", "city", `VARCHAR(100)`);
-    await safeAddColumn("users", "photo_url", `VARCHAR(512)`);
-    await safeAddColumn("exams", "is_demo", `BOOLEAN NOT NULL DEFAULT FALSE`);
-    await safeAddColumn("exam_questions", "exam_id", `INT`);
-    await safeAddColumn("exam_questions", "explanation", `TEXT`);
-    await safeAddColumn("exam_questions", "difficulty", `ENUM('EASY', 'MEDIUM', 'HARD') DEFAULT 'MEDIUM'`);
-    await safeAddColumn("exam_questions", "school_type", `ENUM('EO', 'EESTP', 'BOTH') DEFAULT 'BOTH'`);
-    await safeAddColumn("global_notifications", "is_active", `BOOLEAN NOT NULL DEFAULT TRUE`);
-    await safeAddColumn("global_notifications", "expires_at", `TIMESTAMP NULL`);
-    await safeAddColumn("courses", "school_type", `ENUM('EO', 'EESTP', 'BOTH') DEFAULT 'BOTH'`);
-    await safeAddColumn("admin_logs", "action", `TEXT NOT NULL`);
-    await safeAddColumn("admin_logs", "admin_id", `VARCHAR(255)`);
-    await safeAddColumn("users", "honor_points", `INT DEFAULT 0 NOT NULL`);
-    await safeAddColumn("users", "merit_points", `INT DEFAULT 0 NOT NULL`);
-    await safeAddColumn("users", "current_streak", `INT DEFAULT 0 NOT NULL`);
-    await safeAddColumn("users", "last_streak_update", `TIMESTAMP NULL`);
     console.log("Database verification complete.");
-    try {
-      console.log("[AUTO-INGEST] Scanning for exam files...");
-      const results = await ingestLocalExams(false);
-      results.forEach((res) => {
-        if (res.success) {
-          if (res.alreadyExists) console.log(`[AUTO-INGEST] ${res.file} already exists. Skipping.`);
-          else console.log(`[AUTO-INGEST] Imported ${res.file} (${res.importedQuestions} questions).`);
-        } else {
-          console.error(`[AUTO-INGEST] Failed ${res.file}: ${res.error}`);
-        }
-      });
-    } catch (ingestError) {
-      console.error("[AUTO-INGEST] Unexpected failure:", ingestError);
-    }
   } catch (error) {
-    console.log("Database verification FAILED:", error);
+    console.error("Database verification FAILED:", error);
   }
 }
 async function startServer() {
-  try {
-    await poolConnection.execute("SELECT 1");
-    console.log("[DB] \u2705 DB_CONNECTED_SUCCESSFULLY \u2014 Connection pool is live.");
-  } catch (dbErr) {
-    console.error("[DB] \u274C CRITICAL: DB connection FAILED on startup:", dbErr.message);
-    console.error("[DB] Check MYSQL_URL / DATABASE_URL env vars in Railway dashboard.");
-  }
   await ensureTablesExist();
   try {
-    console.log("[SECURITY] Enforcing admin role for brizq02@gmail.com...");
     await poolConnection.execute(`UPDATE users SET role = 'admin' WHERE email = 'brizq02@gmail.com'`);
-    console.log("[SECURITY] \u2705 Admin override applied.");
   } catch (err) {
-    console.error("[SECURITY] \u26A0\uFE0F  Admin override skipped:", err.message);
   }
   app.listen(port, () => {
-    console.log(`[SYS] \u{1F680} tRPC server ONLINE at http://localhost:${port}`);
-    console.log(`[SYS]    PROD mode: ${process.env.NODE_ENV || "development"}`);
+    console.log(`[SYS] \u{1F680} tRPC server ONLINE at port ${port}`);
+    console.log(`[SYS]    BUILD_SIG: 04.01.H_CORS_FIX`);
     console.log(`[SYS]    dist/ present: ${fs2.existsSync(distPath)}`);
   });
 }
-startServer().catch((err) => {
-  console.error("[SYS] \u274C FATAL: startServer failed:", err);
-  process.exit(1);
-});
+startServer();
