@@ -40,8 +40,8 @@ const AuthLoader = () => (
     </div>
     <Loader2 className="w-5 h-5 text-slate-600 animate-spin" />
     <p className="text-[10px] text-slate-600 uppercase tracking-[0.3em] font-bold">Verificando acceso…</p>
-    <div className="mt-4 p-1 px-3 bg-red-600/20 border border-red-500/30 rounded-full">
-      <span className="text-[9px] text-red-400 font-black tracking-widest">VER: 04.01.A</span>
+    <div className="mt-4 p-1 px-3 bg-indigo-600/20 border border-indigo-500/30 rounded-full">
+      <span className="text-[9px] text-indigo-400 font-black tracking-widest uppercase">SYSLOG: 04.01.H_STABLE_V11</span>
     </div>
   </div>
 );
@@ -158,7 +158,8 @@ function AppContent() {
     const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
       if (user) {
         const normalizedEmail = user.email?.toLowerCase().trim();
-        console.log(`[AUTH] Firebase login: ${normalizedEmail} (UID: ${user.uid})`);
+        console.log(`%c[AUTH] Firebase Login: ${normalizedEmail}`, 'color: #4f46e5; font-weight: bold; font-size: 10px');
+        console.log(`%c[AUTH] ID: ${user.uid}`, 'color: #6366f1; font-size: 10px');
         
         // Extract and persist idToken for tRPC Authorization header
         try {

@@ -13,7 +13,8 @@ function Root() {
   // 1. VITE_API_URL env var (set in .env.local for dev)
   // 2. Production: always use the Railway backend URL directly (Firebase Hosting + Railway are separate domains)
   const apiUrl = import.meta.env.VITE_API_URL || 'https://backend-production-f0aa.up.railway.app/trpc';
-  console.log(`[CONFIG] tRPC API URL: ${apiUrl}`);
+  console.log(`%c[CONFIG] tRPC URL: ${apiUrl}`, 'color: #3b82f6; font-weight: bold;');
+  console.log(`%c[CONFIG] SIG: 04.01.H_STABLE_V11`, 'color: #10b981; font-weight: bold;');
   
   const [queryClient] = useState(() => new QueryClient());
   const [trpcClient] = useState(() =>
