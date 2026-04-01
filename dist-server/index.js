@@ -274,38 +274,55 @@ import { getFirestore } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 var serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT;
 var firebaseProjectId = process.env.FIREBASE_PROJECT_ID;
-if (!serviceAccountPath) {
+if (!serviceAccountPath && process.env.NODE_ENV === "production") {
   console.error("CRITICAL: FIREBASE_SERVICE_ACCOUNT is missing in environment variables.");
   process.exit(1);
 }
-if (!firebaseProjectId) {
+if (!firebaseProjectId && process.env.NODE_ENV === "production") {
   console.error("CRITICAL: FIREBASE_PROJECT_ID is missing in environment variables.");
   process.exit(1);
 }
-var serviceAccount;
-try {
-  const cleanPath = serviceAccountPath.trim();
-  if (cleanPath.startsWith("{")) {
-    serviceAccount = JSON.parse(cleanPath);
-    console.log("Firebase Service Account loaded from JSON string.");
-  } else {
-    const { readFileSync } = await import("fs");
-    serviceAccount = JSON.parse(readFileSync(cleanPath, "utf8"));
-    console.log(`Firebase Service Account loaded from file: ${cleanPath}`);
-  }
-} catch (error) {
-  console.error("FAILURE: Could not parse Firebase Service Account JSON.");
-  console.error("ERROR DETAILS:", error.message);
-  console.error("HINT: Ensure the variable in Railway contains the FULL JSON content starting with { and ending with }");
-  process.exit(1);
+if (!serviceAccountPath || !firebaseProjectId) {
+  console.warn("WARNING: Firebase credentials missing. Some features (Auth/Storage) will be disabled.");
 }
-var app = initializeApp({
-  credential: cert(serviceAccount),
-  projectId: firebaseProjectId
-}, "polic-ia-admin");
-var adminAuth = getAuth(app);
-var db2 = getFirestore(app);
-var storage = getStorage(app);
+var serviceAccount;
+if (serviceAccountPath && firebaseProjectId) {
+  try {
+    const cleanPath = serviceAccountPath.trim();
+    if (cleanPath.startsWith("{")) {
+      serviceAccount = JSON.parse(cleanPath);
+      console.log("Firebase Service Account loaded from JSON string.");
+    } else {
+      const { readFileSync } = await import("fs");
+      serviceAccount = JSON.parse(readFileSync(cleanPath, "utf8"));
+      console.log(`Firebase Service Account loaded from file: ${cleanPath}`);
+    }
+  } catch (error) {
+    if (process.env.NODE_ENV === "production") {
+      console.error("FAILURE: Could not parse Firebase Service Account JSON.");
+      console.error("ERROR DETAILS:", error.message);
+      process.exit(1);
+    } else {
+      console.warn("WARNING: Could not load Firebase credentials. Auth will be disabled.");
+    }
+  }
+}
+var adminAuth = null;
+var firebaseAdminAuth = null;
+var firestoreDb = null;
+var storage = null;
+if (serviceAccount) {
+  const app2 = initializeApp({
+    credential: cert(serviceAccount),
+    projectId: firebaseProjectId
+  }, "polic-ia-admin");
+  adminAuth = getAuth(app2);
+  firebaseAdminAuth = adminAuth;
+  firestoreDb = getFirestore(app2);
+  storage = getStorage(app2);
+} else {
+  console.warn("RUNNING WITHOUT FIREBASE ADMIN: Auth and DB features will be unavailable.");
+}
 
 // src/backend/server/trpc.ts
 var createContext = async ({ req, res }) => {
@@ -511,7 +528,11 @@ var userRouter = router({
     }).from(examAttempts).where(eq3(examAttempts.userId, input.uid));
     return stats[0] || { totalAttempts: 0, averageScore: 0, bestScore: 0, lastExamDate: null, passedCount: 0 };
   }),
-  getRanking: protectedProcedure.query(async () => {
+  getRanking: protectedProcedure.input(z2.object({ school: z2.enum(["EO", "EESTP"]).optional() })).query(async ({ input }) => {
+    let filters = [sql`${users.meritPoints} > 0 OR ${users.honorPoints} > 0`];
+    if (input.school) {
+      filters.push(eq3(users.school, input.school));
+    }
     const topScores = await db.select({
       uid: users.uid,
       name: users.name,
@@ -520,7 +541,7 @@ var userRouter = router({
       meritPoints: users.meritPoints,
       honorPoints: users.honorPoints,
       bestScore: sql`(SELECT MAX(score) FROM ${examAttempts} WHERE user_id = ${users.uid})`
-    }).from(users).where(sql`${users.meritPoints} > 0 OR ${users.honorPoints} > 0`).orderBy(desc(users.meritPoints), desc(users.honorPoints)).limit(100);
+    }).from(users).where(and(...filters)).orderBy(desc(users.meritPoints), desc(users.honorPoints)).limit(100);
     return topScores;
   }),
   updateProfile: protectedProcedure.input(z2.object({
@@ -694,6 +715,21 @@ var examRouter = router({
   /** Get available exam levels for the student dashboard */
   getLevels: protectedProcedure.query(async () => {
     return await db.select().from(exams).orderBy(exams.school, exams.level);
+  }),
+  /** Get questions the user HAS FAILED before for "Anti-Failure Zone" */
+  getFailedQuestions: protectedProcedure.input(z3.object({ userId: z3.string(), limit: z3.number().min(1).max(50).default(30) })).query(async ({ input }) => {
+    return await db.select({
+      id: examQuestions.id,
+      question: examQuestions.question,
+      options: examQuestions.options,
+      correctOption: examQuestions.correctOption,
+      areaId: examQuestions.areaId,
+      difficulty: examQuestions.difficulty,
+      schoolType: examQuestions.schoolType
+    }).from(attemptAnswers).innerJoin(examQuestions, eq4(attemptAnswers.questionId, examQuestions.id)).innerJoin(examAttempts, eq4(attemptAnswers.attemptId, examAttempts.id)).where(and2(
+      eq4(examAttempts.userId, input.userId),
+      eq4(attemptAnswers.isCorrect, false)
+    )).groupBy(examQuestions.id).limit(input.limit);
   })
 });
 
@@ -1059,11 +1095,82 @@ var adminRouter = router({
 
 // src/backend/server/routers/admin_exams.ts
 import { z as z7 } from "zod";
-import { eq as eq8, desc as desc3 } from "drizzle-orm";
+import { eq as eq9, and as and7, desc as desc3 } from "drizzle-orm";
+
+// src/backend/server/utils/examIngest.ts
+import fs from "fs";
+import path from "path";
+import { eq as eq8, and as and6 } from "drizzle-orm";
+async function ingestLocalExams(overwrite = false) {
+  const results = [];
+  try {
+    const examsDir = path.join(process.cwd(), "data", "exams");
+    if (!fs.existsSync(examsDir)) {
+      console.warn(`[INGEST] Exams directory not found: ${examsDir}`);
+      return [];
+    }
+    const files = fs.readdirSync(examsDir).filter((f) => f.endsWith(".json"));
+    console.log(`[INGEST] Found ${files.length} exam files.`);
+    for (const file of files) {
+      try {
+        const content = fs.readFileSync(path.join(examsDir, file), "utf-8");
+        const data = JSON.parse(content);
+        const levelMatch = file.match(/(\d+)/);
+        const levelNum = data.level || (levelMatch ? parseInt(levelMatch[0], 10) : 1);
+        const school = data.school;
+        if (!school || !levelNum) {
+          results.push({ file, success: false, error: "Missing school or level in JSON/filename" });
+          continue;
+        }
+        const existing = await db.select().from(exams).where(and6(eq8(exams.school, school), eq8(exams.level, levelNum)));
+        if (existing.length > 0) {
+          if (!overwrite) {
+            results.push({ file, success: true, alreadyExists: true });
+            continue;
+          }
+          const examId2 = existing[0].id;
+          await db.delete(examQuestions).where(eq8(examQuestions.examId, examId2));
+          await db.delete(exams).where(eq8(exams.id, examId2));
+          console.log(`[INGEST] Overwriting ${school} Level ${levelNum}...`);
+        }
+        const [newExam] = await db.insert(exams).values({
+          school,
+          level: levelNum,
+          title: data.title || `Nivel ${levelNum.toString().padStart(2, "0")}`,
+          isDemo: levelNum === 1
+        });
+        const examId = newExam.insertId;
+        if (data.questions && data.questions.length > 0) {
+          const questionValues = data.questions.map((q) => ({
+            examId: Number(examId),
+            areaId: q.areaId || 1,
+            question: q.question,
+            options: q.options,
+            correctOption: q.correctOption,
+            difficulty: q.difficulty || "MEDIUM",
+            schoolType: school
+          }));
+          await db.insert(examQuestions).values(questionValues);
+          results.push({ file, success: true, importedQuestions: data.questions.length });
+        } else {
+          results.push({ file, success: true, importedQuestions: 0 });
+        }
+      } catch (err) {
+        results.push({ file, success: false, error: err.message });
+      }
+    }
+  } catch (error) {
+    console.error("[INGEST] Global failure:", error);
+  }
+  return results;
+}
+
+// src/backend/server/routers/admin_exams.ts
 var adminExamRouter = router({
   /** Upload a new exam level */
   uploadExam: adminProcedure.input(z7.object({
     school: z7.enum(["EO", "EESTP"]),
+    level: z7.number().optional(),
     title: z7.string().optional(),
     isDemo: z7.boolean().optional().default(false),
     questions: z7.array(z7.object({
@@ -1074,17 +1181,27 @@ var adminExamRouter = router({
       difficulty: z7.enum(["EASY", "MEDIUM", "HARD"]).optional().default("MEDIUM")
     }))
   })).mutation(async ({ input }) => {
-    const [lastExam] = await db.select().from(exams).where(eq8(exams.school, input.school)).orderBy(desc3(exams.level)).limit(1);
-    const nextLevel = (lastExam?.level || 0) + 1;
-    const finalTitle = input.title || `Nivel ${nextLevel.toString().padStart(2, "0")}`;
+    let finalLevel = input.level;
+    if (!finalLevel) {
+      const [lastExam] = await db.select().from(exams).where(eq9(exams.school, input.school)).orderBy(desc3(exams.level)).limit(1);
+      finalLevel = (lastExam?.level || 0) + 1;
+    }
+    const finalTitle = input.title || `Nivel ${finalLevel.toString().padStart(2, "0")}`;
     return await db.transaction(async (tx) => {
-      const [newExam] = await tx.insert(exams).values({
-        school: input.school,
-        level: nextLevel,
-        title: finalTitle,
-        isDemo: input.isDemo
-      });
-      const examId = newExam.insertId;
+      let [existing] = await tx.select().from(exams).where(and7(eq9(exams.school, input.school), eq9(exams.level, finalLevel)));
+      if (existing) {
+        await tx.delete(examQuestions).where(eq9(examQuestions.examId, existing.id));
+        await tx.update(exams).set({ title: finalTitle, isDemo: input.isDemo }).where(eq9(exams.id, existing.id));
+      } else {
+        const [newExam] = await tx.insert(exams).values({
+          school: input.school,
+          level: finalLevel,
+          title: finalTitle,
+          isDemo: input.isDemo
+        });
+        existing = { id: newExam.insertId };
+      }
+      const examId = existing.id;
       if (input.questions.length > 0) {
         await tx.insert(examQuestions).values(
           input.questions.map((q) => ({
@@ -1095,12 +1212,16 @@ var adminExamRouter = router({
             correctOption: q.correctOption,
             difficulty: q.difficulty,
             schoolType: input.school
-            // Align with question table convention
           }))
         );
       }
-      return { success: true, level: nextLevel, examId };
+      return { success: true, level: finalLevel, examId };
     });
+  }),
+  /** Force sync with local JSON files */
+  syncLocalExams: adminProcedure.input(z7.object({ overwrite: z7.boolean().default(false) })).mutation(async ({ input }) => {
+    const results = await ingestLocalExams(input.overwrite);
+    return { success: true, results };
   }),
   /** Get all exams for management */
   getExams: adminProcedure.query(async () => {
@@ -1109,9 +1230,9 @@ var adminExamRouter = router({
   /** Delete an exam and its questions */
   deleteExam: adminProcedure.input(z7.object({ examId: z7.number() })).mutation(async ({ input }) => {
     return await db.transaction(async (tx) => {
-      await tx.delete(examQuestions).where(eq8(examQuestions.examId, input.examId));
-      await tx.delete(examMaterials).where(eq8(examMaterials.examId, input.examId));
-      await tx.delete(exams).where(eq8(exams.id, input.examId));
+      await tx.delete(examQuestions).where(eq9(examQuestions.examId, input.examId));
+      await tx.delete(examMaterials).where(eq9(examMaterials.examId, input.examId));
+      await tx.delete(exams).where(eq9(exams.id, input.examId));
       return { success: true };
     });
   }),
@@ -1130,18 +1251,18 @@ var adminExamRouter = router({
   }),
   /** Get materials for a specific exam */
   getMaterials: adminProcedure.input(z7.object({ examId: z7.number() })).query(async ({ input }) => {
-    return await db.select().from(examMaterials).where(eq8(examMaterials.examId, input.examId)).orderBy(desc3(examMaterials.createdAt));
+    return await db.select().from(examMaterials).where(eq9(examMaterials.examId, input.examId)).orderBy(desc3(examMaterials.createdAt));
   }),
   /** Delete a specific material */
   deleteMaterial: adminProcedure.input(z7.object({ id: z7.number() })).mutation(async ({ input }) => {
-    await db.delete(examMaterials).where(eq8(examMaterials.id, input.id));
+    await db.delete(examMaterials).where(eq9(examMaterials.id, input.id));
     return { success: true };
   })
 });
 
 // src/backend/server/routers/admin_courses.ts
 import { z as z8 } from "zod";
-import { eq as eq9, desc as desc4 } from "drizzle-orm";
+import { eq as eq10, desc as desc4 } from "drizzle-orm";
 var adminCourseRouter = router({
   /* -------------------------------------------------------------------------- */
   /*                            COURSE MANAGEMENT                               */
@@ -1181,14 +1302,14 @@ var adminCourseRouter = router({
       isPublished: z8.boolean().optional()
     })
   })).mutation(async ({ input }) => {
-    await db.update(courses).set(input.data).where(eq9(courses.id, input.courseId));
+    await db.update(courses).set(input.data).where(eq10(courses.id, input.courseId));
     return { success: true };
   }),
   /** Delete a course (will cascade delete materials if DB is set up that way, otherwise manual delete needed) */
   deleteCourse: adminProcedure.input(z8.object({ courseId: z8.number() })).mutation(async ({ input }) => {
     await db.transaction(async (tx) => {
-      await tx.delete(courseMaterials).where(eq9(courseMaterials.courseId, input.courseId));
-      await tx.delete(courses).where(eq9(courses.id, input.courseId));
+      await tx.delete(courseMaterials).where(eq10(courseMaterials.courseId, input.courseId));
+      await tx.delete(courses).where(eq10(courses.id, input.courseId));
     });
     return { success: true };
   }),
@@ -1197,7 +1318,7 @@ var adminCourseRouter = router({
   /* -------------------------------------------------------------------------- */
   /** Get materials for a specific course */
   getCourseMaterials: protectedProcedure.input(z8.object({ courseId: z8.number() })).query(async ({ input }) => {
-    return await db.select().from(courseMaterials).where(eq9(courseMaterials.courseId, input.courseId)).orderBy(courseMaterials.order);
+    return await db.select().from(courseMaterials).where(eq10(courseMaterials.courseId, input.courseId)).orderBy(courseMaterials.order);
   }),
   /** Add a new material to a course */
   addMaterialToCourse: adminProcedure.input(z8.object({
@@ -1218,8 +1339,121 @@ var adminCourseRouter = router({
   }),
   /** Delete a material */
   deleteCourseMaterial: adminProcedure.input(z8.object({ materialId: z8.number() })).mutation(async ({ input }) => {
-    await db.delete(courseMaterials).where(eq9(courseMaterials.id, input.materialId));
+    await db.delete(courseMaterials).where(eq10(courseMaterials.id, input.materialId));
     return { success: true };
+  }),
+  /* -------------------------------------------------------------------------- */
+  /*                          SYLLABUS (LEARNING) MGMT                          */
+  /* -------------------------------------------------------------------------- */
+  getLearningAreas: adminProcedure.query(async () => {
+    return await db.select().from(learningAreas);
+  }),
+  createLearningArea: adminProcedure.input(z8.object({ name: z8.string(), icon: z8.string().optional() })).mutation(async ({ input }) => {
+    const [res] = await db.insert(learningAreas).values({ name: input.name, icon: input.icon });
+    return { id: res.insertId };
+  }),
+  deleteLearningArea: adminProcedure.input(z8.object({ id: z8.number() })).mutation(async ({ input }) => {
+    await db.delete(learningContent).where(eq10(learningContent.areaId, input.id));
+    await db.delete(learningAreas).where(eq10(learningAreas.id, input.id));
+    return { success: true };
+  }),
+  getLearningContent: adminProcedure.input(z8.object({ areaId: z8.number() })).query(async ({ input }) => {
+    return await db.select().from(learningContent).where(eq10(learningContent.areaId, input.areaId));
+  }),
+  deleteLearningContent: adminProcedure.input(z8.object({ id: z8.number() })).mutation(async ({ input }) => {
+    await db.delete(learningContent).where(eq10(learningContent.id, input.id));
+    return { success: true };
+  }),
+  uploadLearningJSON: adminProcedure.input(z8.object({
+    areaName: z8.string(),
+    content: z8.array(z8.object({
+      title: z8.string(),
+      body: z8.string(),
+      level: z8.number().default(1),
+      schoolType: z8.enum(["EO", "EESTP", "BOTH"]).default("BOTH")
+    }))
+  })).mutation(async ({ input }) => {
+    return await db.transaction(async (tx) => {
+      let [area] = await tx.select().from(learningAreas).where(eq10(learningAreas.name, input.areaName));
+      let areaId = area?.id;
+      if (!areaId) {
+        const [res] = await tx.insert(learningAreas).values({ name: input.areaName });
+        areaId = res.insertId;
+      }
+      for (const item of input.content) {
+        await tx.insert(learningContent).values({
+          areaId,
+          title: item.title,
+          body: item.body,
+          level: item.level,
+          schoolType: item.schoolType
+        });
+      }
+      return { success: true, areaId, unitsAdded: input.content.length };
+    });
+  })
+});
+
+// src/backend/server/routers/ai.ts
+import { z as z9 } from "zod";
+import { TRPCError as TRPCError6 } from "@trpc/server";
+import { GoogleGenerativeAI } from "@google/genai";
+import { eq as eq11, sql as sql6 } from "drizzle-orm";
+var SYSTEM_PROMPT = `
+Eres un General de la Polic\xEDa Nacional del Per\xFA (PNP), veterano y jefe de la junta selectiva. 
+Tu misi\xF3n es entrevistar a un postulante para su ingreso. 
+Personalidad: Riguroso, honorable, patriota y observador. No toleras la falta de disciplina ni la falta de \xE9tica.
+Instrucciones:
+1. Haz una pregunta dif\xEDcil a la vez sobre \xE9tica, vocaci\xF3n, doctrina policial o situaciones de crisis.
+2. Eval\xFAa la respuesta del usuario. Si es excelente, felic\xEDtalo secamente. Si es mediocre, exh\xEDgelo m\xE1s. 
+3. L\xEDmite: M\xE1ximo 10 preguntas. 
+4. Condici\xF3n cr\xEDtica: Si detectas falta de patriotismo, deshonestidad o cobard\xEDa en 3 respuestas, termina la entrevista de inmediato con un veredicto de 'BAJA DESHONROSA'.
+5. Diagn\xF3stico Final: Al terminar las 10 preguntas (o antes por falta grave), da un diagn\xF3stico que "preocupe al presidente" (si es malo) o que "devuelva la fe en la instituci\xF3n" (si es excelente). Usa un lenguaje militar formal peruano.
+6. Mant\xE9n el historial de la conversaci\xF3n para dar seguimiento.
+`;
+var aiRouter = router({
+  chat: protectedProcedure.input(z9.object({
+    history: z9.array(z9.object({
+      role: z9.enum(["user", "model"]),
+      parts: z9.array(z9.object({ text: z9.string() }))
+    })),
+    message: z9.string()
+  })).mutation(async ({ input, ctx }) => {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      throw new TRPCError6({ code: "INTERNAL_SERVER_ERROR", message: "Entorno IA no configurado por el comando central." });
+    }
+    const [user] = await db.select().from(users).where(eq11(users.uid, ctx.userId));
+    if (user.membership !== "PRO") {
+      throw new TRPCError6({ code: "FORBIDDEN", message: "El simulador de entrevista IA requiere rango PRO." });
+    }
+    try {
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const chatSession = model.startChat({
+        history: input.history,
+        generationConfig: {
+          maxOutputTokens: 500,
+          temperature: 0.7
+        }
+      });
+      let actualMessage = input.message;
+      if (input.history.length === 0) {
+        actualMessage = `${SYSTEM_PROMPT}
+
+[INICIO DE ENTREVISTA]
+Postulante: ${input.message}`;
+      }
+      const result = await chatSession.sendMessage(actualMessage);
+      const response = result.response.text();
+      if (response.toLowerCase().includes("felicitaciones") || response.toLowerCase().includes("buena respuesta")) {
+        await db.update(users).set({ honorPoints: sql6`${users.honorPoints} + 10` }).where(eq11(users.uid, ctx.userId));
+      }
+      return { response };
+    } catch (error) {
+      console.error("Gemini Error:", error);
+      throw new TRPCError6({ code: "INTERNAL_SERVER_ERROR", message: "Fuerzas de la naturaleza interfirieron con la conexi\xF3n IA." });
+    }
   })
 });
 
@@ -1232,17 +1466,17 @@ var appRouter = router({
   leitner: leitnerRouter,
   admin: adminRouter,
   adminExams: adminExamRouter,
-  adminCourses: adminCourseRouter
+  adminCourses: adminCourseRouter,
+  ai: aiRouter
 });
 
 // src/backend/server/index.ts
-import fs from "fs";
-import path from "path";
-import { eq as eq10, and as and7 } from "drizzle-orm";
+import fs2 from "fs";
+import path2 from "path";
 dotenv2.config();
-var app2 = express();
+var app = express();
 var port = process.env.PORT || 3001;
-app2.use(cors({
+app.use(cors({
   origin: true,
   // Dynamically allow the origin of the request
   credentials: true
@@ -1254,29 +1488,29 @@ process.on("uncaughtException", (err) => {
 process.on("unhandledRejection", (reason, promise) => {
   console.error("[FATAL] Unhandled Rejection at:", promise, "reason:", reason);
 });
-app2.use((req, _res, next) => {
+app.use((req, _res, next) => {
   console.log(`[REQ] ${req.method} ${req.path} from ${req.headers.origin || "no-origin"} (IP: ${req.ip})`);
   next();
 });
-app2.use(express.json());
-app2.use(
+app.use(express.json());
+app.use(
   "/trpc",
   trpcExpress.createExpressMiddleware({
     router: appRouter,
     createContext
   })
 );
-app2.get("/health", (req, res) => {
+app.get("/health", (req, res) => {
   res.send("Server is running and healthy!");
 });
-var distPath = path.join(process.cwd(), "dist");
-if (fs.existsSync(distPath)) {
+var distPath = path2.join(process.cwd(), "dist");
+if (fs2.existsSync(distPath)) {
   console.log(`[SYS] \u2705 Serving frontend from ${distPath}`);
-  app2.use(express.static(distPath));
-  app2.get("*", (req, res) => {
+  app.use(express.static(distPath));
+  app.get("*", (req, res) => {
     if (req.path.startsWith("/trpc") || req.path.startsWith("/health")) return;
-    const indexPath = path.join(distPath, "index.html");
-    if (fs.existsSync(indexPath)) {
+    const indexPath = path2.join(distPath, "index.html");
+    if (fs2.existsSync(indexPath)) {
       res.sendFile(indexPath);
     } else {
       res.status(404).send("[SYS] index.html not found in dist/. Run npm run build first.");
@@ -1284,7 +1518,7 @@ if (fs.existsSync(distPath)) {
   });
 } else {
   console.warn("[SYS] \u26A0\uFE0F  dist/ not found \u2014 frontend NOT being served. Run npm run build on Railway.");
-  app2.get("/", (_req, res) => {
+  app.get("/", (_req, res) => {
     res.send("POLIC.ia API OK \u2014 Frontend not bundled. Run npm run build.");
   });
 }
@@ -1445,43 +1679,18 @@ async function ensureTablesExist() {
     await safeAddColumn("users", "last_streak_update", `TIMESTAMP NULL`);
     console.log("Database verification complete.");
     try {
-      const examsDir = path.join(process.cwd(), "data", "exams");
-      if (fs.existsSync(examsDir)) {
-        console.log("[AUTO-INGEST] Scanning for exam files...");
-        const files = fs.readdirSync(examsDir).filter((f) => f.endsWith(".json"));
-        for (const file of files) {
-          const content = fs.readFileSync(path.join(examsDir, file), "utf-8");
-          const data = JSON.parse(content);
-          const levelNum = file.includes("01") ? 1 : 2;
-          const existing = await db.select().from(exams).where(and7(eq10(exams.school, data.school), eq10(exams.level, levelNum)));
-          if (existing.length === 0) {
-            console.log(`[AUTO-INGEST] Importing ${data.school} Level ${levelNum}...`);
-            const [newExam] = await db.insert(exams).values({
-              school: data.school,
-              level: levelNum,
-              title: data.title || `Nivel ${levelNum}`,
-              isDemo: levelNum === 1
-            });
-            const examId = newExam.insertId;
-            if (data.questions && data.questions.length > 0) {
-              const questionValues = data.questions.map((q) => ({
-                examId: Number(examId),
-                areaId: 1,
-                // Fallback to general area
-                question: q.question,
-                options: q.options,
-                correctOption: q.correctOption,
-                difficulty: "MEDIUM",
-                schoolType: data.school
-              }));
-              await db.insert(examQuestions).values(questionValues);
-              console.log(`[AUTO-INGEST] Successfully imported ${data.questions.length} questions for ${data.school} L${levelNum}.`);
-            }
-          }
+      console.log("[AUTO-INGEST] Scanning for exam files...");
+      const results = await ingestLocalExams(false);
+      results.forEach((res) => {
+        if (res.success) {
+          if (res.alreadyExists) console.log(`[AUTO-INGEST] ${res.file} already exists. Skipping.`);
+          else console.log(`[AUTO-INGEST] Imported ${res.file} (${res.importedQuestions} questions).`);
+        } else {
+          console.error(`[AUTO-INGEST] Failed ${res.file}: ${res.error}`);
         }
-      }
+      });
     } catch (ingestError) {
-      console.error("[AUTO-INGEST] Failed:", ingestError);
+      console.error("[AUTO-INGEST] Unexpected failure:", ingestError);
     }
   } catch (error) {
     console.log("Database verification FAILED:", error);
@@ -1503,10 +1712,10 @@ async function startServer() {
   } catch (err) {
     console.error("[SECURITY] \u26A0\uFE0F  Admin override skipped:", err.message);
   }
-  app2.listen(port, () => {
+  app.listen(port, () => {
     console.log(`[SYS] \u{1F680} tRPC server ONLINE at http://localhost:${port}`);
     console.log(`[SYS]    PROD mode: ${process.env.NODE_ENV || "development"}`);
-    console.log(`[SYS]    dist/ present: ${fs.existsSync(distPath)}`);
+    console.log(`[SYS]    dist/ present: ${fs2.existsSync(distPath)}`);
   });
 }
 startServer().catch((err) => {
