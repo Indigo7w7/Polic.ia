@@ -41,7 +41,7 @@ app.use(express.json());
 app.get('/health', (req, res) => {
   res.json({ 
     status: 'online', 
-    version: '04.01.H_OFFICIAL_CORS_V10',
+    version: '04.01.H_STABLE_V11',
     timestamp: new Date().toISOString()
   });
 });
