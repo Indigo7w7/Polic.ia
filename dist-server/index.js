@@ -1484,19 +1484,15 @@ dotenv2.config();
 var app = express();
 var port = process.env.PORT || 3001;
 app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  console.log(`[SYS] ${req.method} ${req.path} | Origin: ${origin || "none"}`);
-  const isAllowed = !origin || origin.includes("polic-ia-7bf7e") || origin.includes("localhost") || origin.includes("127.0.0.1");
-  if (isAllowed && origin) {
-    res.header("Access-Control-Allow-Origin", origin);
-  } else if (!origin) {
-    res.header("Access-Control-Allow-Origin", "*");
-  }
-  res.header("Access-Control-Allow-Credentials", "true");
-  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-TRPC-Source, X-Requested-With");
+  const origin = req.headers.origin || "*";
+  console.log(`[CORS_V8] ${req.method} ${req.path} from ${origin}`);
+  res.setHeader("Access-Control-Allow-Origin", origin);
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-TRPC-Source, X-Requested-With, Cache-Control, Pragma, Expires");
+  res.setHeader("Access-Control-Max-Age", "1728000");
   if (req.method === "OPTIONS") {
-    return res.status(204).send();
+    return res.status(200).end();
   }
   next();
 });
@@ -1511,59 +1507,25 @@ app.use(
 app.get("/health", (req, res) => {
   res.json({
     status: "online",
-    version: "04.01.H_RESILIENT_V7",
-    db: "connected (verified at startup)",
+    version: "04.01.H_NUCLEAR_V8",
     timestamp: (/* @__PURE__ */ new Date()).toISOString()
   });
 });
 var distPath = path2.join(process.cwd(), "dist");
 if (fs2.existsSync(distPath)) {
-  console.log(`[SYS] \u2705 Serving frontend from ${distPath}`);
   app.use(express.static(distPath));
-}
-async function ensureTablesExist() {
-  try {
-    console.log("[DB] Ensuring database tables exist...");
-    await poolConnection.query("SELECT 1");
-    await poolConnection.execute(`
-      CREATE TABLE IF NOT EXISTS users (
-        uid VARCHAR(255) PRIMARY KEY,
-        name VARCHAR(255),
-        email VARCHAR(255) UNIQUE,
-        photo_url VARCHAR(512),
-        role ENUM('user', 'admin') NOT NULL DEFAULT 'user',
-        school ENUM('EO', 'EESTP'),
-        membership ENUM('FREE', 'PRO') NOT NULL DEFAULT 'FREE',
-        status ENUM('ACTIVE', 'BLOCKED') NOT NULL DEFAULT 'ACTIVE',
-        premium_expiration TIMESTAMP NULL,
-        last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        age INT,
-        city VARCHAR(100),
-        profile_edited BOOLEAN NOT NULL DEFAULT FALSE,
-        honor_points INT DEFAULT 0 NOT NULL,
-        merit_points INT DEFAULT 0 NOT NULL,
-        current_streak INT DEFAULT 0 NOT NULL,
-        last_streak_update TIMESTAMP NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-    console.log("[DB] Core tables verified.");
-  } catch (error) {
-    console.warn("[DB] Non-critical warning during schema check:", error.message);
-  }
-}
-async function startServer() {
-  ensureTablesExist().catch((err) => console.error("[DB] Background init error:", err));
-  poolConnection.execute(`UPDATE users SET role = 'admin' WHERE email = 'brizq02@gmail.com'`).catch(() => null);
-  app.listen(port, () => {
-    console.log(`[SYS] \u{1F680} Server ONLINE at port ${port}`);
-    console.log(`[SYS]    BUILD_SIG: 04.01.H_RESILIENT_V7`);
+  app.get("*", (req, res) => {
+    if (req.path.startsWith("/trpc") || req.path.startsWith("/health")) return;
+    res.sendFile(path2.join(distPath, "index.html"));
   });
 }
-process.on("uncaughtException", (err) => {
-  console.error("[CRITICAL] Uncaught Exception:", err);
-});
-process.on("unhandledRejection", (reason) => {
-  console.error("[CRITICAL] Unhandled Rejection:", reason);
-});
+async function startServer() {
+  poolConnection.query("SELECT 1").then(() => {
+    console.log("[DB] Connection verified.");
+  }).catch((err) => console.error("[DB] Connection error:", err));
+  app.listen(port, "0.0.0.0", () => {
+    console.log(`[SYS] \u{1F680} Server ONLINE at port ${port}`);
+    console.log(`[SYS]    BUILD_SIG: 04.01.H_NUCLEAR_V8`);
+  });
+}
 startServer();
