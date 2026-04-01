@@ -156,4 +156,29 @@ export const examRouter = router({
         .from(exams)
         .orderBy(exams.school, exams.level);
     }),
+
+  /** Get questions the user HAS FAILED before for "Anti-Failure Zone" */
+  getFailedQuestions: protectedProcedure
+    .input(z.object({ userId: z.string(), limit: z.number().min(1).max(50).default(30) }))
+    .query(async ({ input }) => {
+      // Find questions where isCorrect was false for this user
+      return await db.select({
+        id: examQuestions.id,
+        question: examQuestions.question,
+        options: examQuestions.options,
+        correctOption: examQuestions.correctOption,
+        areaId: examQuestions.areaId,
+        difficulty: examQuestions.difficulty,
+        schoolType: examQuestions.schoolType,
+      })
+      .from(attemptAnswers)
+      .innerJoin(examQuestions, eq(attemptAnswers.questionId, examQuestions.id))
+      .innerJoin(examAttempts, eq(attemptAnswers.attemptId, examAttempts.id))
+      .where(and(
+        eq(examAttempts.userId, input.userId),
+        eq(attemptAnswers.isCorrect, false)
+      ))
+      .groupBy(examQuestions.id) // Get unique failed questions
+      .limit(input.limit);
+    }),
 });

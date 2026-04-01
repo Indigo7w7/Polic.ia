@@ -10,6 +10,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { Card, CardContent } from '../components/ui/Card';
 
+import { useExamManager } from '../hooks/useExamManager';
 import { type inferRouterOutputs } from '@trpc/server';
 import { type AppRouter } from '../../backend/server/routers';
 
@@ -40,6 +41,8 @@ export const LearningGallery: React.FC = () => {
     { areaId: selectedAreaId || 0, school: modalidad_postulacion || 'BOTH' },
     { enabled: !!selectedAreaId, staleTime: 1000 * 60 * 5 }
   );
+  const { startAreaPractice, startingExam } = useExamManager();
+  const selectedArea = areasQuery.data?.find(a => a.id === selectedAreaId);
 
   const filteredAreas = areasQuery.data?.filter(area => 
     area.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -193,12 +196,24 @@ export const LearningGallery: React.FC = () => {
                   <ChevronRight className="w-5 h-5 text-blue-400" />
                   Contenido Disponible
                 </h2>
-                {!isPremium && (
-                  <div className="flex items-center gap-2 px-4 py-2 bg-amber-500/10 border border-amber-500/20 rounded-full">
-                    <Zap className="w-4 h-4 text-amber-400 fill-current" />
-                    <span className="text-[10px] font-black text-amber-400 uppercase tracking-widest underline cursor-pointer" onClick={() => navigate('/yape-checkout')}>Mejorar a PRO</span>
-                  </div>
-                )}
+                <div className="flex items-center gap-3">
+                  {selectedAreaId && (
+                    <button
+                      onClick={() => startAreaPractice(selectedAreaId, selectedArea?.name || 'Tema')}
+                      disabled={!!startingExam}
+                      className="px-6 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-lg shadow-emerald-900/20 flex items-center gap-2 disabled:opacity-50"
+                    >
+                      <Zap className="w-4 h-4 fill-current" />
+                      {startingExam === `area-${selectedAreaId}` ? 'Cargando...' : 'Practicar este Tema'}
+                    </button>
+                  )}
+                  {!isPremium && (
+                    <div className="flex items-center gap-2 px-4 py-2 bg-amber-500/10 border border-amber-500/20 rounded-full">
+                      <Zap className="w-4 h-4 text-amber-400 fill-current" />
+                      <span className="text-[10px] font-black text-amber-400 uppercase tracking-widest underline cursor-pointer" onClick={() => navigate('/yape-checkout')}>Mejorar a PRO</span>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

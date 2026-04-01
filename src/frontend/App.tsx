@@ -20,6 +20,8 @@ import { ProgressAudit } from './views/ProgressAudit';
 import { Profile } from './views/Profile';
 import { Login } from './views/Login';
 import { SchoolSelector } from './views/SchoolSelector';
+import { Reentrenamiento } from './views/Reentrenamiento';
+import { EntrevistaIA } from './views/EntrevistaIA';
 import { RequireAuth } from './components/common/RequireAuth';
 import { RequireAdmin } from './components/common/RequireAdmin';
 import { LeadMagnet } from './views/LeadMagnet';
@@ -229,6 +231,8 @@ function AppContent() {
         <Route path="/simulador" element={<RequireAuth><Simulador /></RequireAuth>} />
         <Route path="/galeria" element={<RequireAuth><LearningGallery /></RequireAuth>} />
         <Route path="/ranking" element={<RequireAuth><Ranking /></RequireAuth>} />
+        <Route path="/reentrenamiento" element={<RequireAuth><Reentrenamiento /></RequireAuth>} />
+        <Route path="/entrevista" element={<RequireAuth><EntrevistaIA /></RequireAuth>} />
 
         {/* Protected: Premium only */}
         <Route path="/poligono" element={<RequireAuth><Flashcards /></RequireAuth>} />

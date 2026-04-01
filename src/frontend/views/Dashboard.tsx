@@ -7,7 +7,7 @@ import {
   Shield, Trophy, Lock, LogOut, Zap, BrainCircuit, History,
   ChevronRight, FileText, Clock, ShieldAlert, Play,
   Brain, Target, ExternalLink, TrendingUp, CheckCircle2, BarChart3,
-  GraduationCap, Unlock, Star, BookOpen, Sparkles, Megaphone
+  GraduationCap, Unlock, Star, BookOpen, Sparkles, Megaphone, RotateCcw
 } from 'lucide-react';
 import { trpc } from '../../shared/utils/trpc';
 import { useExamStore } from '../store/useExamStore';
@@ -24,6 +24,7 @@ import {
   PolarRadiusAxis, 
   ResponsiveContainer 
 } from 'recharts';
+import { getMilitaryRank, getRankColor } from '../utils/ranks';
 import { isExamUnlocked, type ExamLevel } from '../../database/data/examenes_config';
 
 const ResourceButton: React.FC<{ title: string; url: string }> = ({ title, url }) => (
@@ -48,7 +49,7 @@ interface Metrics {
 }
 
 export const Dashboard: React.FC = () => {
-  const { uid, role, isPremiumActive, name, photoURL, modalidad_postulacion, examProgress } = useUserStore();
+  const { uid, role, isPremiumActive, name, photoURL, modalidad_postulacion, examProgress, honorPoints } = useUserStore();
   const navigate = useNavigate();
   const isPremium = isPremiumActive();
 
@@ -94,10 +95,13 @@ export const Dashboard: React.FC = () => {
 
   /* ── Personalized welcome ── */
   const firstName = name === 'Invitado' ? 'Postulante' : name.split(' ')[0];
+  const currentRank = getMilitaryRank(honorPoints, modalidad_postulacion);
+  const rankStyle = getRankColor(honorPoints);
+
   const welcomeTitle = modalidad_postulacion === 'EO'
-    ? `¡Adelante, Futuro Cadete ${firstName}!`
+    ? `¡Adelante, ${currentRank} ${firstName}!`
     : modalidad_postulacion === 'EESTP'
-      ? `¡Vamos con todo, Futuro Alumno PNP ${firstName}!`
+      ? `¡Vamos con todo, ${currentRank} PNP ${firstName}!`
       : `Modo Explorador: ${firstName}`;
 
   /* ── Render a school track section ── */
@@ -150,30 +154,47 @@ export const Dashboard: React.FC = () => {
                 {progress?.passed ? <CheckCircle2 className="w-6 h-6" /> : isLocked || needsPreviousPass ? <Lock className="w-5 h-5" /> : <Play className="w-5 h-5 fill-current" />}
               </div>
 
-              {/* Info */}
+              {/* Text content */}
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-0.5">
-                  <h3 className={`font-black text-base ${unlocked ? 'text-white' : 'text-slate-400'}`}>{level.title || `Nivel ${level.level}`}</h3>
-                  {level.isDemo && <span className="bg-blue-500/20 text-blue-400 border border-blue-500/30 px-1.5 py-0.5 rounded text-[8px] font-black uppercase">GRATIS</span>}
+                <div className="flex items-center gap-2 mb-1">
+                  <h3 className={`text-base font-black truncate ${unlocked ? 'text-white' : 'text-slate-500'}`}>
+                    NIVEL {level.level.toString().padStart(2, '0')}: {level.title}
+                  </h3>
+                  {level.isDemo && (
+                     <span className="px-2 py-0.5 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded text-[9px] font-black uppercase">Demo Gratuita</span>
+                  )}
                 </div>
-                <p className={`text-xs ${unlocked ? 'text-white/60' : 'text-slate-600'}`}>
-                  {`Simulacro completo para ${level.school} · Nivel ${level.level.toString().padStart(2, '0')}`}
-                </p>
-                {progress && (
-                  <div className="flex items-center gap-2 mt-1">
-                    <div className="h-1.5 flex-1 bg-black/20 rounded-full overflow-hidden">
-                      <div className={`h-full rounded-full ${progress.passed ? 'bg-emerald-400' : 'bg-amber-400'}`} style={{ width: `${Math.min(progress.score * 100, 100)}%` }} />
-                    </div>
-                    <span className={`text-[10px] font-black ${progress.passed ? 'text-emerald-400' : 'text-amber-400'}`}>
-                      {Math.round(progress.score * 100)}%
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-1">
+                    <FileText size={12} className={unlocked ? 'text-white/60' : 'text-slate-700'} />
+                    <span className={`text-[10px] font-bold uppercase tracking-wider ${unlocked ? 'text-white/60' : 'text-slate-700'}`}>
+                      {level.totalPreguntas} Reactivos
                     </span>
                   </div>
-                )}
+                  <div className="flex items-center gap-1">
+                    <Clock size={12} className={unlocked ? 'text-white/60' : 'text-slate-700'} />
+                    <span className={`text-[10px] font-bold uppercase tracking-wider ${unlocked ? 'text-white/60' : 'text-slate-700'}`}>
+                      {level.tiempoLimite} Minutos
+                    </span>
+                  </div>
+                </div>
               </div>
 
-              {/* Arrow */}
-              <ChevronRight className={`w-5 h-5 shrink-0 transition-all ${unlocked ? 'text-white/40 group-hover:text-white group-hover:translate-x-1' : 'text-slate-700'}`} />
+              {/* Action Button */}
+              {!isLocked && !needsPreviousPass && (
+                <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                   <ChevronRight className="w-5 h-5 text-white" />
+                </div>
+              )}
             </div>
+
+            {/* Background elements */}
+            {unlocked && (
+              <>
+                <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -mr-16 -mt-16 transition-transform group-hover:scale-150 duration-500" />
+                <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/5 rounded-full -ml-12 -mb-12 transition-transform group-hover:scale-150 duration-500" />
+              </>
+            )}
           </motion.button>
         );
       })}
@@ -181,70 +202,115 @@ export const Dashboard: React.FC = () => {
   );
 
   return (
-    <div className="min-h-screen bg-[#020617] text-[#f8fafc] font-mono">
-      <div className="fixed inset-0 opacity-[0.015] pointer-events-none" style={{
-        backgroundImage: `linear-gradient(#2563eb 1px, transparent 1px), linear-gradient(90deg, #2563eb 1px, transparent 1px)`,
-        backgroundSize: '80px 80px'
-      }} />
+    <div className="min-h-screen bg-[#020617] text-slate-200 selection:bg-blue-500/30">
+      <Header />
+      
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+        
+        {/* ── BROADCAST ALERT ── */}
+        <AnimatePresence>
+          {broadcastQuery.data && (
+            <motion.div 
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="overflow-hidden"
+            >
+              <div className="flex items-center gap-3 p-4 bg-red-950/20 border border-red-500/30 rounded-2xl mb-8 relative overflow-hidden group">
+                <div className="absolute inset-0 bg-red-500/5 animate-pulse" />
+                <div className="relative z-10 w-10 h-10 bg-red-500/10 rounded-xl flex items-center justify-center shrink-0">
+                  <Megaphone className="w-5 h-5 text-red-500 animate-bounce" />
+                </div>
+                <div className="relative z-10 flex-1">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-red-400">Mensaje del Mando Central</span>
+                  <p className="text-sm font-bold text-red-100 italic">"{broadcastQuery.data.message}"</p>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-      <div className="relative p-4 md:p-8">
-        {/* Header */}
-        <Header showSchoolSelector={true} />
-
-        <main className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* LEFT COLUMN */}
+        {/* ── PROFILE & METRICS ── */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          
+          {/* Welcome and Summary */}
           <div className="lg:col-span-8 space-y-6">
-            {!modalidad_postulacion && role !== 'admin' && (
-              <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="p-4 bg-blue-600/10 border border-blue-500/30 rounded-2xl flex items-center gap-4">
-                <div className="p-3 bg-blue-600/20 rounded-xl"><Sparkles className="w-5 h-5 text-blue-400" /></div>
-                <div className="flex-1">
-                  <h3 className="text-sm font-black uppercase tracking-widest text-blue-400">Objetivo por Definir</h3>
-                  <p className="text-xs text-slate-400">Estás viendo contenido de Oficiales y Especialistas. Define tu escuela para un entrenamiento enfocado.</p>
-                </div>
-                <Button onClick={() => navigate('/seleccionar-escuela')} variant="outline" className="text-[9px] border-blue-500/40 text-blue-400 px-3 py-1.5 uppercase font-black">Definir Éxito</Button>
-              </motion.div>
-            )}
-
-            {broadcastQuery.data && (
-              <motion.div 
-                initial={{ opacity: 0, y: -20 }} 
-                animate={{ opacity: 1, y: 0 }}
-                className={`flex items-start gap-4 p-4 rounded-xl border relative overflow-hidden shadow-2xl ${
-                  broadcastQuery.data.type === 'WARNING' 
-                    ? 'bg-red-950/80 border-red-500/50 text-red-100 shadow-[0_0_20px_rgba(239,68,68,0.2)]'
-                    : broadcastQuery.data.type === 'EVENT'
-                    ? 'bg-amber-950/80 border-amber-500/50 text-amber-100 shadow-[0_0_20px_rgba(245,158,11,0.2)]'
-                    : 'bg-indigo-950/80 border-indigo-500/50 text-indigo-100 shadow-[0_0_20px_rgba(99,102,241,0.2)]'
-                }`}
-              >
-                <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-transparent via-white/20 to-transparent" />
-                <Megaphone className={`w-8 h-8 shrink-0 ${
-                  broadcastQuery.data.type === 'WARNING' ? 'text-red-500 animate-pulse' : 
-                  broadcastQuery.data.type === 'EVENT' ? 'text-amber-500 animate-bounce' : 'text-indigo-400'
-                }`} />
-                <div className="flex-1">
-                  <h3 className="font-black tracking-widest uppercase text-sm mb-1">{broadcastQuery.data.title}</h3>
-                  <p className="text-sm font-medium leading-relaxed opacity-90">{broadcastQuery.data.message}</p>
-                </div>
-              </motion.div>
-            )}
-
-            {/* Metrics row - Renderizado compacto para reducir densidad */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-              {[
-                { icon: <BrainCircuit className="w-4 h-4 text-cyan-400" />, label: 'Repasos', value: metricsLoading ? '—' : metrics.leitnerCount.toString() },
-                { icon: <Trophy className="w-4 h-4 text-amber-400" />, label: 'Récord', value: metricsLoading ? '—' : `${metrics.bestScore}%` },
-                { icon: <BarChart3 className="w-4 h-4 text-emerald-400" />, label: 'Promedio', value: metricsLoading ? '—' : `${metrics.avgScore}%` },
-                { icon: <Clock className="w-4 h-4 text-purple-400" />, label: 'Última vez', value: metricsLoading ? '—' : (metrics.lastExamDate || '--') },
-              ].map((m, i) => (
-                <motion.div key={i} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.08 }}>
-                  <div className="bg-slate-900/60 border border-slate-800/80 rounded-xl p-3 flex items-center gap-3 hover:bg-slate-800 transition-colors">
-                    <div className="p-2 bg-slate-950/50 rounded-lg shadow-inner">{m.icon}</div>
-                    <div>
-                      <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">{m.label}</p>
-                      <p className="text-sm font-bold text-slate-200 leading-none mt-1">{m.value}</p>
+            <div className="flex flex-col md:flex-row md:items-center gap-6 p-6 bg-slate-900/40 border border-slate-800 rounded-3xl relative overflow-hidden">
+               <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/5 rounded-full blur-[80px]" />
+               
+               <div className="relative shrink-0 flex flex-col items-center gap-2">
+                <div className="w-24 h-24 rounded-full border-2 border-blue-500/30 p-1.5 bg-slate-900 shadow-2xl relative">
+                  {photoURL ? (
+                    <img src={photoURL} alt={name} className="w-full h-full rounded-full object-cover grayscale-[0.3]" />
+                  ) : (
+                    <div className="w-full h-full rounded-full bg-slate-800 flex items-center justify-center text-slate-500">
+                      <Shield size={40} />
                     </div>
+                  )}
+                  {isPremium && (
+                    <div className="absolute -bottom-1 -right-1 w-8 h-8 bg-amber-500 rounded-full border-4 border-slate-900 flex items-center justify-center shadow-lg">
+                      <Star className="w-4 h-4 text-white fill-current" />
+                    </div>
+                  )}
+                </div>
+                <div className="flex flex-col items-center">
+                  <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Mérito Total</span>
+                  <div className="flex items-center gap-1 text-amber-500">
+                    <Trophy className="w-3.5 h-3.5" />
+                    <span className="text-sm font-bold">{userStats.data?.meritPoints || 0}</span>
                   </div>
+                </div>
+              </div>
+
+              <div className="flex-1 text-center md:text-left">
+                <div className="flex flex-col md:flex-row md:items-center gap-3">
+                  <h1 className="text-2xl font-black text-white uppercase tracking-tighter sm:text-3xl">
+                    {welcomeTitle}
+                  </h1>
+                  <div className={`px-3 py-1 border rounded-lg text-[10px] font-black uppercase tracking-widest inline-block ${rankStyle}`}>
+                     {currentRank}
+                  </div>
+                </div>
+                <p className="text-sm text-slate-400 mt-1 max-w-[500px]">
+                  {isPremium 
+                    ? "Unidad de Élite - Rango PRO [Acceso Total]"
+                    : "Unidad en Entrenamiento - Rango FREE [Acceso Limitado]"
+                  }
+                </p>
+                <div className="mt-4 flex flex-wrap justify-center md:justify-start gap-4">
+                  {[
+                    { label: 'Exámenes', val: metrics.examCount, icon: <FileText size={12}/> },
+                    { label: 'Promedio', val: `${metrics.avgScore}%`, icon: <TrendingUp size={12}/> },
+                    { label: 'Flashcards', val: metrics.leitnerCount, icon: <Brain size={12}/> }
+                  ].map(m => (
+                    <div key={m.label} className="flex items-center gap-2 px-3 py-1.5 bg-slate-800/40 rounded-full border border-slate-700/50">
+                      <span className="text-blue-400">{m.icon}</span>
+                      <span className="text-[11px] font-black uppercase text-slate-300">{m.val} <span className="text-slate-600 ml-1">{m.label}</span></span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              {[
+                { label: 'Mejor Nota', val: `${metrics.bestScore}%`, icon: <Trophy className="text-amber-500" /> },
+                { label: 'Último Tes', val: metrics.lastExamDate || 'N/A', icon: <Clock className="text-blue-500" /> },
+                { label: 'Leitner', val: metrics.leitnerCount, icon: <BrainCircuit className="text-purple-500" /> },
+                { label: 'Puntos Honor', val: userStats.data?.honorPoints || 0, icon: <Star className="text-emerald-500" /> },
+              ].map((stat, i) => (
+                <motion.div 
+                  key={stat.label} 
+                  initial={{ opacity: 0, y: 10 }} 
+                  animate={{ opacity: 1, y: 0 }} 
+                  transition={{ delay: 0.1 * i }}
+                  className="bg-slate-900/40 border border-slate-800 p-4 rounded-2xl hover:border-slate-700 transition-all group"
+                >
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="group-hover:scale-110 transition-transform">{stat.icon}</div>
+                    <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">{stat.label}</span>
+                  </div>
+                  <div className="text-xl font-black text-white group-hover:text-blue-400 transition-colors uppercase tracking-tight">{stat.val}</div>
                 </motion.div>
               ))}
             </div>
@@ -330,253 +396,120 @@ export const Dashboard: React.FC = () => {
                       Desbloquea simulacros completos de 100 preguntas, <span className="text-white font-medium">Polígono Cognitivo Leitner</span>, y más.
                     </p>
                   </div>
-                  <button onClick={() => navigate('/yape-checkout')} className="shrink-0 flex items-center gap-1 text-amber-400 text-xs font-black uppercase tracking-widest hover:underline">
-                    Desbloquear <ChevronRight className="w-3 h-3" />
-                  </button>
+                  <Button variant="primary" className="bg-amber-600 hover:bg-amber-500 text-slate-900 border-none px-6" onClick={() => navigate('/yape-checkout')}>Mejorar Ahora</Button>
                 </div>
               </motion.div>
             )}
 
-            {/* ── MISIONES DE CAMPO PER SCHOOL ── */}
-            {levelsQuery.isLoading ? (
-              <div className="py-12 flex flex-col items-center gap-4">
-                <Shield className="w-8 h-8 animate-pulse text-cyan-500" />
-                <p className="text-[10px] uppercase font-black tracking-widest text-cyan-500/70">Sincronizando Radar de Mando...</p>
-              </div>
-            ) : (
-              <>
-                {showEO && renderExamTrack(
-                  (levelsQuery.data as ExamLevel[] || []).filter(l => l.school === 'EO'),
-                  'Escuela de Oficiales (EO-PNP)',
-                  <Shield className="w-3 h-3 text-cyan-400" />,
-                  'from-cyan-900/80 to-blue-900/80 border-cyan-500/30',
-                  'cyan',
-                )}
-                {showEESTP && renderExamTrack(
-                  (levelsQuery.data as ExamLevel[] || []).filter(l => l.school === 'EESTP'),
-                  'Escuela Técnica (EESTP-PNP)',
-                  <GraduationCap className="w-3 h-3 text-emerald-400" />,
-                  'from-emerald-600/80 to-teal-700/80',
-                  'emerald',
-                )}
-              </>
-            )}
+          </div>
 
-            {/* No school selected prompt */}
-            {!isFree && !modalidad_postulacion && role !== 'admin' && (
-              <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
-                <button
-                  onClick={() => navigate('/seleccionar-escuela')}
-                  className="w-full bg-gradient-to-r from-blue-600 to-emerald-600 p-6 rounded-2xl text-left group hover:shadow-xl transition-all"
-                >
-                  <div className="flex items-center gap-4">
-                    <div className="p-3 bg-white/10 rounded-xl"><Star className="w-7 h-7 text-white" /></div>
-                    <div className="flex-1">
-                      <h3 className="text-xl font-black mb-1">Elige tu Escuela</h3>
-                      <p className="text-white/70 text-sm">Selecciona si postulas a Oficiales o a la Escuela Técnica para personalizar tu entrenamiento.</p>
-                    </div>
-                    <ChevronRight className="w-6 h-6 text-white/40 group-hover:text-white group-hover:translate-x-1 transition-all" />
-                  </div>
-                </button>
-              </motion.div>
-            )}
-
-            {/* Official resources */}
-            <div className="space-y-3">
-              <p className="text-[10px] font-black text-slate-600 uppercase tracking-widest flex items-center gap-2">
-                <Shield className="w-3 h-3" /> Comunicados Oficiales PNP
-              </p>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <ResourceButton title="Proceso Admisión EO" url="https://www.gob.pe/institucion/pnp/colecciones/48920-proceso-de-admision-2025-promocion-2026-a-la-escuela-de-oficiales-de-la-policia-nacional-del-peru" />
-                <ResourceButton title="Proceso Admisión EESTP" url="https://www.gob.pe/institucion/pnp/colecciones/49501-proceso-de-admision-extraordinario-2026-a-las-eestp-pnp" />
-              </div>
-            </div>
-
-            {/* Secondary nav */}
-            <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+          {/* Lateral Actions and Quick Access */}
+          <div className="lg:col-span-4 space-y-6">
+            
+            {/* Secondary Nav Grid */}
+            <div className="grid grid-cols-2 gap-3">
               {[
                 { icon: <BookOpen className="w-5 h-5 text-cyan-400" />, label: 'Base de Datos', path: '/galeria', premium: false },
+                { icon: <RotateCcw className="w-5 h-5 text-red-400" />, label: 'Anti-Fallo', path: '/reentrenamiento', premium: true },
+                { icon: <Shield className="w-5 h-5 text-red-500" />, label: 'Entrevista IA', path: '/entrevista', premium: true },
                 { icon: <BrainCircuit className="w-5 h-5 text-purple-400" />, label: 'Polígono', path: '/poligono', premium: true },
                 { icon: <Target className="w-5 h-5 text-emerald-400" />, label: 'Expediente', path: '/progreso', premium: true },
                 { icon: <Trophy className="w-5 h-5 text-amber-400" />, label: 'Rango Élite', path: '/ranking', premium: false },
-                { icon: <TrendingUp className="w-5 h-5 text-cyan-400" />, label: 'Historial', path: '/resultados', premium: false },
-                { icon: <FileText className="w-5 h-5 text-slate-400" />, label: 'Documentos', path: '/cebo', premium: false },
-              ].map((item) => (
+              ].map(item => (
                 <button
                   key={item.label}
                   onClick={() => {
                     if (item.premium && !isPremium) { navigate('/yape-checkout'); return; }
                     navigate(item.path);
                   }}
-                  className="relative flex flex-col items-center justify-center p-4 bg-slate-900/80 border border-slate-800 rounded-xl hover:border-slate-600 transition-all gap-2 group"
+                  className="flex flex-col items-center justify-center p-4 bg-slate-900/40 border border-slate-800 rounded-2xl hover:bg-slate-800/40 hover:scale-[1.03] active:scale-95 transition-all group"
                 >
-                  {item.icon}
-                  <span className="text-[10px] font-bold text-slate-400 group-hover:text-white transition-colors">{item.label}</span>
-                  {item.premium && !isPremium && (
-                    <span className="absolute top-2 right-2 flex items-center gap-1 text-[8px] font-black uppercase tracking-widest text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">
-                      <Lock className="w-2.5 h-2.5" /> PRO
-                    </span>
-                  )}
+                  <div className="mb-2 group-hover:scale-110 transition-transform">{item.icon}</div>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 group-hover:text-white transition-colors">{item.label}</span>
                 </button>
               ))}
             </div>
-          </div>
 
-          {/* RIGHT COLUMN */}
-          <div className="lg:col-span-4 space-y-4">
-            {/* Premium CTA or status */}
-            {!isPremium ? (
-              <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} whileHover={{ scale: 1.02 }} className="relative overflow-hidden group">
-                <div className="absolute inset-0 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-500 opacity-20 group-hover:opacity-30 blur-xl transition-opacity duration-500" />
-                <Card className="bg-slate-900/50 backdrop-blur-xl border-amber-500/30 overflow-hidden relative shadow-2xl">
-                  <div className="absolute -top-24 -right-24 w-48 h-48 bg-amber-500/20 rounded-full blur-3xl pointer-events-none" />
-                  <div className="absolute top-0 right-0 px-3 py-1 bg-gradient-to-l from-amber-500/20 to-transparent text-amber-500 text-[9px] font-black uppercase tracking-widest border-b border-l border-amber-500/20 rounded-bl-lg">Recomendado</div>
-                  <CardContent className="p-6 relative z-10">
-                    <div className="flex items-center gap-2 text-amber-500 mb-3">
-                      <Trophy className="w-5 h-5 drop-shadow-md" />
-                      <div className="text-[10px] font-black uppercase tracking-widest drop-shadow-md">Pase de Ingreso Seguro</div>
-                    </div>
-                    <div className="flex items-baseline gap-1 mb-1">
-                      <span className="text-4xl font-black text-white drop-shadow-lg">S/ 15</span>
-                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">/ pago único</span>
-                    </div>
-                    <p className="text-xs text-amber-200/60 font-medium mb-4">Domina el examen. Sin mensualidades ocultas.</p>
-                    <div className="space-y-3 my-5">
-                      {[
-                        { text: 'Simulacros de 100 Preguntas', highlight: true },
-                        { text: 'Exámenes Desbloqueables', highlight: true },
-                        { text: 'Polígono Cognitivo Leitner', highlight: true },
-                        { text: 'Ranking Nacional Sin Censura', highlight: false },
-                      ].map((b, i) => (
-                        <div key={i} className="flex items-start gap-2 text-sm">
-                          <CheckCircle2 className={`w-4 h-4 shrink-0 mt-0.5 drop-shadow-md ${b.highlight ? 'text-amber-400' : 'text-emerald-400'}`} />
-                          <span className={`${b.highlight ? 'text-amber-100 font-bold' : 'text-slate-300'}`}>{b.text}</span>
-                        </div>
-                      ))}
-                    </div>
-                    <Button
-                      fullWidth
-                      className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-900 font-black tracking-widest uppercase shadow-[0_0_20px_rgba(245,158,11,0.3)] border border-amber-300/50 transition-all hover:shadow-[0_0_30px_rgba(245,158,11,0.5)] py-6 text-xs"
-                      onClick={() => navigate('/yape-checkout')}
-                    >
-                      Desbloquear Poder PRO
-                    </Button>
-                    <div className="flex items-center justify-center gap-2 mt-4 text-[9px] text-slate-500 uppercase tracking-widest font-bold">
-                      <Shield className="w-3 h-3 text-slate-600" /> Transacción 100% Segura
-                    </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            ) : (
-              <Card className="bg-emerald-950/20 border-emerald-500/20 overflow-hidden relative">
-                <div className="absolute top-0 right-0 p-2 opacity-20"><Sparkles className="w-6 h-6 text-emerald-400" /></div>
-                <CardContent className="p-5">
-                  <div className="flex items-center gap-3 mb-3">
-                    <CheckCircle2 className="w-8 h-8 text-emerald-400 shrink-0" />
-                    <div>
-                      <p className="font-black text-emerald-400 text-sm">Premium Activo</p>
-                      <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest">Acceso Táctico Ilimitado</p>
-                    </div>
-                  </div>
-                  {useUserStore.getState().fecha_expiracion_premium && (
-                    <div className="bg-emerald-500/10 rounded-lg p-3 border border-emerald-500/20">
-                      <p className="text-[10px] text-emerald-400 font-black uppercase tracking-widest mb-1">Estado de Membresía</p>
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-slate-300 font-medium">Vence en:</span>
-                        <span className="text-xs text-white font-bold">
-                          {Math.max(0, Math.ceil((new Date(useUserStore.getState().fecha_expiracion_premium!).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))} días
-                        </span>
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Mini ranking preview */}
-            <Card className="bg-slate-900/80 border-slate-800 relative overflow-hidden">
-              <CardHeader className="border-b border-slate-800 pb-3">
-                <CardTitle className="text-sm flex items-center justify-between">
-                  <span className="flex items-center gap-2 text-slate-400 uppercase tracking-widest text-[10px] font-black">
-                    <Trophy className="w-4 h-4 text-amber-400" /> Ranking Nacional
-                  </span>
-                  <button onClick={() => navigate('/ranking')} className="text-[10px] text-blue-400 hover:text-blue-300 font-bold uppercase tracking-wider flex items-center gap-1">
-                    Ver todo <ChevronRight className="w-3 h-3" />
-                  </button>
+            {/* Resources Section */}
+            <Card className="bg-slate-900/40 border-slate-800">
+              <CardHeader className="py-4 border-b border-slate-800/50">
+                <CardTitle className="text-xs font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-amber-400" /> Material Estratégico
                 </CardTitle>
               </CardHeader>
-              <CardContent className="p-0">
-                {trpc.user.getRanking.useQuery().data?.slice(0, 3).map((user, idx) => (
-                  <div key={user.uid} className="flex items-center gap-3 px-4 py-3 border-b border-slate-800/50 last:border-0 group hover:bg-white/5 transition-colors">
-                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-black ${
-                      idx === 0 ? 'bg-yellow-500/20 text-yellow-400' :
-                      idx === 1 ? 'bg-slate-300/20 text-slate-300' :
-                      'bg-amber-600/20 text-amber-600'
-                    }`}>
-                      {idx === 0 ? '🥇' : idx === 1 ? '🥈' : '🥉'}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                       <div className="text-sm font-bold text-slate-200 truncate group-hover:text-white">{user.name || 'Postulante'}</div>
-                       <div className="text-[9px] text-slate-500 uppercase font-black">Máximo Puntaje</div>
-                    </div>
-                    <div className="text-sm font-black text-blue-400 font-mono italic">{user.bestScore.toFixed(0)}%</div>
-                  </div>
-                ))}
-                {!isPremium && (
-                  <div className="p-4 bg-black/20 text-center">
-                    <button onClick={() => navigate('/yape-checkout')} className="text-[9px] text-amber-400 font-black uppercase tracking-wider hover:underline flex items-center gap-1 mx-auto">
-                      <Lock className="w-2.5 h-2.5" /> Desbloquear Ranking de Élite
-                    </button>
-                  </div>
-                )}
+              <CardContent className="p-4 space-y-3">
+                <ResourceButton title="Prospecto de Admisión 2025" url="https://policia.ia/manuales/prospecto-2025.pdf" />
+                <ResourceButton title="Tabla de Talla y Peso" url="https://policia.ia/manuales/requisitos-fisicos.pdf" />
+                <ResourceButton title="Guía de Doctrina Policial" url="https://policia.ia/manuales/doctrina-nacional.pdf" />
               </CardContent>
             </Card>
 
-            {/* Ad Panel - HIDDEN FOR PRO */}
-            {!isPremium && (
-              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}>
-                <Card className="bg-gradient-to-br from-indigo-900/40 to-slate-900/90 border-indigo-500/30 overflow-hidden group cursor-pointer hover:border-indigo-400 transition-all">
-                  <CardContent className="p-4 relative">
-                    <div className="absolute -right-8 -bottom-8 w-24 h-24 bg-indigo-500/10 rounded-full blur-2xl group-hover:bg-indigo-500/20 transition-all" />
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-indigo-500/20 rounded-lg text-indigo-400">
-                        <Sparkles className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <p className="text-[10px] font-black uppercase tracking-widest text-indigo-400 mb-0.5">Próximo Evento</p>
-                        <h4 className="text-sm font-bold text-white leading-tight">Mega Simulacro Presencial 2025</h4>
-                      </div>
-                    </div>
-                    <div className="mt-3 flex items-center justify-between text-[10px]">
-                      <span className="text-slate-400 font-medium">Sede Lima - 15 de Abril</span>
-                      <span className="text-indigo-400 font-black uppercase tracking-tighter group-hover:translate-x-1 transition-transform inline-block">Ver detalles →</span>
-                    </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            )}
+            {/* Support section */}
+            <div className="p-6 bg-gradient-to-br from-slate-900 to-slate-800 border border-slate-700 rounded-3xl text-center">
+              <div className="w-12 h-12 bg-blue-500/10 rounded-full flex items-center justify-center mx-auto mb-4 border border-blue-500/20">
+                <Shield className="text-blue-400 w-6 h-6" />
+              </div>
+              <h3 className="text-sm font-black uppercase tracking-widest mb-1 text-white">¿Necesitas Ayuda?</h3>
+              <p className="text-xs text-slate-400 mb-4">Nuestro equipo técnico está listo para asistirte en tu preparación.</p>
+              <Button variant="outline" className="w-full text-xs py-2 border-slate-600 hover:bg-white hover:text-slate-900 transition-all font-black uppercase tracking-widest">
+                Contactar Soporte
+              </Button>
+            </div>
           </div>
-        </main>
+        </div>
 
-        {/* Footer */}
-        <footer className="max-w-7xl mx-auto mt-12 pt-6 border-t border-slate-800/50 flex flex-col md:flex-row justify-between items-center gap-4 text-slate-600 text-xs text-center md:text-left">
-          <p>© {new Date().getFullYear()} POLIC.ia · Sistema Táctico PNP</p>
-          <div className="flex items-center gap-6">
-            <button onClick={() => navigate('/perfil')} className="hover:text-blue-400 transition-colors uppercase tracking-widest font-black text-[10px]">Expediente</button>
-            <button onClick={() => navigate('/ranking')} className="hover:text-blue-400 transition-colors uppercase tracking-widest font-black text-[10px]">Escalafón</button>
-            {role === 'admin' ? (
-              <button
-                onClick={() => navigate('/admin')}
-                className="flex items-center gap-2 px-4 py-2 bg-red-600/10 border border-red-500/30 text-red-500 rounded-xl hover:bg-red-600/20 transition-all text-[10px] font-black uppercase tracking-wider shadow-lg shadow-red-900/10"
-              >
-                <ShieldAlert className="w-3.5 h-3.5" /> Terminal General (Admin)
-              </button>
-            ) : (
-              <span className="text-[10px] uppercase font-bold tracking-widest opacity-20">Control de Mando v1.2</span>
-            )}
-          </div>
-        </footer>
-      </div>
+        {/* ── EXAM TRACKS ── */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          
+          {/* EO PNP SECTION */}
+          {showEO && (
+            <div className="space-y-6">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-500/10 border border-blue-500/20 rounded-xl text-blue-400">
+                  <GraduationCap className="w-6 h-6" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-black text-white uppercase tracking-tighter">Escuela de Oficiales (EO)</h2>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Ruta de Mando Gubernamental</p>
+                </div>
+              </div>
+              
+              {renderExamTrack(
+                levelsQuery.data?.filter(l => l.school === 'EO') || [],
+                'Fase de Evaluación: Oficiales',
+                <Zap size={14} className="text-amber-500" />,
+                'from-blue-600/20 to-blue-900/10',
+                'border-blue-500/30'
+              )}
+            </div>
+          )}
+
+          {/* EESTP PNP SECTION */}
+          {showEESTP && (
+            <div className="space-y-6">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-400">
+                  <Shield size={6} className="w-6 h-6" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-black text-white uppercase tracking-tighter">Escuela Técnica (EESTP)</h2>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Fuerza Operativa de la Nación</p>
+                </div>
+              </div>
+
+              {renderExamTrack(
+                levelsQuery.data?.filter(l => l.school === 'EESTP') || [],
+                'Fase de Evaluación: Suboficiales',
+                <Shield size={14} className="text-emerald-500" />,
+                'from-emerald-600/20 to-emerald-900/10',
+                'border-emerald-500/30'
+              )}
+            </div>
+          )}
+
+        </div>
+
+      </main>
     </div>
   );
 };

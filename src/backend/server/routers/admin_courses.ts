@@ -1,6 +1,6 @@
 import { router, adminProcedure, protectedProcedure } from '../trpc';
 import { z } from 'zod';
-import { db, courses, courseMaterials } from '../../../database/db';
+import { db, courses, courseMaterials, learningAreas, learningContent } from '../../../database/db';
 import { eq, desc } from 'drizzle-orm';
 
 export const adminCourseRouter = router({
@@ -108,5 +108,77 @@ export const adminCourseRouter = router({
     .mutation(async ({ input }) => {
       await db.delete(courseMaterials).where(eq(courseMaterials.id, input.materialId));
       return { success: true };
+    }),
+
+  /* -------------------------------------------------------------------------- */
+  /*                          SYLLABUS (LEARNING) MGMT                          */
+  /* -------------------------------------------------------------------------- */
+
+  getLearningAreas: adminProcedure.query(async () => {
+    return await db.select().from(learningAreas);
+  }),
+
+  createLearningArea: adminProcedure
+    .input(z.object({ name: z.string(), icon: z.string().optional() }))
+    .mutation(async ({ input }) => {
+      const [res] = await db.insert(learningAreas).values({ name: input.name, icon: input.icon });
+      return { id: res.insertId };
+    }),
+
+  deleteLearningArea: adminProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      await db.delete(learningContent).where(eq(learningContent.areaId, input.id));
+      await db.delete(learningAreas).where(eq(learningAreas.id, input.id));
+      return { success: true };
+    }),
+
+  getLearningContent: adminProcedure
+    .input(z.object({ areaId: z.number() }))
+    .query(async ({ input }) => {
+      return await db.select().from(learningContent).where(eq(learningContent.areaId, input.areaId));
+    }),
+
+  deleteLearningContent: adminProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      await db.delete(learningContent).where(eq(learningContent.id, input.id));
+      return { success: true };
+    }),
+
+  uploadLearningJSON: adminProcedure
+    .input(z.object({
+      areaName: z.string(),
+      content: z.array(z.object({
+        title: z.string(),
+        body: z.string(),
+        level: z.number().default(1),
+        schoolType: z.enum(['EO', 'EESTP', 'BOTH']).default('BOTH')
+      }))
+    }))
+    .mutation(async ({ input }) => {
+      return await db.transaction(async (tx) => {
+        // Find or create area
+        let [area] = await tx.select().from(learningAreas).where(eq(learningAreas.name, input.areaName));
+        let areaId = area?.id;
+
+        if (!areaId) {
+          const [res] = await tx.insert(learningAreas).values({ name: input.areaName });
+          areaId = res.insertId;
+        }
+
+        // Insert units
+        for (const item of input.content) {
+          await tx.insert(learningContent).values({
+            areaId: areaId,
+            title: item.title,
+            body: item.body,
+            level: item.level,
+            schoolType: item.schoolType
+          });
+        }
+
+        return { success: true, areaId, unitsAdded: input.content.length };
+      });
     }),
 });

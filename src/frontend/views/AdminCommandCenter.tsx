@@ -34,6 +34,41 @@ import { auth, storage } from '@/src/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer } from 'recharts';
 
+// ─── CONTENT LIST COMPONENT (For syllabus) ────────────────────
+const ContentList = ({ areaId, onDelete }: { areaId: number, onDelete: () => void }) => {
+  const content = trpc.adminCourses.getLearningContent.useQuery({ areaId });
+  const deleteUnit = trpc.adminCourses.deleteLearningContent.useMutation();
+
+  const handleDelete = async (id: number) => {
+    if (!window.confirm("¿ELIMINAR ESTA UNIDAD?")) return;
+    await deleteUnit.mutateAsync({ id });
+    onDelete();
+  };
+
+  return (
+    <div className="space-y-2">
+      {content.data?.map(unit => (
+        <div key={unit.id} className="p-3 bg-cyan-950/10 border border-cyan-900/30 rounded-lg flex items-center justify-between group">
+          <div className="flex-1 min-w-0">
+            <div className="text-[11px] font-bold text-cyan-400 font-mono truncate">{unit.title}</div>
+            <div className="text-[9px] text-cyan-900 font-mono mt-0.5">
+              TIPO: {unit.schoolType} · NIVEL: {unit.level}
+            </div>
+          </div>
+          <button onClick={() => handleDelete(unit.id)} className="p-1.5 text-red-900 hover:text-red-500 transition-colors">
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      ))}
+      {content.data?.length === 0 && (
+        <div className="text-center py-10 text-cyan-900 text-[10px] uppercase font-mono italic">
+          {'> SIN_CONTENIDO_REGISTRADO'}
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ─── ALERTA ROJA MODAL (Admin preview) ────────────────────────
 const BroadcastModal = ({ broadcast, onClose }: { broadcast: any; onClose: () => void }) => (
   <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
@@ -262,6 +297,13 @@ export const AdminCommandCenter = () => {
   const updateMembership    = trpc.admin.updateUserStatus.useMutation();
   const deleteUser          = trpc.admin.deleteUser.useMutation();
   const sendBroadcast       = trpc.admin.sendBroadcast.useMutation();
+  
+  // Syllabus mutations
+  const createArea          = trpc.adminCourses.createLearningArea.useMutation();
+  const deleteArea          = trpc.adminCourses.deleteLearningArea.useMutation();
+  const uploadSyllabus      = trpc.adminCourses.uploadLearningJSON.useMutation();
+  const deleteContentUnit   = trpc.adminCourses.deleteLearningContent.useMutation();
+
   const utils               = trpc.useUtils();
   const navigate            = useNavigate();
 
@@ -410,6 +452,29 @@ export const AdminCommandCenter = () => {
       setProcessingId(null);
       setDeleteTarget(null);
     }
+  };
+
+  const handleSyllabusUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const content = JSON.parse(e.target?.result as string);
+        if (!content.areaName || !Array.isArray(content.content)) {
+          throw new Error('Formato inválido. Debe tener areaName y un array "content".');
+        }
+        await uploadSyllabus.mutateAsync(content);
+        toast.success(`Temario importado: ${content.areaName}`);
+        utils.adminCourses.getLearningAreas.invalidate();
+      } catch (err: any) {
+        toast.error(`Error de importación: ${err.message}`);
+      } finally {
+        setUploading(false);
+      }
+    };
+    reader.readAsText(file);
   };
 
 
@@ -805,12 +870,81 @@ export const AdminCommandCenter = () => {
         )}
 
 
-        {/* ══════════════════════ COURSES TAB ══════════════════════ */}
+        {/* ══════════════════════ COURSES TAB (SYLLABUS) ══════════════════════ */}
         {activeTab === 'courses' && (
-          <div className="border border-cyan-900/50 bg-black rounded-xl p-8 text-center">
-            <GraduationCap className="w-10 h-10 text-cyan-900 mx-auto mb-3" />
-            <div className="text-[11px] text-cyan-700 uppercase font-mono tracking-widest mb-1">MÓDULO DE CURSOS</div>
-            <div className="text-[10px] text-cyan-900 font-mono italic">Gestión de cursos teóricos disponible via AdminPanel legacy</div>
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+            {/* Areas List (Left) */}
+            <div className="lg:col-span-4 border border-cyan-900/50 bg-black rounded-xl overflow-hidden flex flex-col">
+              <div className="px-4 py-3 border-b border-cyan-900/40 bg-cyan-950/10 flex items-center justify-between">
+                <span className="text-[10px] font-black uppercase tracking-widest text-cyan-500 font-mono">MATERIAS / ÁREAS</span>
+                <div className="flex gap-2">
+                   <input type="file" id="syllabus-json" className="hidden" accept=".json" onChange={handleSyllabusUpload} />
+                   <label htmlFor="syllabus-json" className="p-1.5 bg-cyan-900/40 border border-cyan-700 text-cyan-400 rounded hover:bg-cyan-800 cursor-pointer" title="Importar Temario JSON">
+                     <Upload className="w-3.5 h-3.5" />
+                   </label>
+                   <button 
+                     onClick={async () => {
+                       const name = window.prompt("Nombre de la nueva materia:");
+                       if (name) {
+                         await createArea.mutateAsync({ name });
+                         utils.adminCourses.getLearningAreas.invalidate();
+                       }
+                     }}
+                     className="p-1.5 bg-cyan-900/40 border border-cyan-700 text-cyan-400 rounded hover:bg-cyan-800"
+                   >
+                     <Plus className="w-3.5 h-3.5" />
+                   </button>
+                </div>
+              </div>
+              <div className="divide-y divide-cyan-900/15 overflow-y-auto max-h-[500px]">
+                {trpc.adminCourses.getLearningAreas.useQuery().data?.map(area => (
+                  <div 
+                    key={area.id} 
+                    className={`px-4 py-3 flex items-center justify-between group cursor-pointer transition-colors ${
+                      selectedExamId === area.id ? 'bg-cyan-950/30' : 'hover:bg-cyan-950/10'
+                    }`}
+                    onClick={() => setSelectedExamId(area.id)} // Reusing selectedExamId as selectedAreaId for simplicity in the UI state
+                  >
+                    <div className="flex items-center gap-3">
+                      <BookOpen className={`w-4 h-4 ${selectedExamId === area.id ? 'text-cyan-400' : 'text-cyan-800'}`} />
+                      <span className={`text-[11px] font-bold font-mono ${selectedExamId === area.id ? 'text-cyan-200' : 'text-cyan-600'}`}>
+                        {area.name}
+                      </span>
+                    </div>
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (window.confirm("¿ELIMINAR MATERIA Y TODO SU CONTENIDO?")) {
+                          deleteArea.mutate({ id: area.id });
+                          utils.adminCourses.getLearningAreas.invalidate();
+                        }
+                      }}
+                      className="opacity-0 group-hover:opacity-100 p-1.5 text-red-900 hover:text-red-500 transition-all"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Content Units (Right) */}
+            <div className="lg:col-span-8 border border-cyan-900/50 bg-black rounded-xl overflow-hidden flex flex-col">
+               <div className="px-4 py-3 border-b border-cyan-900/40 bg-cyan-950/10 flex items-center justify-between">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-cyan-500 font-mono">
+                    UNIDADES DE CONTENIDO {selectedExamId ? `#${selectedExamId}` : ''}
+                  </span>
+               </div>
+               <div className="p-4 flex-1 overflow-y-auto max-h-[500px] space-y-3">
+                  {selectedExamId ? (
+                    <ContentList areaId={selectedExamId} onDelete={() => utils.adminCourses.getLearningContent.invalidate()} />
+                  ) : (
+                    <div className="py-20 text-center text-cyan-900 text-[10px] uppercase font-mono italic">
+                      {'> SELECCIONE_UNA_MATERIA_PARA_EDITAR_CONTENIDO'}
+                    </div>
+                  )}
+               </div>
+            </div>
           </div>
         )}
 

@@ -59,5 +59,36 @@ export const useExamManager = () => {
     }
   };
 
-  return { startingExam, startLevel };
+  const startAreaPractice = async (areaId: number, areaName: string) => {
+    setStartingExam(`area-${areaId}`);
+    try {
+      const dbQuestions = await utils.exam.getQuestionsByFilter.fetch({
+        areaId,
+        limit: 20
+      });
+
+      if (!dbQuestions || dbQuestions.length === 0) {
+        toast.error('No hay preguntas disponibles para este tema específico.');
+        return;
+      }
+
+      const formattedQuestions = dbQuestions.map((q) => ({
+        id: q.id.toString(),
+        text: q.question,
+        options: q.options as string[],
+        correctOptionIndex: q.correctOption,
+        justification: "Repasa este tema en la Galería de Cursos.",
+        area: areaName,
+      }));
+
+      useExamStore.getState().iniciarExamen(formattedQuestions);
+      navigate('/simulador', { state: { isPracticeMode: true, areaId } });
+    } catch (err) {
+      toast.error('Error al iniciar práctica por área.');
+    } finally {
+      setStartingExam(null);
+    }
+  };
+
+  return { startingExam, startLevel, startAreaPractice };
 };
