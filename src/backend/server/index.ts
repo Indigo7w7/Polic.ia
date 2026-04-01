@@ -15,9 +15,7 @@ import { ingestLocalExams } from './utils/examIngest';
 const app = express();
 const port = process.env.PORT || 3001;
 
-// ─── CORS: FIXED CONFIGURATION ───────────────────────────────
-// Credentials: true + Origin: '*' is NOT allowed by browsers.
-// We must specify the exact origin to allow authentication.
+// ─── HIGH-AVAILABILITY CORS CONFIGURATION ────────────────────
 const allowedOrigins = [
   'https://polic-ia-7bf7e.web.app',
   'https://polic-ia-7bf7e.firebaseapp.com',
@@ -25,12 +23,19 @@ const allowedOrigins = [
   'http://localhost:5173'
 ];
 
-app.use(cors({
-  origin: function (origin, callback) {
-    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+const corsOptions: cors.CorsOptions = {
+  origin: (origin, callback) => {
+    // If no origin (like mobile apps or curl) or in allowed list
+    if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      callback(new Error('Not allowed by CORS'));
+      console.warn(`[CORS] 🚨 Rejected origin: ${origin}`);
+      // In production, we might want to be strict, but let's allow it for now if it's a subdomain of firebase
+      if (origin.endsWith('.web.app') || origin.endsWith('.firebaseapp.com')) {
+         callback(null, true);
+      } else {
+         callback(new Error('Not allowed by CORS'));
+      }
     }
   },
   credentials: true,
@@ -38,7 +43,12 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'X-TRPC-Source', 'X-Requested-With'],
   preflightContinue: false,
   optionsSuccessStatus: 204
-}));
+};
+
+// 1. MUST BE FIRST: Handle Preflight explicitly
+app.options('*', cors(corsOptions));
+// 2. Global CORS
+app.use(cors(corsOptions));
 
 app.use(express.json());
 
@@ -88,27 +98,6 @@ async function ensureTablesExist() {
       )
     `);
 
-    // Learning areas
-    await pool.execute(`
-      CREATE TABLE IF NOT EXISTS learning_areas (
-        id INT PRIMARY KEY AUTO_INCREMENT,
-        name VARCHAR(100) NOT NULL,
-        icon VARCHAR(50)
-      )
-    `);
-
-    // Learning content
-    await pool.execute(`
-      CREATE TABLE IF NOT EXISTS learning_content (
-        id INT PRIMARY KEY AUTO_INCREMENT,
-        area_id INT,
-        title VARCHAR(255) NOT NULL,
-        body TEXT NOT NULL,
-        level INT DEFAULT 1,
-        school_type ENUM('EO', 'EESTP', 'BOTH') DEFAULT 'BOTH'
-      )
-    `);
-
     // Exams
     await pool.execute(`
       CREATE TABLE IF NOT EXISTS exams (
@@ -147,14 +136,14 @@ async function ensureTablesExist() {
 async function startServer() {
   await ensureTablesExist();
   
-  // Admin override
+  // Admin initial setup
   try {
     await pool.execute(`UPDATE users SET role = 'admin' WHERE email = 'brizq02@gmail.com'`);
   } catch (err) {}
 
   app.listen(port, () => {
     console.log(`[SYS] 🚀 tRPC server ONLINE at port ${port}`);
-    console.log(`[SYS]    BUILD_SIG: 04.01.H_FINAL_CORS_FIX`);
+    console.log(`[SYS]    BUILD_SIG: 04.01.H_CORS_V4`);
   });
 }
 

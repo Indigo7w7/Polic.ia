@@ -670,7 +670,21 @@ export const AdminCommandCenter = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-cyan-900/15">
-                  {filteredUsers.map((user) => {
+                  {usersList.isLoading && (
+                    <tr>
+                      <td colSpan={6} className="px-5 py-14 text-center text-cyan-900 text-[10px] uppercase tracking-[0.5em] font-mono animate-pulse">
+                        &gt; ACCEDIENDO_A_LA_DB...
+                      </td>
+                    </tr>
+                  )}
+                  {usersList.isError && (
+                    <tr>
+                      <td colSpan={6} className="px-5 py-14 text-center text-red-900 text-[10px] uppercase tracking-[0.5em] font-mono">
+                        &gt; ERROR_DE_CONEXION: {usersList.error?.message || 'ACCESO_DENEGADO'}
+                      </td>
+                    </tr>
+                  )}
+                  {!usersList.isLoading && !usersList.isError && filteredUsers.map((user) => {
                     const isOnline = user.lastActive
                       ? Date.now() - new Date(user.lastActive).getTime() < 5 * 60 * 1000
                       : false;
@@ -750,10 +764,10 @@ export const AdminCommandCenter = () => {
                       </tr>
                     );
                   })}
-                  {filteredUsers.length === 0 && (
+                  {!usersList.isLoading && !usersList.isError && filteredUsers.length === 0 && (
                     <tr>
                       <td colSpan={6} className="px-5 py-14 text-center text-cyan-900 text-[10px] uppercase tracking-widest font-mono">
-                        {'> NO_DATA_FOUND'}
+                        {'> NO_DATA_FOUND: REGISTRO_VACIO'}
                       </td>
                     </tr>
                   )}

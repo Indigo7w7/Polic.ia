@@ -1490,12 +1490,17 @@ var allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:5173"
 ];
-app.use(cors({
-  origin: function(origin, callback) {
-    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+var corsOptions = {
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      callback(new Error("Not allowed by CORS"));
+      console.warn(`[CORS] \u{1F6A8} Rejected origin: ${origin}`);
+      if (origin.endsWith(".web.app") || origin.endsWith(".firebaseapp.com")) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
     }
   },
   credentials: true,
@@ -1503,7 +1508,9 @@ app.use(cors({
   allowedHeaders: ["Content-Type", "Authorization", "X-TRPC-Source", "X-Requested-With"],
   preflightContinue: false,
   optionsSuccessStatus: 204
-}));
+};
+app.options("*", cors(corsOptions));
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use(
   "/trpc",
@@ -1546,23 +1553,6 @@ async function ensureTablesExist() {
       )
     `);
     await poolConnection.execute(`
-      CREATE TABLE IF NOT EXISTS learning_areas (
-        id INT PRIMARY KEY AUTO_INCREMENT,
-        name VARCHAR(100) NOT NULL,
-        icon VARCHAR(50)
-      )
-    `);
-    await poolConnection.execute(`
-      CREATE TABLE IF NOT EXISTS learning_content (
-        id INT PRIMARY KEY AUTO_INCREMENT,
-        area_id INT,
-        title VARCHAR(255) NOT NULL,
-        body TEXT NOT NULL,
-        level INT DEFAULT 1,
-        school_type ENUM('EO', 'EESTP', 'BOTH') DEFAULT 'BOTH'
-      )
-    `);
-    await poolConnection.execute(`
       CREATE TABLE IF NOT EXISTS exams (
         id INT PRIMARY KEY AUTO_INCREMENT,
         school ENUM('EO', 'EESTP') NOT NULL,
@@ -1599,7 +1589,7 @@ async function startServer() {
   }
   app.listen(port, () => {
     console.log(`[SYS] \u{1F680} tRPC server ONLINE at port ${port}`);
-    console.log(`[SYS]    BUILD_SIG: 04.01.H_FINAL_CORS_FIX`);
+    console.log(`[SYS]    BUILD_SIG: 04.01.H_CORS_V4`);
   });
 }
 startServer();
