@@ -42,7 +42,20 @@ export const RequireAdmin: React.FC<RequireAdminProps> = ({ children }) => {
 
   if (serverStatus === 'BLOCKED') return <Navigate to="/login" replace />;
   if (!uid) return <Navigate to="/login" replace />;
-  if (isPending && !isSuperAdmin) return <div className="min-h-screen bg-[#060d1a] flex items-center justify-center"><div className="w-8 h-8 rounded-full border-t-2 border-r-2 border-red-500 animate-spin" /></div>;
+
+  if (isPending && !isSuperAdmin) {
+    return (
+      <div className="min-h-screen bg-[#060d1a] flex items-center justify-center">
+        <div className="w-8 h-8 rounded-full border-t-2 border-r-2 border-red-500 animate-spin" />
+      </div>
+    );
+  }
+
+  if (profileQuery.isError && isSuperAdmin) {
+    console.warn('[RequireAdmin] Falló la validación del servidor, pero se permite acceso por Super Admin Bypass.');
+    return <>{children}</>;
+  }
+
   if (serverRole !== 'admin' && !isSuperAdmin) return <Navigate to="/" replace />;
 
   return <>{children}</>;

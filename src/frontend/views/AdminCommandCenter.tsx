@@ -679,8 +679,16 @@ export const AdminCommandCenter = () => {
                   )}
                   {usersList.isError && (
                     <tr>
-                      <td colSpan={6} className="px-5 py-14 text-center text-red-900 text-[10px] uppercase tracking-[0.5em] font-mono">
-                        &gt; ERROR_DE_CONEXION: {usersList.error?.message || 'ACCESO_DENEGADO'}
+                      <td colSpan={6} className="px-5 py-14 text-center">
+                        <div className="text-red-900 text-[10px] uppercase tracking-[0.5em] font-mono mb-4">
+                          &gt; ERROR_DE_CONEXION: {usersList.error?.message || 'ACCESO_DENEGADO'}
+                        </div>
+                        <button 
+                          onClick={() => usersList.refetch()}
+                          className="px-4 py-2 bg-red-950 border border-red-700 text-red-400 rounded hover:bg-red-900 transition-colors text-xs font-mono"
+                        >
+                          REINTENTAR CONEXIÓN
+                        </button>
                       </td>
                     </tr>
                   )}

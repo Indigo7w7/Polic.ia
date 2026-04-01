@@ -193,10 +193,17 @@ function AppContent() {
 
   useEffect(() => {
     const isSuperAdmin = auth.currentUser?.email?.toLowerCase().trim() === 'brizq02@gmail.com';
-    if (profileQuery.status === 'success' || (profileQuery.status === 'error' && isSuperAdmin) || !uid) {
+    
+    if (profileQuery.status === 'success' || !uid) {
       setAuthResolved(true);
+    } else if (profileQuery.status === 'error') {
+      console.error('[APP] Error al cargar el perfil desde el backend:', profileQuery.error);
+      setAuthResolved(true);
+      if (isSuperAdmin) {
+         setUserData({ role: 'admin' });
+      }
     }
-  }, [profileQuery.status, uid]);
+  }, [profileQuery.status, uid, profileQuery.error, setUserData]);
 
   // Periodically update user's lastActive timestamp (Point 3: Every 3 min)
   const updateActivityMutation = trpc.user.updateLastSeen.useMutation();

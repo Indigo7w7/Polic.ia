@@ -21,6 +21,7 @@ function Root() {
       links: [
         httpBatchLink({
           url: apiUrl,
+          methodOverride: 'POST',
           async headers() {
             // Try fresh token first, fall back to stored token
             let token: string | null = localStorage.getItem('authToken');

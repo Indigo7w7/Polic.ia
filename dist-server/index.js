@@ -7,6 +7,7 @@ var __export = (target, all) => {
 // src/backend/server/index.ts
 import dotenv2 from "dotenv";
 import express from "express";
+import cors from "cors";
 import * as trpcExpress from "@trpc/server/adapters/express";
 
 // src/backend/server/trpc.ts
@@ -1481,26 +1482,30 @@ import path2 from "path";
 dotenv2.config();
 var app = express();
 var port = process.env.PORT || 3001;
-app.use((req, res, next) => {
-  const origin = req.headers.origin || "*";
-  if (!req.path.includes("health")) {
-    console.log(`[SYS] ${req.method} ${req.path} | Origin: ${origin}`);
-  }
-  res.setHeader("Access-Control-Allow-Origin", origin);
-  res.setHeader("Access-Control-Allow-Credentials", "true");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-TRPC-Source, X-Requested-With, Cache-Control, Pragma, Expires");
-  res.setHeader("Access-Control-Max-Age", "1728000");
-  if (req.method === "OPTIONS") {
-    return res.status(200).end();
-  }
-  next();
-});
+app.use(cors({
+  origin: [
+    "https://polic-ia-7bf7e.web.app",
+    "https://polic-ia-7bf7e.firebaseapp.com",
+    "http://localhost:5173",
+    "http://localhost:3000"
+  ],
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+    "X-TRPC-Source",
+    "X-Requested-With",
+    "Cache-Control",
+    "Pragma",
+    "Expires"
+  ]
+}));
 app.use(express.json());
 app.get("/health", (req, res) => {
   res.json({
     status: "online",
-    version: "04.01.H_ULTIMATE_V9",
+    version: "04.01.H_OFFICIAL_CORS_V10",
     timestamp: (/* @__PURE__ */ new Date()).toISOString()
   });
 });
@@ -1513,7 +1518,6 @@ app.use(
 );
 var distPath = path2.join(process.cwd(), "dist");
 if (fs2.existsSync(distPath)) {
-  console.log(`[SYS] \u2705 Hosting assets from: ${distPath}`);
   app.use(express.static(distPath));
   app.get("*", (req, res) => {
     if (req.path.startsWith("/trpc") || req.path.startsWith("/health")) {
@@ -1523,11 +1527,10 @@ if (fs2.existsSync(distPath)) {
   });
 }
 function startServer() {
-  poolConnection.query("SELECT 1").then(() => console.log("[DB] Connection verified.")).catch((err) => console.warn("[DB] Warning: Connection delayed or failed, retrying in background...", err.message));
+  poolConnection.query("SELECT 1").catch(() => null);
   app.listen(port, () => {
     console.log(`[SYS] \u{1F680} Server ONLINE at port ${port}`);
-    console.log(`[SYS]    Uptime: ${(/* @__PURE__ */ new Date()).toISOString()}`);
-    console.log(`[SYS]    BUILD_SIG: 04.01.H_ULTIMATE_V9`);
+    console.log(`[SYS]    BUILD_SIG: 04.01.H_OFFICIAL_CORS_V10`);
   });
 }
 process.on("uncaughtException", (e) => console.error("[FATAL] Uncaught:", e));
