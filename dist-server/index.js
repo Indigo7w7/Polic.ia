@@ -1484,24 +1484,11 @@ import path2 from "path";
 dotenv2.config();
 var app = express();
 var port = process.env.PORT || 3001;
-var allowedOrigins = [
-  "https://polic-ia-7bf7e.web.app",
-  "https://polic-ia-7bf7e.firebaseapp.com",
-  "http://localhost:3000",
-  "http://localhost:5173"
-];
 app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      console.warn(`[CORS] Blocked request from: ${origin}`);
-      callback(null, true);
-    }
-  },
+  origin: "*",
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "x-trpc-source"]
+  allowedHeaders: ["Content-Type", "Authorization", "X-TRPC-Source", "X-Requested-With"]
 }));
 app.use(express.json());
 app.use(
@@ -1607,7 +1594,7 @@ async function startServer() {
   }
   app.listen(port, () => {
     console.log(`[SYS] \u{1F680} tRPC server ONLINE at port ${port}`);
-    console.log(`[SYS]    BUILD_SIG: 04.01.H_CORS_FIX`);
+    console.log(`[SYS]    BUILD_SIG: 04.01.H_ULTIMATE_CORS`);
     console.log(`[SYS]    dist/ present: ${fs2.existsSync(distPath)}`);
   });
 }

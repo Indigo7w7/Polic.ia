@@ -15,30 +15,19 @@ import { ingestLocalExams } from './utils/examIngest';
 const app = express();
 const port = process.env.PORT || 3001;
 
-// ─── CORS CONFIGURATION (Production Hardened) ────────────────
-const allowedOrigins = [
-  'https://polic-ia-7bf7e.web.app',
-  'https://polic-ia-7bf7e.firebaseapp.com',
-  'http://localhost:3000',
-  'http://localhost:5173'
-];
-
+// ─── CORS: ULTIMATE FIX ──────────────────────────────────────
+// This wildcard ensures NO preflight blocks from Firebase Hosting
 app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      console.warn(`[CORS] Blocked request from: ${origin}`);
-      callback(null, true); // Allow for now but log it during debug
-    }
-  },
+  origin: '*', 
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-trpc-source']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-TRPC-Source', 'X-Requested-With']
 }));
 
+// Express config
 app.use(express.json());
 
+// tRPC
 app.use(
   '/trpc',
   trpcExpress.createExpressMiddleware({
@@ -51,6 +40,7 @@ app.get('/health', (req, res) => {
   res.send('Server is running and healthy!');
 });
 
+// Static path
 const distPath = path.join(process.cwd(), 'dist');
 if (fs.existsSync(distPath)) {
   console.log(`[SYS] ✅ Serving frontend from ${distPath}`);
@@ -70,7 +60,7 @@ async function ensureTablesExist() {
   try {
     console.log('Ensuring database tables exist...');
     
-    // Users
+    // Core tables
     await pool.execute(`
       CREATE TABLE IF NOT EXISTS users (
         uid VARCHAR(255) PRIMARY KEY,
@@ -160,7 +150,7 @@ async function startServer() {
 
   app.listen(port, () => {
     console.log(`[SYS] 🚀 tRPC server ONLINE at port ${port}`);
-    console.log(`[SYS]    BUILD_SIG: 04.01.H_CORS_FIX`);
+    console.log(`[SYS]    BUILD_SIG: 04.01.H_ULTIMATE_CORS`);
     console.log(`[SYS]    dist/ present: ${fs.existsSync(distPath)}`);
   });
 }
