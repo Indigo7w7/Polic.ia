@@ -2,7 +2,6 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 import express from 'express';
-import cors from 'cors';
 import * as trpcExpress from '@trpc/server/adapters/express';
 import { appRouter } from './routers';
 import { createContext } from './trpc';
@@ -15,40 +14,32 @@ import { ingestLocalExams } from './utils/examIngest';
 const app = express();
 const port = process.env.PORT || 3001;
 
-// ─── HIGH-AVAILABILITY CORS CONFIGURATION ────────────────────
-const allowedOrigins = [
-  'https://polic-ia-7bf7e.web.app',
-  'https://polic-ia-7bf7e.firebaseapp.com',
-  'http://localhost:3000',
-  'http://localhost:5173'
-];
+// ─── MANUAL CORS & PREFLIGHT HANDLING (ULTRA-ROBUST) ──────────
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  const allowedOrigins = [
+    'https://polic-ia-7bf7e.web.app',
+    'https://polic-ia-7bf7e.firebaseapp.com',
+    'http://localhost:3000',
+    'http://localhost:5173'
+  ];
 
-const corsOptions: cors.CorsOptions = {
-  origin: (origin, callback) => {
-    // If no origin (like mobile apps or curl) or in allowed list
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      console.warn(`[CORS] 🚨 Rejected origin: ${origin}`);
-      // In production, we might want to be strict, but let's allow it for now if it's a subdomain of firebase
-      if (origin.endsWith('.web.app') || origin.endsWith('.firebaseapp.com')) {
-         callback(null, true);
-      } else {
-         callback(new Error('Not allowed by CORS'));
-      }
-    }
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-TRPC-Source', 'X-Requested-With'],
-  preflightContinue: false,
-  optionsSuccessStatus: 204
-};
+  if (origin && (allowedOrigins.includes(origin) || origin.endsWith('.web.app'))) {
+    res.header('Access-Control-Allow-Origin', origin);
+  } else if (!origin) {
+    // For non-browser requests
+    res.header('Access-Control-Allow-Origin', '*');
+  }
 
-// 1. MUST BE FIRST: Handle Preflight explicitly
-app.options('*', cors(corsOptions));
-// 2. Global CORS
-app.use(cors(corsOptions));
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-TRPC-Source, X-Requested-With');
+
+  if (req.method === 'OPTIONS') {
+    return res.status(204).send();
+  }
+  next();
+});
 
 app.use(express.json());
 
@@ -61,7 +52,11 @@ app.use(
 );
 
 app.get('/health', (req, res) => {
-  res.send('Server is running and healthy!');
+  res.json({ 
+    status: 'online', 
+    version: '04.01.H_MANUAL_CORS_V5',
+    timestamp: new Date().toISOString()
+  });
 });
 
 const distPath = path.join(process.cwd(), 'dist');
@@ -143,7 +138,7 @@ async function startServer() {
 
   app.listen(port, () => {
     console.log(`[SYS] 🚀 tRPC server ONLINE at port ${port}`);
-    console.log(`[SYS]    BUILD_SIG: 04.01.H_CORS_V4`);
+    console.log(`[SYS]    BUILD_SIG: 04.01.H_MANUAL_CORS_V5`);
   });
 }
 

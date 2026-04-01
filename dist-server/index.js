@@ -7,7 +7,6 @@ var __export = (target, all) => {
 // src/backend/server/index.ts
 import dotenv2 from "dotenv";
 import express from "express";
-import cors from "cors";
 import * as trpcExpress from "@trpc/server/adapters/express";
 
 // src/backend/server/trpc.ts
@@ -1484,33 +1483,27 @@ import path2 from "path";
 dotenv2.config();
 var app = express();
 var port = process.env.PORT || 3001;
-var allowedOrigins = [
-  "https://polic-ia-7bf7e.web.app",
-  "https://polic-ia-7bf7e.firebaseapp.com",
-  "http://localhost:3000",
-  "http://localhost:5173"
-];
-var corsOptions = {
-  origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      console.warn(`[CORS] \u{1F6A8} Rejected origin: ${origin}`);
-      if (origin.endsWith(".web.app") || origin.endsWith(".firebaseapp.com")) {
-        callback(null, true);
-      } else {
-        callback(new Error("Not allowed by CORS"));
-      }
-    }
-  },
-  credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "X-TRPC-Source", "X-Requested-With"],
-  preflightContinue: false,
-  optionsSuccessStatus: 204
-};
-app.options("*", cors(corsOptions));
-app.use(cors(corsOptions));
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  const allowedOrigins = [
+    "https://polic-ia-7bf7e.web.app",
+    "https://polic-ia-7bf7e.firebaseapp.com",
+    "http://localhost:3000",
+    "http://localhost:5173"
+  ];
+  if (origin && (allowedOrigins.includes(origin) || origin.endsWith(".web.app"))) {
+    res.header("Access-Control-Allow-Origin", origin);
+  } else if (!origin) {
+    res.header("Access-Control-Allow-Origin", "*");
+  }
+  res.header("Access-Control-Allow-Credentials", "true");
+  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-TRPC-Source, X-Requested-With");
+  if (req.method === "OPTIONS") {
+    return res.status(204).send();
+  }
+  next();
+});
 app.use(express.json());
 app.use(
   "/trpc",
@@ -1520,7 +1513,11 @@ app.use(
   })
 );
 app.get("/health", (req, res) => {
-  res.send("Server is running and healthy!");
+  res.json({
+    status: "online",
+    version: "04.01.H_MANUAL_CORS_V5",
+    timestamp: (/* @__PURE__ */ new Date()).toISOString()
+  });
 });
 var distPath = path2.join(process.cwd(), "dist");
 if (fs2.existsSync(distPath)) {
@@ -1589,7 +1586,7 @@ async function startServer() {
   }
   app.listen(port, () => {
     console.log(`[SYS] \u{1F680} tRPC server ONLINE at port ${port}`);
-    console.log(`[SYS]    BUILD_SIG: 04.01.H_CORS_V4`);
+    console.log(`[SYS]    BUILD_SIG: 04.01.H_MANUAL_CORS_V5`);
   });
 }
 startServer();
