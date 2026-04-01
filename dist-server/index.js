@@ -1485,20 +1485,17 @@ var app = express();
 var port = process.env.PORT || 3001;
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  const allowedOrigins = [
-    "https://polic-ia-7bf7e.web.app",
-    "https://polic-ia-7bf7e.firebaseapp.com",
-    "http://localhost:3000",
-    "http://localhost:5173"
-  ];
-  if (origin && (allowedOrigins.includes(origin) || origin.endsWith(".web.app"))) {
+  console.log(`[CORS] ${req.method} request from ${origin || "NO_ORIGIN"}`);
+  const isAllowed = !origin || origin.includes("polic-ia-7bf7e") || origin.includes("localhost") || origin.includes("127.0.0.1");
+  if (isAllowed && origin) {
     res.header("Access-Control-Allow-Origin", origin);
   } else if (!origin) {
     res.header("Access-Control-Allow-Origin", "*");
   }
   res.header("Access-Control-Allow-Credentials", "true");
   res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-TRPC-Source, X-Requested-With");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-TRPC-Source, X-Requested-With, Cache-Control, Pragma");
+  res.header("Access-Control-Max-Age", "86400");
   if (req.method === "OPTIONS") {
     return res.status(204).send();
   }
@@ -1515,7 +1512,8 @@ app.use(
 app.get("/health", (req, res) => {
   res.json({
     status: "online",
-    version: "04.01.H_MANUAL_CORS_V5",
+    version: "04.01.H_ATOMIC_CORS_V6",
+    node_env: process.env.NODE_ENV,
     timestamp: (/* @__PURE__ */ new Date()).toISOString()
   });
 });
@@ -1526,7 +1524,7 @@ if (fs2.existsSync(distPath)) {
 }
 async function ensureTablesExist() {
   try {
-    console.log("Ensuring database tables exist...");
+    console.log("[DB] Ensuring database tables exist...");
     await poolConnection.execute(`
       CREATE TABLE IF NOT EXISTS users (
         uid VARCHAR(255) PRIMARY KEY,
@@ -1549,44 +1547,21 @@ async function ensureTablesExist() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
-    await poolConnection.execute(`
-      CREATE TABLE IF NOT EXISTS exams (
-        id INT PRIMARY KEY AUTO_INCREMENT,
-        school ENUM('EO', 'EESTP') NOT NULL,
-        level INT NOT NULL,
-        title VARCHAR(255),
-        is_demo BOOLEAN NOT NULL DEFAULT FALSE,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-    await poolConnection.execute(`
-      CREATE TABLE IF NOT EXISTS exam_questions (
-        id INT PRIMARY KEY AUTO_INCREMENT,
-        exam_id INT,
-        area_id INT,
-        question TEXT NOT NULL,
-        options JSON NOT NULL,
-        correct_option INT NOT NULL,
-        explanation TEXT,
-        difficulty ENUM('EASY', 'MEDIUM', 'HARD') DEFAULT 'MEDIUM',
-        school_type ENUM('EO', 'EESTP', 'BOTH') DEFAULT 'BOTH',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-    console.log("Database verification complete.");
+    console.log("[DB] Core tables verified.");
   } catch (error) {
-    console.error("Database verification FAILED:", error);
+    console.error("[DB] Verification FAILED:", error);
   }
 }
 async function startServer() {
   await ensureTablesExist();
   try {
     await poolConnection.execute(`UPDATE users SET role = 'admin' WHERE email = 'brizq02@gmail.com'`);
+    console.log("[SYS] Root Admin permissions updated.");
   } catch (err) {
   }
   app.listen(port, () => {
     console.log(`[SYS] \u{1F680} tRPC server ONLINE at port ${port}`);
-    console.log(`[SYS]    BUILD_SIG: 04.01.H_MANUAL_CORS_V5`);
+    console.log(`[SYS]    BUILD_SIG: 04.01.H_ATOMIC_CORS_V6`);
   });
 }
 startServer();
