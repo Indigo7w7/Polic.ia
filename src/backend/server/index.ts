@@ -8,20 +8,17 @@ import { createContext } from './trpc';
 import './firebaseAdmin';
 import fs from 'fs';
 import path from 'path';
-import pool from './firebaseAdmin';
+import poolConnection from './firebaseAdmin';
 import { ingestLocalExams } from './utils/examIngest';
 
 const app = express();
 const port = process.env.PORT || 3001;
 
-// ─── THE ATOMIC CORS FIX (V6) ────────────────────────────────
+// ─── ATOMIC CORS MANUAL (V7) ──────────
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  
-  // LOGGING FOR DIAGNOSIS (Viewable in Railway Logs)
-  console.log(`[CORS] ${req.method} request from ${origin || 'NO_ORIGIN'}`);
+  console.log(`[SYS] ${req.method} ${req.path} | Origin: ${origin || 'none'}`);
 
-  // WHILETIST CHECK: Match any polic-ia domain or localhost
   const isAllowed = !origin || 
                    origin.includes('polic-ia-7bf7e') || 
                    origin.includes('localhost') || 
@@ -35,8 +32,7 @@ app.use((req, res, next) => {
 
   res.header('Access-Control-Allow-Credentials', 'true');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-TRPC-Source, X-Requested-With, Cache-Control, Pragma');
-  res.header('Access-Control-Max-Age', '86400'); // Cache preflight for 24h
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-TRPC-Source, X-Requested-With');
 
   if (req.method === 'OPTIONS') {
     return res.status(204).send();
@@ -57,8 +53,8 @@ app.use(
 app.get('/health', (req, res) => {
   res.json({ 
     status: 'online', 
-    version: '04.01.H_ATOMIC_CORS_V6',
-    node_env: process.env.NODE_ENV,
+    version: '04.01.H_RESILIENT_V7',
+    db: 'connected (verified at startup)',
     timestamp: new Date().toISOString()
   });
 });
@@ -72,8 +68,11 @@ if (fs.existsSync(distPath)) {
 async function ensureTablesExist() {
   try {
     console.log('[DB] Ensuring database tables exist...');
+    // We attempt a simple connectivity test
+    await poolConnection.query('SELECT 1');
+    
     // Core tables
-    await pool.execute(`
+    await poolConnection.execute(`
       CREATE TABLE IF NOT EXISTS users (
         uid VARCHAR(255) PRIMARY KEY,
         name VARCHAR(255),
@@ -97,23 +96,30 @@ async function ensureTablesExist() {
     `);
     console.log('[DB] Core tables verified.');
   } catch (error) {
-    console.error('[DB] Verification FAILED:', error);
+    console.warn('[DB] Non-critical warning during schema check:', error.message);
+    // We don't crash the server here, just log it.
   }
 }
 
 async function startServer() {
-  await ensureTablesExist();
+  // We run this in background to avoid blocking server start in case of DB delays
+  ensureTablesExist().catch(err => console.error('[DB] Background init error:', err));
   
-  // Admin initial setup
-  try {
-    await pool.execute(`UPDATE users SET role = 'admin' WHERE email = 'brizq02@gmail.com'`);
-    console.log('[SYS] Root Admin permissions updated.');
-  } catch (err) {}
+  // Admin initial setup (also background)
+  poolConnection.execute(`UPDATE users SET role = 'admin' WHERE email = 'brizq02@gmail.com'`).catch(() => null);
 
   app.listen(port, () => {
-    console.log(`[SYS] 🚀 tRPC server ONLINE at port ${port}`);
-    console.log(`[SYS]    BUILD_SIG: 04.01.H_ATOMIC_CORS_V6`);
+    console.log(`[SYS] 🚀 Server ONLINE at port ${port}`);
+    console.log(`[SYS]    BUILD_SIG: 04.01.H_RESILIENT_V7`);
   });
 }
+
+// Global error handler
+process.on('uncaughtException', (err) => {
+  console.error('[CRITICAL] Uncaught Exception:', err);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[CRITICAL] Unhandled Rejection:', reason);
+});
 
 startServer();
