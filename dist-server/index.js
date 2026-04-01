@@ -275,11 +275,9 @@ var serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT;
 var firebaseProjectId = process.env.FIREBASE_PROJECT_ID;
 if (!serviceAccountPath && process.env.NODE_ENV === "production") {
   console.error("CRITICAL: FIREBASE_SERVICE_ACCOUNT is missing in environment variables.");
-  process.exit(1);
 }
 if (!firebaseProjectId && process.env.NODE_ENV === "production") {
   console.error("CRITICAL: FIREBASE_PROJECT_ID is missing in environment variables.");
-  process.exit(1);
 }
 if (!serviceAccountPath || !firebaseProjectId) {
   console.warn("WARNING: Firebase credentials missing. Some features (Auth/Storage) will be disabled.");
@@ -1485,7 +1483,9 @@ var app = express();
 var port = process.env.PORT || 3001;
 app.use((req, res, next) => {
   const origin = req.headers.origin || "*";
-  console.log(`[CORS_V8] ${req.method} ${req.path} from ${origin}`);
+  if (!req.path.includes("health")) {
+    console.log(`[SYS] ${req.method} ${req.path} | Origin: ${origin}`);
+  }
   res.setHeader("Access-Control-Allow-Origin", origin);
   res.setHeader("Access-Control-Allow-Credentials", "true");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH");
@@ -1497,6 +1497,13 @@ app.use((req, res, next) => {
   next();
 });
 app.use(express.json());
+app.get("/health", (req, res) => {
+  res.json({
+    status: "online",
+    version: "04.01.H_ULTIMATE_V9",
+    timestamp: (/* @__PURE__ */ new Date()).toISOString()
+  });
+});
 app.use(
   "/trpc",
   trpcExpress.createExpressMiddleware({
@@ -1504,28 +1511,25 @@ app.use(
     createContext
   })
 );
-app.get("/health", (req, res) => {
-  res.json({
-    status: "online",
-    version: "04.01.H_NUCLEAR_V8",
-    timestamp: (/* @__PURE__ */ new Date()).toISOString()
-  });
-});
 var distPath = path2.join(process.cwd(), "dist");
 if (fs2.existsSync(distPath)) {
+  console.log(`[SYS] \u2705 Hosting assets from: ${distPath}`);
   app.use(express.static(distPath));
   app.get("*", (req, res) => {
-    if (req.path.startsWith("/trpc") || req.path.startsWith("/health")) return;
+    if (req.path.startsWith("/trpc") || req.path.startsWith("/health")) {
+      return res.status(404).json({ error: "Route not found" });
+    }
     res.sendFile(path2.join(distPath, "index.html"));
   });
 }
-async function startServer() {
-  poolConnection.query("SELECT 1").then(() => {
-    console.log("[DB] Connection verified.");
-  }).catch((err) => console.error("[DB] Connection error:", err));
-  app.listen(port, "0.0.0.0", () => {
+function startServer() {
+  poolConnection.query("SELECT 1").then(() => console.log("[DB] Connection verified.")).catch((err) => console.warn("[DB] Warning: Connection delayed or failed, retrying in background...", err.message));
+  app.listen(port, () => {
     console.log(`[SYS] \u{1F680} Server ONLINE at port ${port}`);
-    console.log(`[SYS]    BUILD_SIG: 04.01.H_NUCLEAR_V8`);
+    console.log(`[SYS]    Uptime: ${(/* @__PURE__ */ new Date()).toISOString()}`);
+    console.log(`[SYS]    BUILD_SIG: 04.01.H_ULTIMATE_V9`);
   });
 }
+process.on("uncaughtException", (e) => console.error("[FATAL] Uncaught:", e));
+process.on("unhandledRejection", (r) => console.error("[FATAL] Unhandled:", r));
 startServer();

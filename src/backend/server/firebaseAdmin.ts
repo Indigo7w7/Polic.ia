@@ -8,11 +8,9 @@ const firebaseProjectId = process.env.FIREBASE_PROJECT_ID;
 
 if (!serviceAccountPath && process.env.NODE_ENV === 'production') {
   console.error('CRITICAL: FIREBASE_SERVICE_ACCOUNT is missing in environment variables.');
-  process.exit(1);
 }
 if (!firebaseProjectId && process.env.NODE_ENV === 'production') {
   console.error('CRITICAL: FIREBASE_PROJECT_ID is missing in environment variables.');
-  process.exit(1);
 }
 
 if (!serviceAccountPath || !firebaseProjectId) {

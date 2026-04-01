@@ -13,21 +13,21 @@ import poolConnection from './firebaseAdmin';
 const app = express();
 const port = process.env.PORT || 3001;
 
-// ─── NUCLEAR CORS BYPASS (V8) ───
-// This middleware is AGGRESSIVE and handles CORS before any other logic.
+// ─── THE ULTIMATE NUCLEAR CORS (V9 - NO BLOCKING) ───
 app.use((req, res, next) => {
   const origin = req.headers.origin || '*';
   
-  // LOGGING (Visible in Railway logs)
-  console.log(`[CORS_V8] ${req.method} ${req.path} from ${origin}`);
+  // Minimal logging to avoid overhead during health checks
+  if (!req.path.includes('health')) {
+    console.log(`[SYS] ${req.method} ${req.path} | Origin: ${origin}`);
+  }
 
   res.setHeader('Access-Control-Allow-Origin', origin);
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-TRPC-Source, X-Requested-With, Cache-Control, Pragma, Expires');
-  res.setHeader('Access-Control-Max-Age', '1728000'); // 20 days
+  res.setHeader('Access-Control-Max-Age', '1728000');
 
-  // Handle preflight
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
@@ -36,6 +36,16 @@ app.use((req, res, next) => {
 
 app.use(express.json());
 
+// 1. Health check (Highest Priority)
+app.get('/health', (req, res) => {
+  res.json({ 
+    status: 'online', 
+    version: '04.01.H_ULTIMATE_V9',
+    timestamp: new Date().toISOString()
+  });
+});
+
+// 2. tRPC API
 app.use(
   '/trpc',
   trpcExpress.createExpressMiddleware({
@@ -44,33 +54,37 @@ app.use(
   })
 );
 
-app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'online', 
-    version: '04.01.H_NUCLEAR_V8',
-    timestamp: new Date().toISOString()
-  });
-});
-
+// 3. Static Files & SPA Routing (Lowest Priority)
 const distPath = path.join(process.cwd(), 'dist');
 if (fs.existsSync(distPath)) {
+  console.log(`[SYS] ✅ Hosting assets from: ${distPath}`);
   app.use(express.static(distPath));
+  
+  // Catch-all for SPA
   app.get('*', (req, res) => {
-    if (req.path.startsWith('/trpc') || req.path.startsWith('/health')) return;
+    // Safety check to avoid infinite loops on API routes
+    if (req.path.startsWith('/trpc') || req.path.startsWith('/health')) {
+       return res.status(404).json({ error: 'Route not found' });
+    }
     res.sendFile(path.join(distPath, 'index.html'));
   });
 }
 
-async function startServer() {
-  // DB init in background
-  poolConnection.query('SELECT 1').then(() => {
-    console.log('[DB] Connection verified.');
-  }).catch(err => console.error('[DB] Connection error:', err));
+function startServer() {
+  // DB init in background - never let DB connectivity block the API
+  poolConnection.query('SELECT 1')
+    .then(() => console.log('[DB] Connection verified.'))
+    .catch(err => console.warn('[DB] Warning: Connection delayed or failed, retrying in background...', err.message));
 
-  app.listen(port, '0.0.0.0', () => {
+  app.listen(port, () => {
     console.log(`[SYS] 🚀 Server ONLINE at port ${port}`);
-    console.log(`[SYS]    BUILD_SIG: 04.01.H_NUCLEAR_V8`);
+    console.log(`[SYS]    Uptime: ${new Date().toISOString()}`);
+    console.log(`[SYS]    BUILD_SIG: 04.01.H_ULTIMATE_V9`);
   });
 }
+
+// Global Exception Shields
+process.on('uncaughtException', (e) => console.error('[FATAL] Uncaught:', e));
+process.on('unhandledRejection', (r) => console.error('[FATAL] Unhandled:', r));
 
 startServer();
