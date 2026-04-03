@@ -29,9 +29,11 @@ __export(schema_exports, {
   examMaterials: () => examMaterials,
   examQuestions: () => examQuestions,
   exams: () => exams,
+  failedDrills: () => failedDrills,
   globalNotifications: () => globalNotifications,
   learningAreas: () => learningAreas,
   learningContent: () => learningContent,
+  learningProgress: () => learningProgress,
   leitnerCards: () => leitnerCards,
   stripeSubscriptions: () => stripeSubscriptions,
   users: () => users,
@@ -73,6 +75,7 @@ var learningContent = mysqlTable("learning_content", {
   areaId: int("area_id").references(() => learningAreas.id),
   title: varchar("title", { length: 255 }).notNull(),
   body: text("body").notNull(),
+  questions: json("questions"),
   level: int("level").default(1),
   schoolType: mysqlEnum("school_type", ["EO", "EESTP", "BOTH"]).default("BOTH")
 }, (table) => [
@@ -224,6 +227,27 @@ var examMaterials = mysqlTable("exam_materials", {
   createdAt: timestamp("created_at").defaultNow()
 }, (table) => [
   index("idx_exam_materials_exam").on(table.examId)
+]);
+var failedDrills = mysqlTable("failed_drills", {
+  id: int("id").primaryKey().autoincrement(),
+  userId: varchar("user_id", { length: 255 }).references(() => users.uid),
+  unitId: int("unit_id").references(() => learningContent.id),
+  questionIndex: int("question_index").notNull(),
+  attempts: int("attempts").default(1),
+  lastFailedAt: timestamp("last_failed_at").defaultNow()
+}, (table) => [
+  index("idx_failed_user_unit").on(table.userId, table.unitId),
+  index("idx_failed_last_date").on(table.lastFailedAt)
+]);
+var learningProgress = mysqlTable("learning_progress", {
+  id: int("id").primaryKey().autoincrement(),
+  userId: varchar("user_id", { length: 255 }).references(() => users.uid),
+  unitId: int("unit_id").references(() => learningContent.id),
+  score: int("score").default(0),
+  completedAt: timestamp("completed_at").defaultNow()
+}, (table) => [
+  index("idx_progress_user").on(table.userId),
+  index("idx_progress_unit").on(table.unitId)
 ]);
 
 // src/database/db/index.ts
@@ -1268,7 +1292,8 @@ var adminExamRouter = router({
 
 // src/backend/server/routers/admin_courses.ts
 import { z as z8 } from "zod";
-import { eq as eq10, desc as desc4 } from "drizzle-orm";
+import { eq as eq10, desc as desc4, and as and8 } from "drizzle-orm";
+import { TRPCError as TRPCError6 } from "@trpc/server";
 var adminCourseRouter = router({
   /* -------------------------------------------------------------------------- */
   /*                            COURSE MANAGEMENT                               */
@@ -1351,8 +1376,16 @@ var adminCourseRouter = router({
   /* -------------------------------------------------------------------------- */
   /*                          SYLLABUS (LEARNING) MGMT                          */
   /* -------------------------------------------------------------------------- */
-  getLearningAreas: adminProcedure.query(async () => {
-    return await db.select().from(learningAreas);
+  getLearningAreas: adminProcedure.input(z8.object({}).optional()).query(async () => {
+    try {
+      return await db.select().from(learningAreas);
+    } catch (error) {
+      console.error("[DATABASE_ERROR] Error en getLearningAreas:", error);
+      throw new TRPCError6({
+        code: "INTERNAL_SERVER_ERROR",
+        message: `Error al obtener \xE1reas de aprendizaje: ${error instanceof Error ? error.message : "Error desconocido"}`
+      });
+    }
   }),
   createLearningArea: adminProcedure.input(z8.object({ name: z8.string(), icon: z8.string().optional() })).mutation(async ({ input }) => {
     const [res] = await db.insert(learningAreas).values({ name: input.name, icon: input.icon });
@@ -1375,35 +1408,53 @@ var adminCourseRouter = router({
     content: z8.array(z8.object({
       title: z8.string(),
       body: z8.string(),
+      questions: z8.array(z8.any()).optional(),
       level: z8.number().default(1),
       schoolType: z8.enum(["EO", "EESTP", "BOTH"]).default("BOTH")
     }))
   })).mutation(async ({ input }) => {
+    const normalizedAreaName = input.areaName.trim().toUpperCase();
     return await db.transaction(async (tx) => {
-      let [area] = await tx.select().from(learningAreas).where(eq10(learningAreas.name, input.areaName));
+      let [area] = await tx.select().from(learningAreas).where(eq10(learningAreas.name, normalizedAreaName));
       let areaId = area?.id;
       if (!areaId) {
-        const [res] = await tx.insert(learningAreas).values({ name: input.areaName });
+        const [res] = await tx.insert(learningAreas).values({ name: normalizedAreaName });
         areaId = res.insertId;
       }
+      let updated = 0;
+      let created = 0;
       for (const item of input.content) {
-        await tx.insert(learningContent).values({
-          areaId,
-          title: item.title,
-          body: item.body,
-          level: item.level,
-          schoolType: item.schoolType
-        });
+        const normalizedTitle = item.title.trim().toUpperCase();
+        const [existingUnit] = await tx.select().from(learningContent).where(and8(eq10(learningContent.areaId, areaId), eq10(learningContent.title, normalizedTitle))).limit(1);
+        if (existingUnit) {
+          await tx.update(learningContent).set({
+            body: item.body,
+            questions: item.questions,
+            level: item.level || 1,
+            schoolType: item.schoolType || "BOTH"
+          }).where(eq10(learningContent.id, existingUnit.id));
+          updated++;
+        } else {
+          await tx.insert(learningContent).values({
+            areaId,
+            title: normalizedTitle,
+            body: item.body,
+            questions: item.questions,
+            level: item.level || 1,
+            schoolType: item.schoolType || "BOTH"
+          });
+          created++;
+        }
       }
-      return { success: true, areaId, unitsAdded: input.content.length };
+      return { success: true, areaId, created, updated };
     });
   })
 });
 
 // src/backend/server/routers/ai.ts
 import { z as z9 } from "zod";
-import { TRPCError as TRPCError6 } from "@trpc/server";
-import { GoogleGenerativeAI } from "@google/genai";
+import { TRPCError as TRPCError7 } from "@trpc/server";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { eq as eq11, sql as sql6 } from "drizzle-orm";
 var SYSTEM_PROMPT = `
 Eres un General de la Polic\xEDa Nacional del Per\xFA (PNP), veterano y jefe de la junta selectiva. 
@@ -1427,11 +1478,11 @@ var aiRouter = router({
   })).mutation(async ({ input, ctx }) => {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      throw new TRPCError6({ code: "INTERNAL_SERVER_ERROR", message: "Entorno IA no configurado por el comando central." });
+      throw new TRPCError7({ code: "INTERNAL_SERVER_ERROR", message: "Entorno IA no configurado por el comando central." });
     }
     const [user] = await db.select().from(users).where(eq11(users.uid, ctx.userId));
     if (user.membership !== "PRO") {
-      throw new TRPCError6({ code: "FORBIDDEN", message: "El simulador de entrevista IA requiere rango PRO." });
+      throw new TRPCError7({ code: "FORBIDDEN", message: "El simulador de entrevista IA requiere rango PRO." });
     }
     try {
       const genAI = new GoogleGenerativeAI(apiKey);
@@ -1458,8 +1509,135 @@ Postulante: ${input.message}`;
       return { response };
     } catch (error) {
       console.error("Gemini Error:", error);
-      throw new TRPCError6({ code: "INTERNAL_SERVER_ERROR", message: "Fuerzas de la naturaleza interfirieron con la conexi\xF3n IA." });
+      throw new TRPCError7({ code: "INTERNAL_SERVER_ERROR", message: "Fuerzas de la naturaleza interfirieron con la conexi\xF3n IA." });
     }
+  })
+});
+
+// src/backend/server/routers/learning_review.ts
+import { z as z10 } from "zod";
+import { eq as eq12, and as and9, sql as sql7 } from "drizzle-orm";
+var learningReviewRouter = router({
+  /** Record a failure in a specific drill question */
+  recordDrillFailure: protectedProcedure.input(z10.object({
+    unitId: z10.number(),
+    questionIndex: z10.number()
+  })).mutation(async ({ input, ctx }) => {
+    const userId = ctx.userId;
+    const existing = await db.select().from(failedDrills).where(
+      and9(
+        eq12(failedDrills.userId, userId),
+        eq12(failedDrills.unitId, input.unitId),
+        eq12(failedDrills.questionIndex, input.questionIndex)
+      )
+    ).limit(1);
+    if (existing.length > 0) {
+      await db.update(failedDrills).set({
+        attempts: sql7`${failedDrills.attempts} + 1`,
+        lastFailedAt: /* @__PURE__ */ new Date()
+      }).where(eq12(failedDrills.id, existing[0].id));
+    } else {
+      await db.insert(failedDrills).values({
+        userId,
+        unitId: input.unitId,
+        questionIndex: input.questionIndex
+      });
+    }
+    return { success: true };
+  }),
+  /** Get stats of failed questions for the current user */
+  getPerfectionStats: protectedProcedure.query(async ({ ctx }) => {
+    const userId = ctx.userId;
+    const results = await db.select({
+      unitId: failedDrills.unitId,
+      count: sql7`count(*)`
+    }).from(failedDrills).where(eq12(failedDrills.userId, userId)).groupBy(failedDrills.unitId);
+    return results;
+  }),
+  /** Get the questions for a perfection session of a specific unit or entire area */
+  getPerfectionDrill: protectedProcedure.input(z10.object({
+    unitId: z10.number().optional(),
+    areaId: z10.number().optional()
+  })).query(async ({ input, ctx }) => {
+    const userId = ctx.userId;
+    let units = [];
+    if (input.unitId) {
+      units = await db.select().from(learningContent).where(eq12(learningContent.id, input.unitId)).limit(1);
+    } else if (input.areaId) {
+      units = await db.select().from(learningContent).where(eq12(learningContent.areaId, input.areaId));
+    }
+    if (units.length === 0) return [];
+    const failed = await db.select({
+      unitId: failedDrills.unitId,
+      index: failedDrills.questionIndex
+    }).from(failedDrills).where(eq12(failedDrills.userId, userId));
+    const failedMap = /* @__PURE__ */ new Map();
+    failed.forEach((f) => {
+      if (!f.unitId) return;
+      if (!failedMap.has(f.unitId)) failedMap.set(f.unitId, /* @__PURE__ */ new Set());
+      failedMap.get(f.unitId)?.add(f.index);
+    });
+    const allQuestions = [];
+    units.forEach((u) => {
+      if (!u.questions) return;
+      const indices = failedMap.get(u.id);
+      if (indices) {
+        const qList = u.questions.filter((_, idx) => indices.has(idx));
+        allQuestions.push(...qList);
+      }
+    });
+    return allQuestions;
+  }),
+  /** Remove a failure after the user gets it right in perfection mode (Reset) */
+  resolveFailure: protectedProcedure.input(z10.object({
+    unitId: z10.number(),
+    questionIndex: z10.number()
+  })).mutation(async ({ input, ctx }) => {
+    await db.delete(failedDrills).where(
+      and9(
+        eq12(failedDrills.userId, ctx.userId),
+        eq12(failedDrills.unitId, input.unitId),
+        eq12(failedDrills.questionIndex, input.questionIndex)
+      )
+    );
+    return { success: true };
+  })
+});
+
+// src/backend/server/routers/learning_progress.ts
+import { z as z11 } from "zod";
+import { eq as eq13, and as and10, desc as desc5 } from "drizzle-orm";
+var learningProgressRouter = router({
+  /** Mark a unit as completed with a specific score */
+  completeUnit: protectedProcedure.input(z11.object({
+    unitId: z11.number(),
+    score: z11.number()
+  })).mutation(async ({ input, ctx }) => {
+    const userId = ctx.userId;
+    const [existing] = await db.select().from(learningProgress).where(
+      and10(
+        eq13(learningProgress.userId, userId),
+        eq13(learningProgress.unitId, input.unitId)
+      )
+    ).limit(1);
+    if (existing) {
+      if (input.score > (existing.score || 0)) {
+        await db.update(learningProgress).set({ score: input.score, completedAt: /* @__PURE__ */ new Date() }).where(eq13(learningProgress.id, existing.id));
+      }
+    } else {
+      await db.insert(learningProgress).values({
+        userId,
+        unitId: input.unitId,
+        score: input.score
+      });
+    }
+    return { success: true };
+  }),
+  /** Get all completed units for the current user */
+  getUserProgress: protectedProcedure.query(async ({ ctx }) => {
+    const userId = ctx.userId;
+    const progress = await db.select().from(learningProgress).where(eq13(learningProgress.userId, userId)).orderBy(desc5(learningProgress.completedAt));
+    return progress;
   })
 });
 
@@ -1473,7 +1651,9 @@ var appRouter = router({
   admin: adminRouter,
   adminExams: adminExamRouter,
   adminCourses: adminCourseRouter,
-  ai: aiRouter
+  ai: aiRouter,
+  learningReview: learningReviewRouter,
+  learningProgress: learningProgressRouter
 });
 
 // src/backend/server/index.ts
@@ -1498,14 +1678,19 @@ app.use(cors({
     "X-Requested-With",
     "Cache-Control",
     "Pragma",
-    "Expires"
-  ]
+    "Expires",
+    "trpc-batch-link",
+    "X-TRPC-Batch-Mode"
+  ],
+  optionsSuccessStatus: 200,
+  // For legacy browsers and better preflight handling
+  preflightContinue: false
 }));
 app.use(express.json());
 app.get("/health", (req, res) => {
   res.json({
     status: "online",
-    version: "04.01.H_STABLE_V11",
+    version: "04.01.H_MEGA_V12_PROD_FIX",
     timestamp: (/* @__PURE__ */ new Date()).toISOString()
   });
 });
@@ -1526,11 +1711,112 @@ if (fs2.existsSync(distPath)) {
     res.sendFile(path2.join(distPath, "index.html"));
   });
 }
+async function ensureTables() {
+  console.log("[SYS] \u{1F6E0} Verificando integridad de tablas cr\xEDticas...");
+  try {
+    await poolConnection.query(`
+      CREATE TABLE IF NOT EXISTS learning_areas (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(100) NOT NULL,
+        icon VARCHAR(50)
+      ) ENGINE=InnoDB;
+    `);
+    await poolConnection.query(`
+      CREATE TABLE IF NOT EXISTS exams (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        school ENUM('EO', 'EESTP') NOT NULL,
+        level INT NOT NULL,
+        title VARCHAR(255),
+        is_demo BOOLEAN DEFAULT FALSE NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB;
+    `);
+    await poolConnection.query(`
+      CREATE TABLE IF NOT EXISTS courses (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        title VARCHAR(255) NOT NULL,
+        description TEXT,
+        thumbnail_url VARCHAR(512),
+        level ENUM('BASICO', 'INTERMEDIO', 'AVANZADO') DEFAULT 'BASICO',
+        school_type ENUM('EO', 'EESTP', 'BOTH') DEFAULT 'BOTH',
+        is_published BOOLEAN DEFAULT FALSE NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB;
+    `);
+    await poolConnection.query(`
+      CREATE TABLE IF NOT EXISTS exam_materials (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        exam_id INT NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        url VARCHAR(512) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB;
+    `);
+    await poolConnection.query(`
+      CREATE TABLE IF NOT EXISTS course_materials (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        course_id INT NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        type ENUM('PDF', 'VIDEO', 'EXAM', 'LINK', 'TEXT') NOT NULL,
+        content_url VARCHAR(512),
+        \`order\` INT DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB;
+    `);
+    await poolConnection.query(`
+      CREATE TABLE IF NOT EXISTS learning_content (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        area_id INT,
+        title VARCHAR(255) NOT NULL,
+        body TEXT NOT NULL,
+        questions JSON,
+        level INT DEFAULT 1,
+        school_type ENUM('EO', 'EESTP', 'BOTH') DEFAULT 'BOTH',
+        FOREIGN KEY (area_id) REFERENCES learning_areas(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB;
+    `);
+    await poolConnection.query(`
+      CREATE TABLE IF NOT EXISTS failed_drills (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id VARCHAR(255),
+        unit_id INT,
+        question_index INT NOT NULL,
+        attempts INT DEFAULT 1,
+        last_failed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_failed_user_unit (user_id, unit_id),
+        INDEX idx_failed_last_date (last_failed_at),
+        FOREIGN KEY (unit_id) REFERENCES learning_content(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB;
+    `);
+    await poolConnection.query(`
+      CREATE TABLE IF NOT EXISTS learning_progress (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id VARCHAR(255),
+        unit_id INT,
+        score INT DEFAULT 0,
+        completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_progress_user (user_id),
+        INDEX idx_progress_unit (unit_id),
+        FOREIGN KEY (unit_id) REFERENCES learning_content(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB;
+    `);
+    try {
+      await poolConnection.query("SELECT questions FROM learning_content LIMIT 1");
+    } catch (e) {
+      console.log("[SYS] \u{1F527} Sincronizando columna questions en learning_content...");
+      await poolConnection.query("ALTER TABLE learning_content ADD COLUMN questions JSON;");
+    }
+    console.log("[SYS] \u2705 Infraestructura Cr\xEDtica Sincronizada (Drills Ready).");
+  } catch (err) {
+    console.error("[SYS] \u274C Error cr\xEDtico al crear tablas:", err);
+  }
+}
 function startServer() {
+  ensureTables();
   poolConnection.query("SELECT 1").catch(() => null);
   app.listen(port, () => {
     console.log(`[SYS] \u{1F680} Server ONLINE at port ${port}`);
-    console.log(`[SYS]    BUILD_SIG: 04.01.H_OFFICIAL_CORS_V10`);
+    console.log(`[SYS]    BUILD_SIG: 04.01.H_MEGA_V12_PROD_FIX`);
   });
 }
 process.on("uncaughtException", (e) => console.error("[FATAL] Uncaught:", e));

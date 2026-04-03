@@ -9,6 +9,16 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { trpc } from '../shared/utils/trpc';
 import { auth } from '@/src/firebase';
 import { useUserStore } from './store/useUserStore';
+
+// BUG-07 FIX: centralize admin identity — single source of truth, easy to update
+const ADMIN_EMAILS = ['brizq02@gmail.com'] as const;
+const isAdminEmail = (email: string | null | undefined): boolean =>
+  ADMIN_EMAILS.includes(email?.toLowerCase().trim() as any);
+
+// BUG-17 FIX: dev-only logger — zero output in production builds
+const devLog = (...args: unknown[]) => {
+  if (import.meta.env.DEV) console.log(...args);
+};
 import { Dashboard } from './views/Dashboard';
 import { Simulador } from './views/Simulador';
 import { YapeCheckout } from './views/YapeCheckout';
@@ -41,7 +51,7 @@ const AuthLoader = () => (
     <Loader2 className="w-5 h-5 text-slate-600 animate-spin" />
     <p className="text-[10px] text-slate-600 uppercase tracking-[0.3em] font-bold">Verificando acceso…</p>
     <div className="mt-4 p-1 px-3 bg-indigo-600/20 border border-indigo-500/30 rounded-full">
-      <span className="text-[9px] text-indigo-400 font-black tracking-widest uppercase">SYSLOG: 04.01.H_STABLE_V11</span>
+      <span className="text-[9px] text-indigo-400 font-black tracking-widest uppercase">SYSLOG: 04.01.H_MEGA_V12_PROD_FIX</span>
     </div>
   </div>
 );
@@ -53,15 +63,15 @@ const AdminRedirector = () => {
 
   useEffect(() => {
     if (localStorage.getItem('policia-user-storage')) {
-      console.log('[CACHE] Purging legacy session data...');
+      devLog('[CACHE] Purging legacy session data...');
       localStorage.removeItem('policia-user-storage');
       window.location.reload();
     }
     const adminRestrictedPaths = ['/', '/login', '/seleccionar-escuela'];
-    const rawEmail = auth.currentUser?.email?.toLowerCase().trim();
-    const isOwner = rawEmail === 'brizq02@gmail.com';
-    if (uid && (role === 'admin' || isOwner) && adminRestrictedPaths.includes(location.pathname)) {
-      console.log('[MEGA-FIX] High-Privilege access detected, routing to Command Center');
+    const rawEmail = auth.currentUser?.email;
+    // BUG-07 FIX: use centralized isAdminEmail helper
+    if (uid && (role === 'admin' || isAdminEmail(rawEmail)) && adminRestrictedPaths.includes(location.pathname)) {
+      devLog('[AUTH] High-Privilege access detected, routing to Command Center');
       navigate('/admin-portal', { replace: true });
     }
   }, [role, uid, navigate, location.pathname]);
@@ -158,30 +168,27 @@ function AppContent() {
     const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
       if (user) {
         const normalizedEmail = user.email?.toLowerCase().trim();
-        console.log(`%c[AUTH] Firebase Login: ${normalizedEmail}`, 'color: #4f46e5; font-weight: bold; font-size: 10px');
-        console.log(`%c[AUTH] ID: ${user.uid}`, 'color: #6366f1; font-size: 10px');
-        
-        // Extract and persist idToken for tRPC Authorization header
+        devLog(`[AUTH] Firebase Login: ${normalizedEmail}`);
+        devLog(`[AUTH] ID: ${user.uid}`);
+
         try {
           const idToken = await user.getIdToken(false);
           localStorage.setItem('authToken', idToken);
         } catch (e) {
-          console.warn('[AUTH] Could not get idToken:', e);
+          devLog('[AUTH] Could not get idToken:', e);
         }
 
-        let localRole = 'user';
-        if (normalizedEmail === 'brizq02@gmail.com') {
-          console.log('[AUTH] SUPER ADMIN BYPASS ACTIVATED (App.tsx)');
-          localRole = 'admin';
-        }
-        
-        setUserData({ 
-          uid: user.uid, 
+        // BUG-07 FIX: use centralized helper instead of inline string comparison
+        const localRole = isAdminEmail(normalizedEmail) ? 'admin' : 'user';
+        if (localRole === 'admin') devLog('[AUTH] ADMIN access granted');
+
+        setUserData({
+          uid: user.uid,
           role: localRole as 'admin' | 'user',
-          photoURL: user.photoURL 
+          photoURL: user.photoURL,
         });
       } else {
-        console.log('[AUTH] No Firebase user detected');
+        devLog('[AUTH] No Firebase user detected');
         localStorage.removeItem('authToken');
         setUserData({ uid: null, estado_financiero: 'FREE', status: 'ACTIVE', fecha_expiracion_premium: null, role: 'user', photoURL: null, modalidad_postulacion: null });
         setAuthResolved(true);
@@ -193,15 +200,16 @@ function AppContent() {
 
 
   useEffect(() => {
-    const isSuperAdmin = auth.currentUser?.email?.toLowerCase().trim() === 'brizq02@gmail.com';
-    
+    // BUG-07 FIX: use centralized helper for admin check
+    const isSuperAdmin = isAdminEmail(auth.currentUser?.email);
+
     if (profileQuery.status === 'success' || !uid) {
       setAuthResolved(true);
     } else if (profileQuery.status === 'error') {
-      console.error('[APP] Error al cargar el perfil desde el backend:', profileQuery.error);
+      devLog('[APP] Error al cargar el perfil desde el backend:', profileQuery.error);
       setAuthResolved(true);
       if (isSuperAdmin) {
-         setUserData({ role: 'admin' });
+        setUserData({ role: 'admin' });
       }
     }
   }, [profileQuery.status, uid, profileQuery.error, setUserData]);
@@ -209,13 +217,15 @@ function AppContent() {
   // Periodically update user's lastActive timestamp (Point 3: Every 3 min)
   const updateActivityMutation = trpc.user.updateLastSeen.useMutation();
   useEffect(() => {
-    if (uid) {
-      const interval = setInterval(() => {
-        updateActivityMutation.mutateAsync({ uid }).catch(() => null); // Blindaje anti-500
-      }, 180000); // 3 minutos
-      return () => clearInterval(interval);
-    }
-  }, [uid, updateActivityMutation]);
+    if (!uid) return;
+    const mutate = updateActivityMutation.mutateAsync;
+    const interval = setInterval(() => {
+      // BUG-08 FIX: use stable ref inside closure, not the mutation object in deps
+      mutate({ uid }).catch(() => null);
+    }, 180000); // 3 minutes
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uid]);
 
   if (!authResolved) return <AuthLoader />;
 

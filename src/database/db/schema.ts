@@ -40,6 +40,7 @@ export const learningContent = mysqlTable('learning_content', {
   areaId: int('area_id').references(() => learningAreas.id),
   title: varchar('title', { length: 255 }).notNull(),
   body: text('body').notNull(),
+  questions: json('questions'),
   level: int('level').default(1),
   schoolType: mysqlEnum('school_type', ['EO', 'EESTP', 'BOTH']).default('BOTH'),
 }, (table) => [
@@ -218,4 +219,28 @@ export const examMaterials = mysqlTable('exam_materials', {
   createdAt: timestamp('created_at').defaultNow(),
 }, (table) => [
   index('idx_exam_materials_exam').on(table.examId),
+]);
+
+// 17. Failed Drills (Memory for Perfection Mode)
+export const failedDrills = mysqlTable('failed_drills', {
+  id: int('id').primaryKey().autoincrement(),
+  userId: varchar('user_id', { length: 255 }).references(() => users.uid),
+  unitId: int('unit_id').references(() => learningContent.id),
+  questionIndex: int('question_index').notNull(),
+  attempts: int('attempts').default(1),
+  lastFailedAt: timestamp('last_failed_at').defaultNow(),
+}, (table) => [
+  index('idx_failed_user_unit').on(table.userId, table.unitId),
+  index('idx_failed_last_date').on(table.lastFailedAt),
+]);
+// 18. Learning Progress (For merit-based unlocking)
+export const learningProgress = mysqlTable('learning_progress', {
+  id: int('id').primaryKey().autoincrement(),
+  userId: varchar('user_id', { length: 255 }).references(() => users.uid),
+  unitId: int('unit_id').references(() => learningContent.id),
+  score: int('score').default(0),
+  completedAt: timestamp('completed_at').defaultNow(),
+}, (table) => [
+  index('idx_progress_user').on(table.userId),
+  index('idx_progress_unit').on(table.unitId),
 ]);

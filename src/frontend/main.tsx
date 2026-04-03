@@ -14,7 +14,7 @@ function Root() {
   // 2. Production: always use the Railway backend URL directly (Firebase Hosting + Railway are separate domains)
   const apiUrl = import.meta.env.VITE_API_URL || 'https://backend-production-f0aa.up.railway.app/trpc';
   console.log(`%c[CONFIG] tRPC URL: ${apiUrl}`, 'color: #3b82f6; font-weight: bold;');
-  console.log(`%c[CONFIG] SIG: 04.01.H_STABLE_V11`, 'color: #10b981; font-weight: bold;');
+  console.log(`%c[CONFIG] SIG: 04.01.H_MEGA_V12_PROD_FIX`, 'color: #10b981; font-weight: bold;');
   
   const [queryClient] = useState(() => new QueryClient());
   const [trpcClient] = useState(() =>
@@ -22,7 +22,7 @@ function Root() {
       links: [
         httpBatchLink({
           url: apiUrl,
-          methodOverride: 'POST',
+          // Se elimina methodOverride para permitir GET en queries (Fijar error 405 en producción)
           async headers() {
             // Try fresh token first, fall back to stored token
             let token: string | null = localStorage.getItem('authToken');

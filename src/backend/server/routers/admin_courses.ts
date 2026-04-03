@@ -1,7 +1,8 @@
 import { router, adminProcedure, protectedProcedure } from '../trpc';
 import { z } from 'zod';
 import { db, courses, courseMaterials, learningAreas, learningContent } from '../../../database/db';
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, and } from 'drizzle-orm';
+import { TRPCError } from '@trpc/server';
 
 export const adminCourseRouter = router({
   /* -------------------------------------------------------------------------- */
@@ -114,9 +115,19 @@ export const adminCourseRouter = router({
   /*                          SYLLABUS (LEARNING) MGMT                          */
   /* -------------------------------------------------------------------------- */
 
-  getLearningAreas: adminProcedure.query(async () => {
-    return await db.select().from(learningAreas);
-  }),
+  getLearningAreas: adminProcedure
+    .input(z.object({}).optional())
+    .query(async () => {
+      try {
+        return await db.select().from(learningAreas);
+      } catch (error) {
+        console.error('[DATABASE_ERROR] Error en getLearningAreas:', error);
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: `Error al obtener áreas de aprendizaje: ${error instanceof Error ? error.message : 'Error desconocido'}`,
+        });
+      }
+    }),
 
   createLearningArea: adminProcedure
     .input(z.object({ name: z.string(), icon: z.string().optional() }))
@@ -128,8 +139,11 @@ export const adminCourseRouter = router({
   deleteLearningArea: adminProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
-      await db.delete(learningContent).where(eq(learningContent.areaId, input.id));
-      await db.delete(learningAreas).where(eq(learningAreas.id, input.id));
+      // BUG-12 FIX: wrap in transaction — if area delete fails, content is NOT orphaned
+      await db.transaction(async (tx) => {
+        await tx.delete(learningContent).where(eq(learningContent.areaId, input.id));
+        await tx.delete(learningAreas).where(eq(learningAreas.id, input.id));
+      });
       return { success: true };
     }),
 
@@ -152,33 +166,86 @@ export const adminCourseRouter = router({
       content: z.array(z.object({
         title: z.string(),
         body: z.string(),
+        questions: z.array(z.any()).optional(),
         level: z.number().default(1),
         schoolType: z.enum(['EO', 'EESTP', 'BOTH']).default('BOTH')
       }))
     }))
     .mutation(async ({ input }) => {
+      const normalizedAreaName = input.areaName.trim().toUpperCase();
+
       return await db.transaction(async (tx) => {
         // Find or create area
-        let [area] = await tx.select().from(learningAreas).where(eq(learningAreas.name, input.areaName));
+        let [area] = await tx.select().from(learningAreas).where(eq(learningAreas.name, normalizedAreaName));
         let areaId = area?.id;
 
         if (!areaId) {
-          const [res] = await tx.insert(learningAreas).values({ name: input.areaName });
+          const [res] = await tx.insert(learningAreas).values({ name: normalizedAreaName });
           areaId = res.insertId;
         }
 
-        // Insert units
+        let updated = 0;
+        let created = 0;
+
+        // Insert units with UPSERT logic (manual check for better compatibility)
         for (const item of input.content) {
-          await tx.insert(learningContent).values({
-            areaId: areaId,
-            title: item.title,
-            body: item.body,
-            level: item.level,
-            schoolType: item.schoolType
-          });
+          const normalizedTitle = item.title.trim().toUpperCase();
+
+          const [existingUnit] = await tx.select()
+            .from(learningContent)
+            .where(and(eq(learningContent.areaId, areaId), eq(learningContent.title, normalizedTitle)))
+            .limit(1);
+
+          if (existingUnit) {
+            // Update existing
+            await tx.update(learningContent)
+              .set({
+                body: item.body,
+                questions: item.questions,
+                level: item.level || 1,
+                schoolType: item.schoolType || 'BOTH'
+              })
+              .where(eq(learningContent.id, existingUnit.id));
+            updated++;
+          } else {
+            // Insert new
+            await tx.insert(learningContent).values({
+              areaId: areaId,
+              title: normalizedTitle,
+              body: item.body,
+              questions: item.questions,
+              level: item.level || 1,
+              schoolType: item.schoolType || 'BOTH'
+            });
+            created++;
+          }
         }
 
-        return { success: true, areaId, unitsAdded: input.content.length };
+        return { success: true, areaId, created, updated };
       });
+    }),
+
+  /** Get the entire area content as a single JSON object for easy editing */
+  getAreaJSON: adminProcedure
+    .input(z.object({ areaId: z.number() }))
+    .query(async ({ input }) => {
+      const [area] = await db.select().from(learningAreas).where(eq(learningAreas.id, input.areaId));
+      if (!area) throw new TRPCError({ code: 'NOT_FOUND', message: 'Area not found' });
+
+      const content = await db.select()
+        .from(learningContent)
+        .where(eq(learningContent.areaId, input.areaId))
+        .orderBy(learningContent.level);
+
+      return {
+        areaName: area.name,
+        content: content.map(item => ({
+          title: item.title,
+          body: item.body,
+          questions: item.questions,
+          level: item.level,
+          schoolType: item.schoolType
+        }))
+      };
     }),
 });

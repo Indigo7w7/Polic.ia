@@ -4,7 +4,6 @@ import {
   Terminal,
   Users,
   ShieldAlert,
-  Activity,
   RefreshCcw,
   Search,
   Upload,
@@ -19,15 +18,14 @@ import {
   CheckCircle,
   Zap,
   FileText,
-  Plus,
   ExternalLink,
   GraduationCap,
   BookOpen,
-  Image as ImageIcon,
-  Check,
   ClipboardList,
   LogOut,
+  Braces,
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { auth, storage } from '@/src/firebase';
@@ -51,8 +49,11 @@ const ContentList = ({ areaId, onDelete }: { areaId: number, onDelete: () => voi
         <div key={unit.id} className="p-3 bg-cyan-950/10 border border-cyan-900/30 rounded-lg flex items-center justify-between group">
           <div className="flex-1 min-w-0">
             <div className="text-[11px] font-bold text-cyan-400 font-mono truncate">{unit.title}</div>
-            <div className="text-[9px] text-cyan-900 font-mono mt-0.5">
-              TIPO: {unit.schoolType} · NIVEL: {unit.level}
+            <div className="text-[9px] text-cyan-900 font-mono mt-0.5 flex items-center gap-2">
+              <span>TIPO: {unit.schoolType} · NIVEL: {unit.level}</span>
+              {unit.questions && (unit.questions as any[]).length > 0 && (
+                <span className="px-1 bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 rounded-[2px] text-[7px] animate-pulse">DRILL_ACTIVO</span>
+              )}
             </div>
           </div>
           <button onClick={() => handleDelete(unit.id)} className="p-1.5 text-red-900 hover:text-red-500 transition-colors">
@@ -267,7 +268,102 @@ const StatItem = ({ label, value, accent }: { label: string; value: number; acce
   </div>
 );
 
-// ─── MAIN COMPONENT ───────────────────────────────────────────
+// ─── LIVE JSON EDITOR MODAL (Real-time content sync) ──────────
+const LiveJsonEditorModal = ({ areaId, onConfirm, onClose }: { areaId?: number | null; onConfirm: (data: any) => void; onClose: () => void }) => {
+  const [jsonInput, setJsonInput] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  
+  // If editing an existing area, fetch current JSON
+  const currentJson = trpc.adminCourses.getAreaJSON.useQuery(
+    { areaId: areaId as number },
+    { enabled: !!areaId, refetchOnWindowFocus: false }
+  );
+
+  React.useEffect(() => {
+    if (currentJson.data) {
+      setJsonInput(JSON.stringify(currentJson.data, null, 2));
+    }
+  }, [currentJson.data]);
+
+  const handleProcess = () => {
+    try {
+      const parsed = JSON.parse(jsonInput);
+      if (!parsed.areaName || !Array.isArray(parsed.content)) {
+        throw new Error('Formato inválido. Debe incluir "areaName" y el array "content".');
+      }
+      onConfirm(parsed);
+    } catch (e: any) {
+      setError("Fallo de lectura: " + e.message);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/95 backdrop-blur-xl font-mono">
+      <div className="w-full max-w-5xl bg-black border border-cyan-700/50 rounded-3xl overflow-hidden shadow-[0_0_100px_rgba(34,211,238,0.2)]">
+        <div className="flex items-center justify-between px-8 py-5 border-b border-cyan-900/50 bg-cyan-950/20">
+          <div className="flex items-center gap-3">
+            <Terminal className="w-6 h-6 text-cyan-400 animate-pulse" />
+            <div>
+              <span className="text-xs font-black uppercase tracking-widest text-white">Consola de Edición de Datos</span>
+              <p className="text-[9px] text-cyan-700 uppercase tracking-widest mt-0.5">Sincronización en tiempo real vía JSON</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-2 bg-slate-900 rounded-xl text-slate-500 hover:text-white transition-all">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="p-8 space-y-6">
+          <div className="flex items-center justify-between">
+            <div className="text-[10px] text-cyan-700 uppercase tracking-widest italic flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 animate-ping" />
+              {currentJson.isLoading ? '> EXTRAYENDO_DATOS_ACTUALES...' : '> TERMINAL_LISTA_PARA_INGESTA'}
+            </div>
+            {areaId && (
+              <span className="px-3 py-1 bg-cyan-500/10 border border-cyan-500/30 rounded-lg text-[9px] font-black text-cyan-400">
+                EDITANDO_ID: #{areaId}
+              </span>
+            )}
+          </div>
+
+          <textarea
+            className="w-full h-[500px] bg-cyan-950/5 border border-cyan-900/40 rounded-2xl p-6 text-cyan-300 text-[11px] font-mono focus:border-cyan-400 outline-none resize-none placeholder:text-cyan-900 shadow-inner scrollbar-thin scrollbar-thumb-cyan-900"
+            placeholder='{ "areaName": "LITERATURA", "content": [...] }'
+            value={jsonInput}
+            onChange={(e) => { setJsonInput(e.target.value); setError(null); }}
+          />
+
+          {error && (
+            <motion.div 
+              initial={{ x: -10, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              className="flex items-center gap-3 text-red-400 text-[10px] font-black uppercase bg-red-950/20 p-4 border border-red-900/50 rounded-xl"
+            >
+              <ShieldAlert className="w-5 h-5 shrink-0" /> {error}
+            </motion.div>
+          )}
+
+          <div className="flex justify-end gap-4">
+            <button
+              onClick={onClose}
+              className="px-8 py-3 bg-slate-950 text-slate-500 border border-slate-900 rounded-2xl hover:text-white transition-all text-xs font-black uppercase tracking-widest"
+            >
+              CERRAR_TERMINAL
+            </button>
+            <button
+              disabled={!jsonInput || currentJson.isLoading}
+              onClick={handleProcess}
+              className="px-10 py-3 bg-cyan-600 border border-cyan-400 text-white rounded-2xl hover:bg-cyan-500 transition-all text-xs font-black uppercase tracking-widest shadow-[0_0_30px_rgba(34,211,238,0.3)] hover:scale-105 active:scale-95 flex items-center gap-3"
+            >
+              <Zap className="w-4 h-4 fill-current" />
+              {currentJson.isLoading ? 'CONECTANDO...' : 'SINCRONIZAR_CAMBIOS'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export const AdminCommandCenter = () => {
   const [activeTab, setActiveTab] = useState<'users' | 'exams' | 'courses' | 'logs'>('users');
   const [activeExamSchool, setActiveExamSchool] = useState<'EO' | 'EESTP'>('EO');
@@ -279,6 +375,7 @@ export const AdminCommandCenter = () => {
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [processingId, setProcessingId] = useState<string | number | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ uid: string; name: string } | null>(null);
+  const [editingAreaId, setEditingAreaId] = useState<number | null>(null);
 
   // ─── Queries ───
   const stats        = trpc.admin.getAdminStats.useQuery(undefined, { refetchInterval: 15000 });
@@ -466,9 +563,12 @@ export const AdminCommandCenter = () => {
         if (!content.areaName || !Array.isArray(content.content)) {
           throw new Error('Formato inválido. Debe tener areaName y un array "content".');
         }
-        await uploadSyllabus.mutateAsync(content);
-        toast.success(`Temario importado: ${content.areaName}`);
+        const res = await uploadSyllabus.mutateAsync(content);
+        toast.success(`Temario importado: ${content.areaName} (Nuevos: ${res.created}, Actualizados: ${res.updated})`);
         utils.adminCourses.getLearningAreas.invalidate();
+        utils.adminCourses.getLearningContent.invalidate();
+        utils.learning.getAreas.invalidate();
+        utils.learning.getContentByArea.invalidate();
       } catch (err: any) {
         toast.error(`Error de importación: ${err.message}`);
       } finally {
@@ -521,6 +621,27 @@ export const AdminCommandCenter = () => {
             <X size={24} />
           </button>
         </div>
+      )}
+
+      {/* Live JSON Editor Modal — BUG-06 FIX: editingAreaId !== null already covers -1 */}
+      {editingAreaId !== null && (
+        <LiveJsonEditorModal 
+          areaId={editingAreaId === -1 ? null : editingAreaId}
+          onClose={() => setEditingAreaId(null)}
+          onConfirm={async (data) => {
+            try {
+              const res = await uploadSyllabus.mutateAsync(data);
+              toast.success(`Temario inyectado: ${data.areaName} (Nuevos: ${res.created}, Actualizados: ${res.updated})`);
+              utils.adminCourses.getLearningAreas.invalidate();
+              utils.adminCourses.getLearningContent.invalidate();
+              utils.learning.getAreas.invalidate();
+              utils.learning.getContentByArea.invalidate();
+              setEditingAreaId(null);
+            } catch (err: any) {
+              toast.error(`Error de sistema: ${err.message}`);
+            }
+          }}
+        />
       )}
 
       <main className="max-w-7xl mx-auto px-4 md:px-8 py-6 space-y-5">
@@ -901,32 +1022,24 @@ export const AdminCommandCenter = () => {
               <div className="px-4 py-3 border-b border-cyan-900/40 bg-cyan-950/10 flex items-center justify-between">
                 <span className="text-[10px] font-black uppercase tracking-widest text-cyan-500 font-mono">MATERIAS / ÁREAS</span>
                 <div className="flex gap-2">
-                   <input type="file" id="syllabus-json" className="hidden" accept=".json" onChange={handleSyllabusUpload} />
-                   <label htmlFor="syllabus-json" className="p-1.5 bg-cyan-900/40 border border-cyan-700 text-cyan-400 rounded hover:bg-cyan-800 cursor-pointer" title="Importar Temario JSON">
-                     <Upload className="w-3.5 h-3.5" />
-                   </label>
-                   <button 
-                     onClick={async () => {
-                       const name = window.prompt("Nombre de la nueva materia:");
-                       if (name) {
-                         await createArea.mutateAsync({ name });
-                         utils.adminCourses.getLearningAreas.invalidate();
-                       }
-                     }}
-                     className="p-1.5 bg-cyan-900/40 border border-cyan-700 text-cyan-400 rounded hover:bg-cyan-800"
-                   >
-                     <Plus className="w-3.5 h-3.5" />
-                   </button>
+                    <button 
+                      onClick={() => setEditingAreaId(-1)}
+                      className="px-4 py-1.5 bg-cyan-900/40 border border-cyan-500/50 text-cyan-400 rounded-lg hover:bg-cyan-800 flex items-center gap-2 border-dashed transition-all"
+                      title="Pegado Rápido (Consola JSON)"
+                    >
+                      <Zap className="w-3.5 h-3.5" />
+                      <span className="text-[10px] font-black uppercase tracking-widest">INYECTAR_TEMARIO</span>
+                    </button>
                 </div>
               </div>
               <div className="divide-y divide-cyan-900/15 overflow-y-auto max-h-[500px]">
                 {syllabusAreas.data?.map(area => (
                   <div 
                     key={area.id} 
-                    className={`px-4 py-3 flex items-center justify-between group cursor-pointer transition-colors ${
-                      selectedExamId === area.id ? 'bg-cyan-950/30' : 'hover:bg-cyan-950/10'
+                    className={`px-4 py-3 flex items-center justify-between group cursor-pointer transition-colors border-b border-cyan-900/10 ${
+                      selectedExamId === area.id ? 'bg-cyan-950/40 border-l-2 border-l-cyan-500' : 'hover:bg-cyan-950/10'
                     }`}
-                    onClick={() => setSelectedExamId(area.id)} // Reusing selectedExamId as selectedAreaId for simplicity in the UI state
+                    onClick={() => setSelectedExamId(area.id)}
                   >
                     <div className="flex items-center gap-3">
                       <BookOpen className={`w-4 h-4 ${selectedExamId === area.id ? 'text-cyan-400' : 'text-cyan-800'}`} />
@@ -934,18 +1047,36 @@ export const AdminCommandCenter = () => {
                         {area.name}
                       </span>
                     </div>
-                    <button 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (window.confirm("¿ELIMINAR MATERIA Y TODO SU CONTENIDO?")) {
-                          deleteArea.mutate({ id: area.id });
-                          utils.adminCourses.getLearningAreas.invalidate();
-                        }
-                      }}
-                      className="opacity-0 group-hover:opacity-100 p-1.5 text-red-900 hover:text-red-500 transition-all"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </button>
+                    <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-all">
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingAreaId(area.id);
+                        }}
+                        className="p-1.5 text-cyan-700 hover:text-cyan-400 hover:bg-cyan-500/10 rounded transition-all"
+                        title="Abrir Terminal JSON"
+                      >
+                        <Braces className="w-3.5 h-3.5" />
+                      </button>
+                      <button 
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          if (!window.confirm(`¿ELIMINAR MATERIA: ${area.name}? Se borrarán todos sus contenidos.`)) return;
+                          try {
+                            await deleteArea.mutateAsync({ id: area.id });
+                            toast.success('Materia eliminada');
+                            utils.adminCourses.getLearningAreas.invalidate();
+                            if (selectedExamId === area.id) setSelectedExamId(null);
+                          } catch {
+                            toast.error('Error al eliminar materia');
+                          }
+                        }}
+                        className="p-1.5 text-red-900 hover:text-red-500 hover:bg-red-500/10 rounded transition-all"
+                        title="Eliminar Permanente"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
