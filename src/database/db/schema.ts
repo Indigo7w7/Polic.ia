@@ -38,14 +38,17 @@ export const learningAreas = mysqlTable('learning_areas', {
 export const learningContent = mysqlTable('learning_content', {
   id: int('id').primaryKey().autoincrement(),
   areaId: int('area_id').references(() => learningAreas.id),
+  topic: varchar('topic', { length: 255 }).notNull().default('GENERAL'), // folder/subtopic name
   title: varchar('title', { length: 255 }).notNull(),
   body: text('body').notNull(),
   questions: json('questions'),
-  level: int('level').default(1),
+  level: int('level').default(1),                                         // auto-calculated from topic order
+  orderInTopic: int('order_in_topic').default(0),                         // order within the topic
   schoolType: mysqlEnum('school_type', ['EO', 'EESTP', 'BOTH']).default('BOTH'),
 }, (table) => [
   index('idx_content_area').on(table.areaId),
   index('idx_content_school').on(table.schoolType),
+  index('idx_content_topic').on(table.topic),
 ]);
 
 // 4. Exams (Levels)

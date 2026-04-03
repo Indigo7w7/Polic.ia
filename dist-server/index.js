@@ -1392,8 +1392,10 @@ var adminCourseRouter = router({
     return { id: res.insertId };
   }),
   deleteLearningArea: adminProcedure.input(z8.object({ id: z8.number() })).mutation(async ({ input }) => {
-    await db.delete(learningContent).where(eq10(learningContent.areaId, input.id));
-    await db.delete(learningAreas).where(eq10(learningAreas.id, input.id));
+    await db.transaction(async (tx) => {
+      await tx.delete(learningContent).where(eq10(learningContent.areaId, input.id));
+      await tx.delete(learningAreas).where(eq10(learningAreas.id, input.id));
+    });
     return { success: true };
   }),
   getLearningContent: adminProcedure.input(z8.object({ areaId: z8.number() })).query(async ({ input }) => {
@@ -1448,6 +1450,22 @@ var adminCourseRouter = router({
       }
       return { success: true, areaId, created, updated };
     });
+  }),
+  /** Get the entire area content as a single JSON object for easy editing */
+  getAreaJSON: adminProcedure.input(z8.object({ areaId: z8.number() })).query(async ({ input }) => {
+    const [area] = await db.select().from(learningAreas).where(eq10(learningAreas.id, input.areaId));
+    if (!area) throw new TRPCError6({ code: "NOT_FOUND", message: "Area not found" });
+    const content = await db.select().from(learningContent).where(eq10(learningContent.areaId, input.areaId)).orderBy(learningContent.level);
+    return {
+      areaName: area.name,
+      content: content.map((item) => ({
+        title: item.title,
+        body: item.body,
+        questions: item.questions,
+        level: item.level,
+        schoolType: item.schoolType
+      }))
+    };
   })
 });
 
@@ -1608,36 +1626,70 @@ var learningReviewRouter = router({
 import { z as z11 } from "zod";
 import { eq as eq13, and as and10, desc as desc5 } from "drizzle-orm";
 var learningProgressRouter = router({
-  /** Mark a unit as completed with a specific score */
+  /** Mark a unit as completed with a specific score and award honor points (0-20) */
   completeUnit: protectedProcedure.input(z11.object({
     unitId: z11.number(),
-    score: z11.number()
+    score: z11.number(),
+    totalQuestions: z11.number()
   })).mutation(async ({ input, ctx }) => {
     const userId = ctx.userId;
-    const [existing] = await db.select().from(learningProgress).where(
-      and10(
-        eq13(learningProgress.userId, userId),
-        eq13(learningProgress.unitId, input.unitId)
-      )
-    ).limit(1);
-    if (existing) {
-      if (input.score > (existing.score || 0)) {
-        await db.update(learningProgress).set({ score: input.score, completedAt: /* @__PURE__ */ new Date() }).where(eq13(learningProgress.id, existing.id));
-      }
-    } else {
-      await db.insert(learningProgress).values({
-        userId,
-        unitId: input.unitId,
-        score: input.score
-      });
+    if (input.totalQuestions <= 0) {
+      return { success: false, pointsAdded: 0, totalUnitPoints: 0 };
     }
-    return { success: true };
+    const awardedPoints = Math.round(input.score / input.totalQuestions * 20);
+    return await db.transaction(async (tx) => {
+      const [existing] = await tx.select().from(learningProgress).where(
+        and10(
+          eq13(learningProgress.userId, userId),
+          eq13(learningProgress.unitId, input.unitId)
+        )
+      ).limit(1);
+      const currentBestPoints = existing ? Math.round((existing.score || 0) / input.totalQuestions * 20) : 0;
+      const pointsDifference = Math.max(0, awardedPoints - currentBestPoints);
+      if (existing) {
+        if (input.score > (existing.score || 0)) {
+          await tx.update(learningProgress).set({ score: input.score, completedAt: /* @__PURE__ */ new Date() }).where(eq13(learningProgress.id, existing.id));
+        }
+      } else {
+        await tx.insert(learningProgress).values({
+          userId,
+          unitId: input.unitId,
+          score: input.score
+        });
+      }
+      if (pointsDifference > 0) {
+        const [user] = await tx.select().from(users).where(eq13(users.uid, userId));
+        if (user) {
+          await tx.update(users).set({
+            honorPoints: (user.honorPoints || 0) + pointsDifference,
+            lastActive: /* @__PURE__ */ new Date()
+          }).where(eq13(users.uid, userId));
+        }
+      }
+      return {
+        success: true,
+        pointsAdded: pointsDifference,
+        totalUnitPoints: awardedPoints
+      };
+    });
   }),
   /** Get all completed units for the current user */
   getUserProgress: protectedProcedure.query(async ({ ctx }) => {
     const userId = ctx.userId;
     const progress = await db.select().from(learningProgress).where(eq13(learningProgress.userId, userId)).orderBy(desc5(learningProgress.completedAt));
     return progress;
+  }),
+  /** Get the global leaderboard (Top students by Honor Points) */
+  getLeaderboard: protectedProcedure.query(async () => {
+    const topUsers = await db.select({
+      uid: users.uid,
+      name: users.name,
+      photoURL: users.photoURL,
+      honorPoints: users.honorPoints,
+      meritPoints: users.meritPoints
+      // BUG-11 FIX: renamed from misleading 'rank' alias
+    }).from(users).where(eq13(users.status, "ACTIVE")).orderBy(desc5(users.honorPoints)).limit(100);
+    return topUsers;
   })
 });
 

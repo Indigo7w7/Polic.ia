@@ -9,13 +9,11 @@ export const adminCourseRouter = router({
   /*                            COURSE MANAGEMENT                               */
   /* -------------------------------------------------------------------------- */
 
-  /** Get all courses */
   getCourses: protectedProcedure
     .query(async () => {
       return await db.select().from(courses).orderBy(desc(courses.createdAt));
     }),
 
-  /** Create a new course */
   createCourse: adminProcedure
     .input(z.object({
       title: z.string().min(1).max(255),
@@ -37,7 +35,6 @@ export const adminCourseRouter = router({
       return { success: true, courseId: newCourse.insertId };
     }),
 
-  /** Update an existing course */
   updateCourse: adminProcedure
     .input(z.object({
       courseId: z.number(),
@@ -51,18 +48,14 @@ export const adminCourseRouter = router({
       })
     }))
     .mutation(async ({ input }) => {
-      await db.update(courses)
-        .set(input.data)
-        .where(eq(courses.id, input.courseId));
+      await db.update(courses).set(input.data).where(eq(courses.id, input.courseId));
       return { success: true };
     }),
 
-  /** Delete a course (will cascade delete materials if DB is set up that way, otherwise manual delete needed) */
   deleteCourse: adminProcedure
     .input(z.object({ courseId: z.number() }))
     .mutation(async ({ input }) => {
       await db.transaction(async (tx) => {
-        // Delete materials first to prevent orphans
         await tx.delete(courseMaterials).where(eq(courseMaterials.courseId, input.courseId));
         await tx.delete(courses).where(eq(courses.id, input.courseId));
       });
@@ -73,7 +66,6 @@ export const adminCourseRouter = router({
   /*                          MATERIAL MANAGEMENT                               */
   /* -------------------------------------------------------------------------- */
 
-  /** Get materials for a specific course */
   getCourseMaterials: protectedProcedure
     .input(z.object({ courseId: z.number() }))
     .query(async ({ input }) => {
@@ -83,7 +75,6 @@ export const adminCourseRouter = router({
         .orderBy(courseMaterials.order);
     }),
 
-  /** Add a new material to a course */
   addMaterialToCourse: adminProcedure
     .input(z.object({
       courseId: z.number(),
@@ -103,7 +94,6 @@ export const adminCourseRouter = router({
       return { success: true, materialId: newMaterial.insertId };
     }),
 
-  /** Delete a material */
   deleteCourseMaterial: adminProcedure
     .input(z.object({ materialId: z.number() }))
     .mutation(async ({ input }) => {
@@ -112,7 +102,7 @@ export const adminCourseRouter = router({
     }),
 
   /* -------------------------------------------------------------------------- */
-  /*                          SYLLABUS (LEARNING) MGMT                          */
+  /*                     SYLLABUS (EAGLE EYE EXPLORER) MGMT                    */
   /* -------------------------------------------------------------------------- */
 
   getLearningAreas: adminProcedure
@@ -121,10 +111,9 @@ export const adminCourseRouter = router({
       try {
         return await db.select().from(learningAreas);
       } catch (error) {
-        console.error('[DATABASE_ERROR] Error en getLearningAreas:', error);
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
-          message: `Error al obtener áreas de aprendizaje: ${error instanceof Error ? error.message : 'Error desconocido'}`,
+          message: `Error al obtener áreas: ${error instanceof Error ? error.message : 'Error desconocido'}`,
         });
       }
     }),
@@ -132,14 +121,16 @@ export const adminCourseRouter = router({
   createLearningArea: adminProcedure
     .input(z.object({ name: z.string(), icon: z.string().optional() }))
     .mutation(async ({ input }) => {
-      const [res] = await db.insert(learningAreas).values({ name: input.name, icon: input.icon });
+      const [res] = await db.insert(learningAreas).values({
+        name: input.name.trim().toUpperCase(),
+        icon: input.icon,
+      });
       return { id: res.insertId };
     }),
 
   deleteLearningArea: adminProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
-      // BUG-12 FIX: wrap in transaction — if area delete fails, content is NOT orphaned
       await db.transaction(async (tx) => {
         await tx.delete(learningContent).where(eq(learningContent.areaId, input.id));
         await tx.delete(learningAreas).where(eq(learningAreas.id, input.id));
@@ -147,10 +138,23 @@ export const adminCourseRouter = router({
       return { success: true };
     }),
 
+  /** Wipe every area and content row — used for "start fresh" */
+  clearAllLearningContent: adminProcedure
+    .mutation(async () => {
+      await db.transaction(async (tx) => {
+        await tx.delete(learningContent);
+        await tx.delete(learningAreas);
+      });
+      return { success: true };
+    }),
+
   getLearningContent: adminProcedure
     .input(z.object({ areaId: z.number() }))
     .query(async ({ input }) => {
-      return await db.select().from(learningContent).where(eq(learningContent.areaId, input.areaId));
+      return await db.select()
+        .from(learningContent)
+        .where(eq(learningContent.areaId, input.areaId))
+        .orderBy(learningContent.level, learningContent.orderInTopic);
     }),
 
   deleteLearningContent: adminProcedure
@@ -160,64 +164,141 @@ export const adminCourseRouter = router({
       return { success: true };
     }),
 
+  /** Rename a topic (folder) across all its units in an area */
+  renameTopic: adminProcedure
+    .input(z.object({
+      areaId: z.number(),
+      oldName: z.string(),
+      newName: z.string().min(1),
+    }))
+    .mutation(async ({ input }) => {
+      const normalized = input.newName.trim().toUpperCase();
+      await db.update(learningContent)
+        .set({ topic: normalized })
+        .where(
+          and(
+            eq(learningContent.areaId, input.areaId),
+            eq(learningContent.topic, input.oldName.trim().toUpperCase()),
+          )
+        );
+      return { success: true };
+    }),
+
+  /** Delete an entire topic (folder) and all its units */
+  deleteTopic: adminProcedure
+    .input(z.object({ areaId: z.number(), topicName: z.string() }))
+    .mutation(async ({ input }) => {
+      await db.delete(learningContent)
+        .where(
+          and(
+            eq(learningContent.areaId, input.areaId),
+            eq(learningContent.topic, input.topicName.trim().toUpperCase()),
+          )
+        );
+      return { success: true };
+    }),
+
+  /**
+   * Eagle Eye Explorer — Upload hierarchical JSON
+   *
+   * NEW FORMAT:
+   * {
+   *   "areaName": "COMUNICACIÓN",
+   *   "topics": [
+   *     {
+   *       "name": "GRAMÁTICA",                     ← Folder / subtopic
+   *       "schoolType": "BOTH",                    ← Optional, applies to whole topic
+   *       "units": [                               ← Files / lessons
+   *         { "title": "...", "body": "...", "questions": [...], "schoolType": "BOTH" }
+   *       ]
+   *     }
+   *   ]
+   * }
+   *
+   * Level is AUTO-CALCULATED: topicIndex + 1 (Folder order = difficulty level)
+   * orderInTopic is auto-set by unit position within the topic.
+   */
   uploadLearningJSON: adminProcedure
     .input(z.object({
-      areaName: z.string(),
-      content: z.array(z.object({
-        title: z.string(),
-        body: z.string(),
-        questions: z.array(z.any()).optional(),
-        level: z.number().default(1),
-        schoolType: z.enum(['EO', 'EESTP', 'BOTH']).default('BOTH')
-      }))
+      areaName: z.string().min(1),
+      topics: z.array(z.object({
+        name: z.string().min(1),
+        schoolType: z.enum(['EO', 'EESTP', 'BOTH']).optional(),
+        units: z.array(z.object({
+          title: z.string().min(1),
+          body: z.string(),
+          questions: z.array(z.any()).optional().default([]),
+          schoolType: z.enum(['EO', 'EESTP', 'BOTH']).optional(),
+        })).min(1, 'Cada tema debe tener al menos 1 unidad'),
+      })).min(1, 'Debes tener al menos 1 tema'),
     }))
     .mutation(async ({ input }) => {
       const normalizedAreaName = input.areaName.trim().toUpperCase();
 
       return await db.transaction(async (tx) => {
         // Find or create area
-        let [area] = await tx.select().from(learningAreas).where(eq(learningAreas.name, normalizedAreaName));
-        let areaId = area?.id;
+        let [area] = await tx.select()
+          .from(learningAreas)
+          .where(eq(learningAreas.name, normalizedAreaName));
 
+        let areaId = area?.id;
         if (!areaId) {
           const [res] = await tx.insert(learningAreas).values({ name: normalizedAreaName });
           areaId = res.insertId;
         }
 
-        let updated = 0;
         let created = 0;
+        let updated = 0;
 
-        // Insert units with UPSERT logic (manual check for better compatibility)
-        for (const item of input.content) {
-          const normalizedTitle = item.title.trim().toUpperCase();
+        // Process each topic (folder)
+        for (let topicIdx = 0; topicIdx < input.topics.length; topicIdx++) {
+          const topic = input.topics[topicIdx];
+          const normalizedTopicName = topic.name.trim().toUpperCase();
 
-          const [existingUnit] = await tx.select()
-            .from(learningContent)
-            .where(and(eq(learningContent.areaId, areaId), eq(learningContent.title, normalizedTitle)))
-            .limit(1);
+          // Level = topic position (1-indexed) — AUTO-CALCULATED
+          const autoLevel = topicIdx + 1;
 
-          if (existingUnit) {
-            // Update existing
-            await tx.update(learningContent)
-              .set({
-                body: item.body,
-                questions: item.questions,
-                level: item.level || 1,
-                schoolType: item.schoolType || 'BOTH'
-              })
-              .where(eq(learningContent.id, existingUnit.id));
-            updated++;
-          } else {
-            // Insert new
-            await tx.insert(learningContent).values({
-              areaId: areaId,
-              title: normalizedTitle,
-              body: item.body,
-              questions: item.questions,
-              level: item.level || 1,
-              schoolType: item.schoolType || 'BOTH'
-            });
-            created++;
+          // Process each unit (file) within the topic
+          for (let unitIdx = 0; unitIdx < topic.units.length; unitIdx++) {
+            const unit = topic.units[unitIdx];
+            const normalizedTitle = unit.title.trim().toUpperCase();
+            const effectiveSchoolType = unit.schoolType ?? topic.schoolType ?? 'BOTH';
+
+            const [existing] = await tx.select()
+              .from(learningContent)
+              .where(
+                and(
+                  eq(learningContent.areaId, areaId),
+                  eq(learningContent.title, normalizedTitle),
+                )
+              )
+              .limit(1);
+
+            if (existing) {
+              await tx.update(learningContent)
+                .set({
+                  topic: normalizedTopicName,
+                  body: unit.body,
+                  questions: unit.questions,
+                  level: autoLevel,
+                  orderInTopic: unitIdx,
+                  schoolType: effectiveSchoolType,
+                })
+                .where(eq(learningContent.id, existing.id));
+              updated++;
+            } else {
+              await tx.insert(learningContent).values({
+                areaId,
+                topic: normalizedTopicName,
+                title: normalizedTitle,
+                body: unit.body,
+                questions: unit.questions,
+                level: autoLevel,
+                orderInTopic: unitIdx,
+                schoolType: effectiveSchoolType,
+              });
+              created++;
+            }
           }
         }
 
@@ -225,27 +306,40 @@ export const adminCourseRouter = router({
       });
     }),
 
-  /** Get the entire area content as a single JSON object for easy editing */
+  /** Export area content grouped by topic for the Eagle Eye Explorer editor */
   getAreaJSON: adminProcedure
     .input(z.object({ areaId: z.number() }))
     .query(async ({ input }) => {
-      const [area] = await db.select().from(learningAreas).where(eq(learningAreas.id, input.areaId));
-      if (!area) throw new TRPCError({ code: 'NOT_FOUND', message: 'Area not found' });
+      const [area] = await db.select()
+        .from(learningAreas)
+        .where(eq(learningAreas.id, input.areaId));
+
+      if (!area) throw new TRPCError({ code: 'NOT_FOUND', message: 'Área no encontrada' });
 
       const content = await db.select()
         .from(learningContent)
         .where(eq(learningContent.areaId, input.areaId))
-        .orderBy(learningContent.level);
+        .orderBy(learningContent.level, learningContent.orderInTopic);
+
+      // Group by topic
+      const topicsMap = new Map<string, typeof content>();
+      for (const unit of content) {
+        const t = unit.topic ?? 'GENERAL';
+        if (!topicsMap.has(t)) topicsMap.set(t, []);
+        topicsMap.get(t)!.push(unit);
+      }
 
       return {
         areaName: area.name,
-        content: content.map(item => ({
-          title: item.title,
-          body: item.body,
-          questions: item.questions,
-          level: item.level,
-          schoolType: item.schoolType
-        }))
+        topics: Array.from(topicsMap.entries()).map(([name, units]) => ({
+          name,
+          units: units.map(u => ({
+            title: u.title,
+            body: u.body,
+            questions: u.questions,
+            schoolType: u.schoolType,
+          })),
+        })),
       };
     }),
 });

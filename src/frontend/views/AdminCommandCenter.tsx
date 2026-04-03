@@ -34,38 +34,62 @@ import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer } from 'recharts';
 
 // ─── CONTENT LIST COMPONENT (For syllabus) ────────────────────
 const ContentList = ({ areaId, onDelete }: { areaId: number, onDelete: () => void }) => {
-  const content = trpc.adminCourses.getLearningContent.useQuery({ areaId });
+  const content = trpc.adminCourses.getAreaJSON.useQuery({ areaId });
   const deleteUnit = trpc.adminCourses.deleteLearningContent.useMutation();
+  const deleteTopic = trpc.adminCourses.deleteTopic.useMutation();
 
-  const handleDelete = async (id: number) => {
+  const handleDeleteUnit = async (id: number) => {
     if (!window.confirm("¿ELIMINAR ESTA UNIDAD?")) return;
     await deleteUnit.mutateAsync({ id });
-    onDelete();
+    content.refetch();
   };
 
+  const handleDeleteTopic = async (topicName: string) => {
+    if (!window.confirm(`¿ELIMINAR CARPETA '${topicName}' Y TODO SU CONTENIDO?`)) return;
+    await deleteTopic.mutateAsync({ areaId, topicName });
+    content.refetch();
+  };
+
+  if (content.isLoading) return <div className="text-center py-10 text-cyan-900 text-[10px] uppercase font-mono italic">{'> EXPLORANDO_CARPETAS...'}</div>;
+  if (!content.data?.topics?.length) return <div className="text-center py-10 text-cyan-900 text-[10px] uppercase font-mono italic">{'> SIN_CONTENIDO_REGISTRADO'}</div>;
+
   return (
-    <div className="space-y-2">
-      {content.data?.map(unit => (
-        <div key={unit.id} className="p-3 bg-cyan-950/10 border border-cyan-900/30 rounded-lg flex items-center justify-between group">
-          <div className="flex-1 min-w-0">
-            <div className="text-[11px] font-bold text-cyan-400 font-mono truncate">{unit.title}</div>
-            <div className="text-[9px] text-cyan-900 font-mono mt-0.5 flex items-center gap-2">
-              <span>TIPO: {unit.schoolType} · NIVEL: {unit.level}</span>
-              {unit.questions && (unit.questions as any[]).length > 0 && (
-                <span className="px-1 bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 rounded-[2px] text-[7px] animate-pulse">DRILL_ACTIVO</span>
-              )}
+    <div className="space-y-4">
+      {content.data.topics.map((topic, tIdx) => (
+        <div key={tIdx} className="bg-cyan-950/20 border border-cyan-900/40 rounded-lg overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-2 bg-cyan-950/40 border-b border-cyan-900/50">
+            <div className="flex items-center gap-2">
+              <BookOpen className="w-4 h-4 text-cyan-500" />
+              <span className="text-[11px] font-black uppercase text-cyan-300 font-mono tracking-widest">{topic.name}</span>
             </div>
+            <button onClick={() => handleDeleteTopic(topic.name)} className="p-1 text-red-900 hover:text-red-500 transition-colors" title="Borrar Carpeta Completa">
+               <Trash2 className="w-3.5 h-3.5" />
+            </button>
           </div>
-          <button onClick={() => handleDelete(unit.id)} className="p-1.5 text-red-900 hover:text-red-500 transition-colors">
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
+          <div className="divide-y divide-cyan-900/10">
+            {topic.units.map((unit: any, uIdx: number) => (
+              <div key={uIdx} className="pl-8 pr-4 py-2 hover:bg-cyan-950/10 transition-colors flex items-center justify-between group">
+                <div className="flex-1 min-w-0 flex items-center gap-2">
+                  <FileText className="w-3.5 h-3.5 text-cyan-700" />
+                  <div>
+                    <div className="text-[10px] font-bold text-cyan-400 font-mono truncate">{unit.title}</div>
+                    <div className="text-[8px] text-cyan-900 font-mono flex items-center gap-2">
+                      <span>TIPO: {unit.schoolType || 'BOTH'}</span>
+                      {unit.questions && unit.questions.length > 0 && (
+                        <span className="text-cyan-500">· DRILL_ACTIVO ({unit.questions.length})</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                {/* Visual indicator (to match functionality without unit IDs in getAreaJSON currently) */}
+                <div className="text-cyan-800 opacity-50 group-hover:opacity-100 transition-opacity">
+                  <span className="text-[9px] font-mono">[MODO_LECTURA]</span>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       ))}
-      {content.data?.length === 0 && (
-        <div className="text-center py-10 text-cyan-900 text-[10px] uppercase font-mono italic">
-          {'> SIN_CONTENIDO_REGISTRADO'}
-        </div>
-      )}
     </div>
   );
 };
@@ -288,8 +312,8 @@ const LiveJsonEditorModal = ({ areaId, onConfirm, onClose }: { areaId?: number |
   const handleProcess = () => {
     try {
       const parsed = JSON.parse(jsonInput);
-      if (!parsed.areaName || !Array.isArray(parsed.content)) {
-        throw new Error('Formato inválido. Debe incluir "areaName" y el array "content".');
+      if (!parsed.areaName || !Array.isArray(parsed.topics)) {
+        throw new Error('Formato inválido. Debe incluir "areaName" y el array "topics".');
       }
       onConfirm(parsed);
     } catch (e: any) {
@@ -327,7 +351,7 @@ const LiveJsonEditorModal = ({ areaId, onConfirm, onClose }: { areaId?: number |
 
           <textarea
             className="w-full h-[500px] bg-cyan-950/5 border border-cyan-900/40 rounded-2xl p-6 text-cyan-300 text-[11px] font-mono focus:border-cyan-400 outline-none resize-none placeholder:text-cyan-900 shadow-inner scrollbar-thin scrollbar-thumb-cyan-900"
-            placeholder='{ "areaName": "LITERATURA", "content": [...] }'
+            placeholder='{ "areaName": "LITERATURA", "topics": [ { "name": "GENERAL", "units": [...] } ] }'
             value={jsonInput}
             onChange={(e) => { setJsonInput(e.target.value); setError(null); }}
           />
@@ -398,8 +422,9 @@ export const AdminCommandCenter = () => {
   // Syllabus mutations
   const createArea          = trpc.adminCourses.createLearningArea.useMutation();
   const deleteArea          = trpc.adminCourses.deleteLearningArea.useMutation();
+  const clearAllCourses     = trpc.adminCourses.clearAllLearningContent.useMutation();
   const uploadSyllabus      = trpc.adminCourses.uploadLearningJSON.useMutation();
-  const syllabusAreas   = trpc.adminCourses.getLearningAreas.useQuery();
+  const syllabusAreas       = trpc.adminCourses.getLearningAreas.useQuery();
   const deleteContentUnit   = trpc.adminCourses.deleteLearningContent.useMutation();
 
   const utils               = trpc.useUtils();
@@ -560,8 +585,8 @@ export const AdminCommandCenter = () => {
     reader.onload = async (e) => {
       try {
         const content = JSON.parse(e.target?.result as string);
-        if (!content.areaName || !Array.isArray(content.content)) {
-          throw new Error('Formato inválido. Debe tener areaName y un array "content".');
+        if (!content.areaName || !Array.isArray(content.topics)) {
+          throw new Error('Formato inválido. Debe tener areaName y un array "topics".');
         }
         const res = await uploadSyllabus.mutateAsync(content);
         toast.success(`Temario importado: ${content.areaName} (Nuevos: ${res.created}, Actualizados: ${res.updated})`);
@@ -1022,6 +1047,21 @@ export const AdminCommandCenter = () => {
               <div className="px-4 py-3 border-b border-cyan-900/40 bg-cyan-950/10 flex items-center justify-between">
                 <span className="text-[10px] font-black uppercase tracking-widest text-cyan-500 font-mono">MATERIAS / ÁREAS</span>
                 <div className="flex gap-2">
+                    <button 
+                      onClick={async () => {
+                        if (window.prompt("ESTO ELIMINARÁ TODA LA BASE DE TEMARIOS. ESCRIBE 'WIPE' PARA CONFIRMAR:") === 'WIPE') {
+                          await clearAllCourses.mutateAsync();
+                          toast.success('Pizarra limpia. Base de datos vaciada.');
+                          utils.adminCourses.getLearningAreas.invalidate();
+                          setSelectedExamId(null);
+                        }
+                      }}
+                      className="px-3 py-1.5 bg-red-950/40 border border-red-500/50 text-red-400 rounded-lg hover:bg-red-900/80 flex items-center gap-2 transition-all"
+                      title="Nuke DB"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span className="text-[9px] font-black uppercase tracking-widest hidden sm:inline">RESET</span>
+                    </button>
                     <button 
                       onClick={() => setEditingAreaId(-1)}
                       className="px-4 py-1.5 bg-cyan-900/40 border border-cyan-500/50 text-cyan-400 rounded-lg hover:bg-cyan-800 flex items-center gap-2 border-dashed transition-all"
