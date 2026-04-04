@@ -14,7 +14,7 @@
     "build:server": "npx esbuild src/backend/server/index.ts --bundle --platform=node --target=node22 --outfile=dist-server/index.js --format=esm --external:fsevents --external:mysql2 --packages=external",
     "deploy:full": "npm run build:local && npx firebase deploy --only hosting && git add . && git commit -m \"build: turbo deploy\" && git push origin main",
     "mega-sync": "npx -y rimraf dist dist-server && npm run build:local && npx firebase deploy --only hosting && npx -y railway up --detach",
-    "start": "npx drizzle-kit push --config=drizzle.config.ts --force && NODE_ENV=production node dist-server/index.js",
+    "start": "node migrate_prod.cjs && NODE_ENV=production node dist-server/index.js",
     "dev:server": "tsx watch src/backend/server/index.ts",
     "preview": "vite preview",
     "clean": "rm -rf dist",
