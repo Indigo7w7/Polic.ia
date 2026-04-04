@@ -218,7 +218,7 @@ export const adminCourseRouter = router({
    * Level is AUTO-CALCULATED: topicIndex + 1 (Folder order = difficulty level)
    * orderInTopic is auto-set by unit position within the topic.
    */
-  uploadLearningJSON: adminProcedure
+  uploadTacticalSyllabus: adminProcedure
     .input(z.object({
       areaName: z.string().min(1),
       topics: z.array(z.object({
@@ -233,6 +233,7 @@ export const adminCourseRouter = router({
       })).min(1, 'Debes tener al menos 1 tema'),
     }))
     .mutation(async ({ input }) => {
+      console.log('[DEBUG-TACTICAL] Received Syllabus Payload:', JSON.stringify(input).substring(0, 500));
       const normalizedAreaName = input.areaName.trim().toUpperCase();
 
       return await db.transaction(async (tx) => {

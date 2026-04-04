@@ -425,7 +425,7 @@ export const AdminCommandCenter = () => {
   const createArea          = trpc.adminCourses.createLearningArea.useMutation();
   const deleteArea          = trpc.adminCourses.deleteLearningArea.useMutation();
   const clearAllCourses     = trpc.adminCourses.clearAllLearningContent.useMutation();
-  const uploadSyllabus      = trpc.adminCourses.uploadLearningJSON.useMutation();
+  const uploadSyllabus      = trpc.adminCourses.uploadTacticalSyllabus.useMutation();
   const syllabusAreas       = trpc.adminCourses.getLearningAreas.useQuery();
   const deleteContentUnit   = trpc.adminCourses.deleteLearningContent.useMutation();
 
