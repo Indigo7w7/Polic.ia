@@ -24,6 +24,7 @@ import {
   ClipboardList,
   LogOut,
   Braces,
+  Folder,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
@@ -31,6 +32,7 @@ import { useNavigate } from 'react-router-dom';
 import { auth, storage } from '@/src/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { VisualSyllabusEditor } from '../components/admin/VisualSyllabusEditor';
 
 // ─── CONTENT LIST COMPONENT (For syllabus) ────────────────────
 const ContentList = ({ areaId, onDelete }: { areaId: number, onDelete: () => void }) => {
@@ -648,15 +650,15 @@ export const AdminCommandCenter = () => {
         </div>
       )}
 
-      {/* Live JSON Editor Modal — BUG-06 FIX: editingAreaId !== null already covers -1 */}
+      {/* Visual Folder Editor */}
       {editingAreaId !== null && (
-        <LiveJsonEditorModal 
+        <VisualSyllabusEditor 
           areaId={editingAreaId === -1 ? null : editingAreaId}
           onClose={() => setEditingAreaId(null)}
           onConfirm={async (data) => {
             try {
               const res = await uploadSyllabus.mutateAsync(data);
-              toast.success(`Temario inyectado: ${data.areaName} (Nuevos: ${res.created}, Actualizados: ${res.updated})`);
+              toast.success(`Temario guardado: ${data.areaName} (Nuevos: ${res.created}, Actualizados: ${res.updated})`);
               utils.adminCourses.getLearningAreas.invalidate();
               utils.adminCourses.getLearningContent.invalidate();
               utils.learning.getAreas.invalidate();
@@ -1064,11 +1066,11 @@ export const AdminCommandCenter = () => {
                     </button>
                     <button 
                       onClick={() => setEditingAreaId(-1)}
-                      className="px-4 py-1.5 bg-cyan-900/40 border border-cyan-500/50 text-cyan-400 rounded-lg hover:bg-cyan-800 flex items-center gap-2 border-dashed transition-all"
-                      title="Pegado Rápido (Consola JSON)"
+                      className="px-4 py-1.5 bg-amber-900/40 border border-amber-500/50 text-amber-400 rounded-lg hover:bg-amber-800 flex items-center gap-2 border-dashed transition-all"
+                      title="Explorador Visual"
                     >
-                      <Zap className="w-3.5 h-3.5" />
-                      <span className="text-[10px] font-black uppercase tracking-widest">INYECTAR_TEMARIO</span>
+                      <Folder className="w-3.5 h-3.5" />
+                      <span className="text-[10px] font-black uppercase tracking-widest">CREAR_MATERIA</span>
                     </button>
                 </div>
               </div>
@@ -1094,9 +1096,9 @@ export const AdminCommandCenter = () => {
                           setEditingAreaId(area.id);
                         }}
                         className="p-1.5 text-cyan-700 hover:text-cyan-400 hover:bg-cyan-500/10 rounded transition-all"
-                        title="Abrir Terminal JSON"
+                        title="Abrir Explorador Visual"
                       >
-                        <Braces className="w-3.5 h-3.5" />
+                        <Folder className="w-3.5 h-3.5" />
                       </button>
                       <button 
                         onClick={async (e) => {

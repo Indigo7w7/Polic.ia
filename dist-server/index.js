@@ -73,14 +73,20 @@ var learningAreas = mysqlTable("learning_areas", {
 var learningContent = mysqlTable("learning_content", {
   id: int("id").primaryKey().autoincrement(),
   areaId: int("area_id").references(() => learningAreas.id),
+  topic: varchar("topic", { length: 255 }).notNull().default("GENERAL"),
+  // folder/subtopic name
   title: varchar("title", { length: 255 }).notNull(),
   body: text("body").notNull(),
   questions: json("questions"),
   level: int("level").default(1),
+  // auto-calculated from topic order
+  orderInTopic: int("order_in_topic").default(0),
+  // order within the topic
   schoolType: mysqlEnum("school_type", ["EO", "EESTP", "BOTH"]).default("BOTH")
 }, (table) => [
   index("idx_content_area").on(table.areaId),
-  index("idx_content_school").on(table.schoolType)
+  index("idx_content_school").on(table.schoolType),
+  index("idx_content_topic").on(table.topic)
 ]);
 var exams = mysqlTable("exams", {
   id: int("id").primaryKey().autoincrement(),
@@ -1298,11 +1304,9 @@ var adminCourseRouter = router({
   /* -------------------------------------------------------------------------- */
   /*                            COURSE MANAGEMENT                               */
   /* -------------------------------------------------------------------------- */
-  /** Get all courses */
   getCourses: protectedProcedure.query(async () => {
     return await db.select().from(courses).orderBy(desc4(courses.createdAt));
   }),
-  /** Create a new course */
   createCourse: adminProcedure.input(z8.object({
     title: z8.string().min(1).max(255),
     description: z8.string().optional(),
@@ -1321,7 +1325,6 @@ var adminCourseRouter = router({
     });
     return { success: true, courseId: newCourse.insertId };
   }),
-  /** Update an existing course */
   updateCourse: adminProcedure.input(z8.object({
     courseId: z8.number(),
     data: z8.object({
@@ -1336,7 +1339,6 @@ var adminCourseRouter = router({
     await db.update(courses).set(input.data).where(eq10(courses.id, input.courseId));
     return { success: true };
   }),
-  /** Delete a course (will cascade delete materials if DB is set up that way, otherwise manual delete needed) */
   deleteCourse: adminProcedure.input(z8.object({ courseId: z8.number() })).mutation(async ({ input }) => {
     await db.transaction(async (tx) => {
       await tx.delete(courseMaterials).where(eq10(courseMaterials.courseId, input.courseId));
@@ -1347,11 +1349,9 @@ var adminCourseRouter = router({
   /* -------------------------------------------------------------------------- */
   /*                          MATERIAL MANAGEMENT                               */
   /* -------------------------------------------------------------------------- */
-  /** Get materials for a specific course */
   getCourseMaterials: protectedProcedure.input(z8.object({ courseId: z8.number() })).query(async ({ input }) => {
     return await db.select().from(courseMaterials).where(eq10(courseMaterials.courseId, input.courseId)).orderBy(courseMaterials.order);
   }),
-  /** Add a new material to a course */
   addMaterialToCourse: adminProcedure.input(z8.object({
     courseId: z8.number(),
     title: z8.string().min(1).max(255),
@@ -1368,27 +1368,28 @@ var adminCourseRouter = router({
     });
     return { success: true, materialId: newMaterial.insertId };
   }),
-  /** Delete a material */
   deleteCourseMaterial: adminProcedure.input(z8.object({ materialId: z8.number() })).mutation(async ({ input }) => {
     await db.delete(courseMaterials).where(eq10(courseMaterials.id, input.materialId));
     return { success: true };
   }),
   /* -------------------------------------------------------------------------- */
-  /*                          SYLLABUS (LEARNING) MGMT                          */
+  /*                     SYLLABUS (EAGLE EYE EXPLORER) MGMT                    */
   /* -------------------------------------------------------------------------- */
   getLearningAreas: adminProcedure.input(z8.object({}).optional()).query(async () => {
     try {
       return await db.select().from(learningAreas);
     } catch (error) {
-      console.error("[DATABASE_ERROR] Error en getLearningAreas:", error);
       throw new TRPCError6({
         code: "INTERNAL_SERVER_ERROR",
-        message: `Error al obtener \xE1reas de aprendizaje: ${error instanceof Error ? error.message : "Error desconocido"}`
+        message: `Error al obtener \xE1reas: ${error instanceof Error ? error.message : "Error desconocido"}`
       });
     }
   }),
   createLearningArea: adminProcedure.input(z8.object({ name: z8.string(), icon: z8.string().optional() })).mutation(async ({ input }) => {
-    const [res] = await db.insert(learningAreas).values({ name: input.name, icon: input.icon });
+    const [res] = await db.insert(learningAreas).values({
+      name: input.name.trim().toUpperCase(),
+      icon: input.icon
+    });
     return { id: res.insertId };
   }),
   deleteLearningArea: adminProcedure.input(z8.object({ id: z8.number() })).mutation(async ({ input }) => {
@@ -1398,22 +1399,78 @@ var adminCourseRouter = router({
     });
     return { success: true };
   }),
+  /** Wipe every area and content row — used for "start fresh" */
+  clearAllLearningContent: adminProcedure.mutation(async () => {
+    await db.transaction(async (tx) => {
+      await tx.delete(learningContent);
+      await tx.delete(learningAreas);
+    });
+    return { success: true };
+  }),
   getLearningContent: adminProcedure.input(z8.object({ areaId: z8.number() })).query(async ({ input }) => {
-    return await db.select().from(learningContent).where(eq10(learningContent.areaId, input.areaId));
+    return await db.select().from(learningContent).where(eq10(learningContent.areaId, input.areaId)).orderBy(learningContent.level, learningContent.orderInTopic);
   }),
   deleteLearningContent: adminProcedure.input(z8.object({ id: z8.number() })).mutation(async ({ input }) => {
     await db.delete(learningContent).where(eq10(learningContent.id, input.id));
     return { success: true };
   }),
+  /** Rename a topic (folder) across all its units in an area */
+  renameTopic: adminProcedure.input(z8.object({
+    areaId: z8.number(),
+    oldName: z8.string(),
+    newName: z8.string().min(1)
+  })).mutation(async ({ input }) => {
+    const normalized = input.newName.trim().toUpperCase();
+    await db.update(learningContent).set({ topic: normalized }).where(
+      and8(
+        eq10(learningContent.areaId, input.areaId),
+        eq10(learningContent.topic, input.oldName.trim().toUpperCase())
+      )
+    );
+    return { success: true };
+  }),
+  /** Delete an entire topic (folder) and all its units */
+  deleteTopic: adminProcedure.input(z8.object({ areaId: z8.number(), topicName: z8.string() })).mutation(async ({ input }) => {
+    await db.delete(learningContent).where(
+      and8(
+        eq10(learningContent.areaId, input.areaId),
+        eq10(learningContent.topic, input.topicName.trim().toUpperCase())
+      )
+    );
+    return { success: true };
+  }),
+  /**
+   * Eagle Eye Explorer — Upload hierarchical JSON
+   *
+   * NEW FORMAT:
+   * {
+   *   "areaName": "COMUNICACIÓN",
+   *   "topics": [
+   *     {
+   *       "name": "GRAMÁTICA",                     ← Folder / subtopic
+   *       "schoolType": "BOTH",                    ← Optional, applies to whole topic
+   *       "units": [                               ← Files / lessons
+   *         { "title": "...", "body": "...", "questions": [...], "schoolType": "BOTH" }
+   *       ]
+   *     }
+   *   ]
+   * }
+   *
+   * Level is AUTO-CALCULATED: topicIndex + 1 (Folder order = difficulty level)
+   * orderInTopic is auto-set by unit position within the topic.
+   */
   uploadLearningJSON: adminProcedure.input(z8.object({
-    areaName: z8.string(),
-    content: z8.array(z8.object({
-      title: z8.string(),
-      body: z8.string(),
-      questions: z8.array(z8.any()).optional(),
-      level: z8.number().default(1),
-      schoolType: z8.enum(["EO", "EESTP", "BOTH"]).default("BOTH")
-    }))
+    areaName: z8.string().min(1),
+    topics: z8.array(z8.object({
+      name: z8.string().min(1),
+      schoolType: z8.enum(["EO", "EESTP", "BOTH"]).optional(),
+      units: z8.array(z8.object({
+        title: z8.string().min(1),
+        body: z8.string(),
+        questions: z8.array(z8.any()).optional().default([]),
+        schoolType: z8.enum(["EO", "EESTP", "BOTH"]).optional()
+      })).min(1, "Cada tema debe tener al menos 1 unidad")
+    })).min(1, "Debes tener al menos 1 tema")
   })).mutation(async ({ input }) => {
     const normalizedAreaName = input.areaName.trim().toUpperCase();
     return await db.transaction(async (tx) => {
@@ -1423,47 +1480,71 @@ var adminCourseRouter = router({
         const [res] = await tx.insert(learningAreas).values({ name: normalizedAreaName });
         areaId = res.insertId;
       }
-      let updated = 0;
       let created = 0;
-      for (const item of input.content) {
-        const normalizedTitle = item.title.trim().toUpperCase();
-        const [existingUnit] = await tx.select().from(learningContent).where(and8(eq10(learningContent.areaId, areaId), eq10(learningContent.title, normalizedTitle))).limit(1);
-        if (existingUnit) {
-          await tx.update(learningContent).set({
-            body: item.body,
-            questions: item.questions,
-            level: item.level || 1,
-            schoolType: item.schoolType || "BOTH"
-          }).where(eq10(learningContent.id, existingUnit.id));
-          updated++;
-        } else {
-          await tx.insert(learningContent).values({
-            areaId,
-            title: normalizedTitle,
-            body: item.body,
-            questions: item.questions,
-            level: item.level || 1,
-            schoolType: item.schoolType || "BOTH"
-          });
-          created++;
+      let updated = 0;
+      for (let topicIdx = 0; topicIdx < input.topics.length; topicIdx++) {
+        const topic = input.topics[topicIdx];
+        const normalizedTopicName = topic.name.trim().toUpperCase();
+        const autoLevel = topicIdx + 1;
+        for (let unitIdx = 0; unitIdx < topic.units.length; unitIdx++) {
+          const unit = topic.units[unitIdx];
+          const normalizedTitle = unit.title.trim().toUpperCase();
+          const effectiveSchoolType = unit.schoolType ?? topic.schoolType ?? "BOTH";
+          const [existing] = await tx.select().from(learningContent).where(
+            and8(
+              eq10(learningContent.areaId, areaId),
+              eq10(learningContent.title, normalizedTitle)
+            )
+          ).limit(1);
+          if (existing) {
+            await tx.update(learningContent).set({
+              topic: normalizedTopicName,
+              body: unit.body,
+              questions: unit.questions,
+              level: autoLevel,
+              orderInTopic: unitIdx,
+              schoolType: effectiveSchoolType
+            }).where(eq10(learningContent.id, existing.id));
+            updated++;
+          } else {
+            await tx.insert(learningContent).values({
+              areaId,
+              topic: normalizedTopicName,
+              title: normalizedTitle,
+              body: unit.body,
+              questions: unit.questions,
+              level: autoLevel,
+              orderInTopic: unitIdx,
+              schoolType: effectiveSchoolType
+            });
+            created++;
+          }
         }
       }
       return { success: true, areaId, created, updated };
     });
   }),
-  /** Get the entire area content as a single JSON object for easy editing */
+  /** Export area content grouped by topic for the Eagle Eye Explorer editor */
   getAreaJSON: adminProcedure.input(z8.object({ areaId: z8.number() })).query(async ({ input }) => {
     const [area] = await db.select().from(learningAreas).where(eq10(learningAreas.id, input.areaId));
-    if (!area) throw new TRPCError6({ code: "NOT_FOUND", message: "Area not found" });
-    const content = await db.select().from(learningContent).where(eq10(learningContent.areaId, input.areaId)).orderBy(learningContent.level);
+    if (!area) throw new TRPCError6({ code: "NOT_FOUND", message: "\xC1rea no encontrada" });
+    const content = await db.select().from(learningContent).where(eq10(learningContent.areaId, input.areaId)).orderBy(learningContent.level, learningContent.orderInTopic);
+    const topicsMap = /* @__PURE__ */ new Map();
+    for (const unit of content) {
+      const t2 = unit.topic ?? "GENERAL";
+      if (!topicsMap.has(t2)) topicsMap.set(t2, []);
+      topicsMap.get(t2).push(unit);
+    }
     return {
       areaName: area.name,
-      content: content.map((item) => ({
-        title: item.title,
-        body: item.body,
-        questions: item.questions,
-        level: item.level,
-        schoolType: item.schoolType
+      topics: Array.from(topicsMap.entries()).map(([name, units]) => ({
+        name,
+        units: units.map((u) => ({
+          title: u.title,
+          body: u.body,
+          questions: u.questions,
+          schoolType: u.schoolType
+        }))
       }))
     };
   })
