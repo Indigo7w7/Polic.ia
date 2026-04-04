@@ -13,8 +13,8 @@ async function run() {
 
   try {
     console.log('Checking "topic" column...');
-    await pool.query("ALTER TABLE learning_content ADD COLUMN IF NOT EXISTS topic VARCHAR(255) NOT NULL DEFAULT 'GENERAL'");
-    console.log('✅ "topic" verified.');
+    await pool.query("ALTER TABLE learning_content ADD COLUMN topic VARCHAR(255) NOT NULL DEFAULT 'GENERAL'");
+    console.log('✅ "topic" added.');
   } catch (err) {
     if (err.message.includes('Duplicate column name')) {
       console.log('Column "topic" already exists.');
@@ -25,8 +25,8 @@ async function run() {
 
   try {
     console.log('Checking "order_in_topic" column...');
-    await pool.query("ALTER TABLE learning_content ADD COLUMN IF NOT EXISTS order_in_topic INT DEFAULT 0");
-    console.log('✅ "order_in_topic" verified.');
+    await pool.query("ALTER TABLE learning_content ADD COLUMN order_in_topic INT DEFAULT 0");
+    console.log('✅ "order_in_topic" added.');
   } catch (err) {
      if (err.message.includes('Duplicate column name')) {
       console.log('Column "order_in_topic" already exists.');
