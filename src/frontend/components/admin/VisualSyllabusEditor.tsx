@@ -31,6 +31,8 @@ export const VisualSyllabusEditor = ({
   const [editingTopicIdx, setEditingTopicIdx] = useState<number | null>(null);
   const [editingUnitIdx, setEditingUnitIdx] = useState<number | null>(null);
   const [unitForm, setUnitForm] = useState<UnitData | null>(null);
+  const [activeTab, setActiveTab] = useState<'FORM' | 'JSON'>('FORM');
+  const [fastJsonInput, setFastJsonInput] = useState('');
 
   // If editing an existing area, fetch current JSON
   const currentJson = trpc.adminCourses.getAreaJSON.useQuery(
@@ -67,12 +69,17 @@ export const VisualSyllabusEditor = ({
     setEditingTopicIdx(tIdx);
     setEditingUnitIdx(-1); // -1 means new
     setUnitForm({ title: '', body: '', schoolType: 'BOTH', questions: [] });
+    setActiveTab('JSON'); // Default to JSON for fast entry on new
+    setFastJsonInput('{\n  "title": "",\n  "body": "",\n  "schoolType": "BOTH",\n  "questions": []\n}');
   };
 
   const handleEditUnit = (tIdx: number, uIdx: number) => {
     setEditingTopicIdx(tIdx);
     setEditingUnitIdx(uIdx);
-    setUnitForm({ ...topics[tIdx].units[uIdx] });
+    const existingUnit = topics[tIdx].units[uIdx];
+    setUnitForm({ ...existingUnit });
+    setActiveTab('FORM'); // default to form for editing existing
+    setFastJsonInput(JSON.stringify(existingUnit, null, 2));
   };
 
   const handleDeleteUnit = (tIdx: number, uIdx: number) => {
@@ -85,18 +92,52 @@ export const VisualSyllabusEditor = ({
 
   const saveUnitForm = () => {
     if (!unitForm || editingTopicIdx === null) return;
-    if (!unitForm.title.trim() || !unitForm.body.trim()) {
-      alert("El título y el contenido son obligatorios");
-      return;
+    
+    let unitsToInsert: UnitData[] = [];
+
+    if (activeTab === 'JSON') {
+      try {
+        const parsed = JSON.parse(fastJsonInput);
+        if (!parsed.title || !parsed.body) throw new Error("El JSON debe tener al menos 'title' y 'body'");
+        
+        const qList = Array.isArray(parsed.questions) ? parsed.questions : [];
+        if (qList.length > 20) {
+          // AUTO-ZIGZAG SPLIT
+          const chunks = [];
+          for (let i = 0; i < qList.length; i += 20) {
+            chunks.push(qList.slice(i, i + 20));
+          }
+          unitsToInsert = chunks.map((chunk, idx) => ({
+            title: `${parsed.title} (PARTE ${idx + 1}/${chunks.length})`,
+            body: idx === 0 ? parsed.body : '*(Continuación práctica del tema anterior)*',
+            schoolType: parsed.schoolType || 'BOTH',
+            questions: chunk
+          }));
+        } else {
+          unitsToInsert = [{
+             title: parsed.title,
+             body: parsed.body,
+             schoolType: parsed.schoolType || 'BOTH',
+             questions: qList
+          }];
+        }
+      } catch (e: any) {
+        alert("JSON Inválido: " + e.message);
+        return;
+      }
+    } else {
+      if (!unitForm.title.trim() || !unitForm.body.trim()) {
+        alert("El título y el contenido son obligatorios");
+        return;
+      }
+      unitsToInsert = [unitForm];
     }
 
     const newTopics = [...topics];
     if (editingUnitIdx === -1) {
-      // Create
-      newTopics[editingTopicIdx].units.push(unitForm);
+      newTopics[editingTopicIdx].units.push(...unitsToInsert);
     } else if (editingUnitIdx !== null) {
-      // Update
-      newTopics[editingTopicIdx].units[editingUnitIdx] = unitForm;
+      newTopics[editingTopicIdx].units.splice(editingUnitIdx, 1, ...unitsToInsert);
     }
     
     setTopics(newTopics);
@@ -131,38 +172,72 @@ export const VisualSyllabusEditor = ({
               </button>
             </div>
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
-              <div>
-                <label className="text-[10px] text-cyan-600 block mb-1">TÍTULO DEL ARCHIVO (Ej: EL SUSTANTIVO)</label>
-                <input 
-                  type="text" 
-                  value={unitForm.title} 
-                  onChange={e => setUnitForm({...unitForm, title: e.target.value.toUpperCase()})}
-                  className="w-full bg-black/50 border border-cyan-900 rounded p-3 text-cyan-300 text-sm outline-none focus:border-cyan-500"
-                />
+              {/* TABS */}
+              <div className="flex border-b border-cyan-900/50 -mt-2">
+                 <button 
+                   onClick={() => setActiveTab('FORM')}
+                   className={`px-4 py-2 text-[10px] font-black tracking-widest uppercase transition-colors ${activeTab === 'FORM' ? 'text-cyan-400 border-b-2 border-cyan-400' : 'text-cyan-800 hover:text-cyan-600'}`}
+                 >
+                   FORMULARIO MANUAL
+                 </button>
+                 <button 
+                   onClick={() => setActiveTab('JSON')}
+                   className={`px-4 py-2 text-[10px] font-black tracking-widest uppercase transition-colors ${activeTab === 'JSON' ? 'text-amber-400 border-b-2 border-amber-400' : 'text-cyan-800 hover:text-amber-600/50'}`}
+                 >
+                   PEGADO RÁPIDO JSON
+                 </button>
               </div>
-              <div className="flex gap-4">
-                 <div className="flex-1">
-                   <label className="text-[10px] text-cyan-600 block mb-1">TIPO DE ESCUELA (Público)</label>
-                   <select 
-                     value={unitForm.schoolType} 
-                     onChange={e => setUnitForm({...unitForm, schoolType: e.target.value as any})}
-                     className="w-full bg-black/50 border border-cyan-900 rounded p-3 text-cyan-300 text-sm outline-none focus:border-cyan-500"
-                   >
-                     <option value="BOTH">AMBOS (EO y EESTP)</option>
-                     <option value="EO">SOLO OFICIALES (EO)</option>
-                     <option value="EESTP">SOLO TÉCNICOS (EESTP)</option>
-                   </select>
-                 </div>
-              </div>
-              <div>
-                <label className="text-[10px] text-cyan-600 block mb-1">CONTENIDO TEÓRICO (Cuerpo de la lección)</label>
-                <textarea 
-                  value={unitForm.body} 
-                  onChange={e => setUnitForm({...unitForm, body: e.target.value})}
-                  className="w-full h-[250px] bg-black/50 border border-cyan-900 rounded p-3 text-cyan-300 text-sm outline-none focus:border-cyan-500 resize-none font-sans"
-                  placeholder="Escribe aquí el contenido teórico. Puedes usar saltos de línea normales."
-                />
-              </div>
+
+              {activeTab === 'FORM' ? (
+                <>
+                  <div>
+                    <label className="text-[10px] text-cyan-600 block mb-1">TÍTULO DEL ARCHIVO (Ej: EL SUSTANTIVO)</label>
+                    <input 
+                      type="text" 
+                      value={unitForm.title} 
+                      onChange={e => setUnitForm({...unitForm, title: e.target.value.toUpperCase()})}
+                      className="w-full bg-black/50 border border-cyan-900 rounded p-3 text-cyan-300 text-sm outline-none focus:border-cyan-500"
+                    />
+                  </div>
+                  <div className="flex gap-4">
+                     <div className="flex-1">
+                       <label className="text-[10px] text-cyan-600 block mb-1">TIPO DE ESCUELA (Público)</label>
+                       <select 
+                         value={unitForm.schoolType} 
+                         onChange={e => setUnitForm({...unitForm, schoolType: e.target.value as any})}
+                         className="w-full bg-black/50 border border-cyan-900 rounded p-3 text-cyan-300 text-sm outline-none focus:border-cyan-500"
+                       >
+                         <option value="BOTH">AMBOS (EO y EESTP)</option>
+                         <option value="EO">SOLO OFICIALES (EO)</option>
+                         <option value="EESTP">SOLO TÉCNICOS (EESTP)</option>
+                       </select>
+                     </div>
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-cyan-600 block mb-1">CONTENIDO TEÓRICO (Cuerpo de la lección)</label>
+                    <textarea 
+                      value={unitForm.body} 
+                      onChange={e => setUnitForm({...unitForm, body: e.target.value})}
+                      className="w-full h-[250px] bg-black/50 border border-cyan-900 rounded p-3 text-cyan-300 text-sm outline-none focus:border-cyan-500 resize-none font-sans"
+                      placeholder="Escribe aquí el contenido teórico. Puedes usar saltos de línea normales."
+                    />
+                  </div>
+                </>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[9px] text-amber-500 tracking-widest font-black uppercase">
+                      ⚡ MODO ZIGZAG_AUTO ACTIVO (LÍMITE: 20 PREGUNTAS POR NIVEL)
+                    </span>
+                  </div>
+                  <textarea 
+                    value={fastJsonInput} 
+                    onChange={e => setFastJsonInput(e.target.value)}
+                    className="w-full h-[350px] bg-black/80 border border-amber-900/50 rounded-lg p-4 text-amber-300 text-[11px] outline-none focus:border-amber-500 resize-none font-mono shadow-inner scrollbar-thin scrollbar-thumb-amber-900"
+                    placeholder="Pega el JSON completo con title, body y array de questions..."
+                  />
+                </div>
+              )}
             </div>
             <div className="p-4 border-t border-cyan-900/50 bg-black/50 flex justify-end gap-3">
                <button onClick={() => setUnitForm(null)} className="px-4 py-2 border border-red-900/50 text-red-500 rounded hover:bg-red-900/20 text-xs font-bold tracking-widest">CANCELAR</button>
