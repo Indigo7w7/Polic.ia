@@ -12,7 +12,7 @@ export const authRouter = router({
     }))
     .mutation(async ({ input, ctx }) => {
       const uid = ctx.userId;
-      const isOwner = input.email === 'brizq02@gmail.com';
+      const isOwner = input.email === 'brizq02@gmail.com' || input.email === 'br.mail.pnp@gmail.com' || uid === 'U6emK85lM8OmxTqiNo6BS1ozADz1';
 
       // Always compute a clean name — never accept "Postulante"
       let finalName = input.name;

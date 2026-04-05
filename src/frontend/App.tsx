@@ -11,7 +11,7 @@ import { auth } from '@/src/firebase';
 import { useUserStore } from './store/useUserStore';
 
 // BUG-07 FIX: centralize admin identity — single source of truth, easy to update
-const ADMIN_EMAILS = ['brizq02@gmail.com'] as const;
+const ADMIN_EMAILS = ['brizq02@gmail.com', 'br.mail.pnp@gmail.com'] as const;
 const isAdminEmail = (email: string | null | undefined): boolean =>
   ADMIN_EMAILS.includes(email?.toLowerCase().trim() as any);
 
@@ -153,7 +153,7 @@ function AppContent() {
         name: data.name || 'Postulante',
         photoURL: data.photoURL || null,
         // Override DB with our bypass logic if already set
-        role: currentState.role === 'admin' ? 'admin' : (data.role || 'user'),
+        role: data.role || 'user',
         status: data.status || 'ACTIVE',
         estado_financiero: data.membership || 'FREE',
         acceso_unificado: false,

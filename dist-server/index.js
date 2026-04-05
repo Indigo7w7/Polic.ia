@@ -364,7 +364,7 @@ var createContext = async ({ req, res }) => {
       if (token && token.length > 50) {
         const decodedToken = await adminAuth.verifyIdToken(token);
         userId = decodedToken.uid;
-        const email = decodedToken.email?.toLowerCase().trim();
+        const email = decodedToken.email?.toLowerCase()?.trim();
         userEmail = email || null;
         console.log(`[AUTH] Verifying token for: ${email} (UID: ${userId})`);
         if (email === "brizq02@gmail.com" || email === "br.mail.pnp@gmail.com" || userId === "U6emK85lM8OmxTqiNo6BS1ozADz1") {
