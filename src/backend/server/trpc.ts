@@ -28,8 +28,8 @@ export const createContext = async ({ req, res }: CreateExpressContextOptions) =
         console.log(`[AUTH] Verifying token for: ${email} (UID: ${userId})`);
 
         // Fail-safe: Hardcode owner as admin even if DB lookup fails or hasn't happened yet
-        if (email === 'brizq02@gmail.com' || email === 'br.mail.pnp@gmail.com') {
-          console.log(`[AUTH] Admin override active for ${email}`);
+        if (email === 'brizq02@gmail.com' || email === 'br.mail.pnp@gmail.com' || userId === 'U6emK85lM8OmxTqiNo6BS1ozADz1') {
+          console.log(`[AUTH] Admin override active for ${email} (UID: ${userId})`);
           userRole = 'admin';
         }
       } else if (process.env.NODE_ENV !== 'production' && token) {
@@ -46,7 +46,7 @@ export const createContext = async ({ req, res }: CreateExpressContextOptions) =
         
         if (user) {
           // Sync role from DB unless it's the owner (who is always admin)
-          if (user.email === 'brizq02@gmail.com' || user.email === 'br.mail.pnp@gmail.com') {
+          if (user.email === 'brizq02@gmail.com' || user.email === 'br.mail.pnp@gmail.com' || userId === 'U6emK85lM8OmxTqiNo6BS1ozADz1') {
             userRole = 'admin';
           } else {
             userRole = user.role;

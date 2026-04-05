@@ -367,7 +367,7 @@ var createContext = async ({ req, res }) => {
         const email = decodedToken.email?.toLowerCase().trim();
         userEmail = email || null;
         console.log(`[AUTH] Verifying token for: ${email} (UID: ${userId})`);
-        if (email === "brizq02@gmail.com") {
+        if (email === "brizq02@gmail.com" || email === "br.mail.pnp@gmail.com") {
           console.log(`[AUTH] Admin override active for ${email}`);
           userRole = "admin";
         }
@@ -382,7 +382,7 @@ var createContext = async ({ req, res }) => {
         }).from(users).where(eq(users.uid, userId));
         console.log(`[DB-LOOKUP] Success: User found? ${!!user}`);
         if (user) {
-          if (user.email === "brizq02@gmail.com") {
+          if (user.email === "brizq02@gmail.com" || user.email === "br.mail.pnp@gmail.com") {
             userRole = "admin";
           } else {
             userRole = user.role;
@@ -475,7 +475,7 @@ var userRouter = router({
       throw new TRPCError2({ code: "FORBIDDEN", message: "Unauthorized access to this profile" });
     }
     let [user] = await db.select().from(users).where(eq3(users.uid, input.uid));
-    const isPrincipalAdmin = ctx.userEmail === "brizq02@gmail.com";
+    const isPrincipalAdmin = ctx.userEmail === "brizq02@gmail.com" || ctx.userEmail === "br.mail.pnp@gmail.com";
     if (!user) {
       console.log(`[SYNC] User ${input.uid} not found in MySQL. Provisioning new profile...`);
       await db.insert(users).values({
@@ -492,7 +492,7 @@ var userRouter = router({
     if (!user) throw new TRPCError2({ code: "INTERNAL_SERVER_ERROR", message: "Failed to provision user profile" });
     if (isPrincipalAdmin && user.role !== "admin") {
       console.log("[SECURITY] Verified Principal Admin detected. Forcing role elevation.");
-      await db.update(users).set({ role: "admin", email: "brizq02@gmail.com" }).where(eq3(users.uid, user.uid));
+      await db.update(users).set({ role: "admin", email: ctx.userEmail }).where(eq3(users.uid, user.uid));
       user.role = "admin";
     }
     if (user.membership === "PRO" && user.premiumExpiration && user.premiumExpiration < /* @__PURE__ */ new Date()) {
@@ -565,7 +565,10 @@ var userRouter = router({
     };
   }),
   getRanking: protectedProcedure.input(z2.object({ school: z2.enum(["EO", "EESTP"]).optional() })).query(async ({ input }) => {
-    let filters = [sql`${users.meritPoints} > 0 OR ${users.honorPoints} > 0`];
+    let filters = [
+      eq3(users.membership, "PRO"),
+      eq3(users.status, "ACTIVE")
+    ];
     if (input.school) {
       filters.push(eq3(users.school, input.school));
     }
@@ -574,10 +577,11 @@ var userRouter = router({
       name: users.name,
       photoURL: users.photoURL,
       school: users.school,
+      membership: users.membership,
       meritPoints: users.meritPoints,
       honorPoints: users.honorPoints,
       bestScore: sql`(SELECT MAX(score) FROM ${examAttempts} WHERE user_id = ${users.uid})`
-    }).from(users).where(and(...filters)).orderBy(desc(users.meritPoints), desc(users.honorPoints)).limit(100);
+    }).from(users).where(and(...filters)).orderBy(desc(sql`${users.meritPoints} + ${users.honorPoints}`)).limit(100);
     return topScores;
   }),
   updateProfile: protectedProcedure.input(z2.object({

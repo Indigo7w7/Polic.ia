@@ -69,9 +69,17 @@ export const aiRouter = router({
         }
 
         return { response };
-      } catch (error) {
-        console.error('Gemini Error:', error);
-        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Fuerzas de la naturaleza interfirieron con la conexión IA.' });
+      } catch (error: any) {
+        console.error('Gemini Error Details:', {
+          message: error.message,
+          stack: error.stack,
+          code: error.code,
+          status: error.status
+        });
+        throw new TRPCError({ 
+          code: 'INTERNAL_SERVER_ERROR', 
+          message: `Fuerzas de la naturaleza interfirieron con la conexión IA: ${error.message || 'Error Desconocido'}` 
+        });
       }
     }),
 });

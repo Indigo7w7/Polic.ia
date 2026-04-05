@@ -15,7 +15,7 @@ export const userRouter = router({
       
       let [user] = await db.select().from(users).where(eq(users.uid, input.uid));
 
-      const isPrincipalAdmin = ctx.userEmail === 'brizq02@gmail.com' || ctx.userEmail === 'br.mail.pnp@gmail.com';
+      const isPrincipalAdmin = ctx.userEmail === 'brizq02@gmail.com' || ctx.userEmail === 'br.mail.pnp@gmail.com' || ctx.userId === 'U6emK85lM8OmxTqiNo6BS1ozADz1';
 
       if (!user) {
         console.log(`[SYNC] User ${input.uid} not found in MySQL. Provisioning new profile...`);
