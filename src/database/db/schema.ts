@@ -84,7 +84,7 @@ export const examQuestions = mysqlTable('exam_questions', {
 // 6. Exam Attempts
 export const examAttempts = mysqlTable('exam_attempts', {
   id: int('id').primaryKey().autoincrement(),
-  userId: varchar('user_id', { length: 255 }).references(() => users.uid),
+  userId: varchar('user_id', { length: 255 }).references(() => users.uid, { onDelete: 'cascade' }),
   score: int('score').notNull(),
   passed: boolean('passed').default(false),
   startedAt: timestamp('started_at').defaultNow(),
@@ -109,7 +109,7 @@ export const attemptAnswers = mysqlTable('attempt_answers', {
 // 8. Leitner Cards
 export const leitnerCards = mysqlTable('leitner_cards', {
   id: int('id').primaryKey().autoincrement(),
-  userId: varchar('user_id', { length: 255 }).references(() => users.uid),
+  userId: varchar('user_id', { length: 255 }).references(() => users.uid, { onDelete: 'cascade' }),
   questionId: int('question_id').references(() => examQuestions.id),
   level: int('level').default(0),
   nextReview: timestamp('next_review'),
@@ -122,7 +122,7 @@ export const leitnerCards = mysqlTable('leitner_cards', {
 // 9. Stripe Subscriptions
 export const stripeSubscriptions = mysqlTable('stripe_subscriptions', {
   id: varchar('id', { length: 255 }).primaryKey(),
-  userId: varchar('user_id', { length: 255 }).references(() => users.uid),
+  userId: varchar('user_id', { length: 255 }).references(() => users.uid, { onDelete: 'cascade' }),
   status: varchar('status', { length: 50 }),
   priceId: varchar('price_id', { length: 255 }),
   currentPeriodEnd: timestamp('current_period_end'),
@@ -133,7 +133,7 @@ export const stripeSubscriptions = mysqlTable('stripe_subscriptions', {
 // 10. Admin Logs
 export const adminLogs = mysqlTable('admin_logs', {
   id: int('id').primaryKey().autoincrement(),
-  adminId: varchar('admin_id', { length: 255 }).references(() => users.uid),
+  adminId: varchar('admin_id', { length: 255 }).references(() => users.uid, { onDelete: 'cascade' }),
   action: text('action').notNull(),
   createdAt: timestamp('created_at').defaultNow(),
 }, (table) => [
@@ -144,7 +144,7 @@ export const adminLogs = mysqlTable('admin_logs', {
 // 11. Yape Audits (Payment verification)
 export const yapeAudits = mysqlTable('yape_audits', {
   id: int('id').primaryKey().autoincrement(),
-  userId: varchar('user_id', { length: 255 }).references(() => users.uid),
+  userId: varchar('user_id', { length: 255 }).references(() => users.uid, { onDelete: 'cascade' }),
   voucherUrl: varchar('voucher_url', { length: 512 }).notNull(),
   status: mysqlEnum('status', ['PENDIENTE', 'APROBADO', 'RECHAZADO']).default('PENDIENTE').notNull(),
   amount: int('amount').default(15),
@@ -227,7 +227,7 @@ export const examMaterials = mysqlTable('exam_materials', {
 // 17. Failed Drills (Memory for Perfection Mode)
 export const failedDrills = mysqlTable('failed_drills', {
   id: int('id').primaryKey().autoincrement(),
-  userId: varchar('user_id', { length: 255 }).references(() => users.uid),
+  userId: varchar('user_id', { length: 255 }).references(() => users.uid, { onDelete: 'cascade' }),
   unitId: int('unit_id').references(() => learningContent.id),
   questionIndex: int('question_index').notNull(),
   attempts: int('attempts').default(1),
@@ -239,7 +239,7 @@ export const failedDrills = mysqlTable('failed_drills', {
 // 18. Learning Progress (For merit-based unlocking)
 export const learningProgress = mysqlTable('learning_progress', {
   id: int('id').primaryKey().autoincrement(),
-  userId: varchar('user_id', { length: 255 }).references(() => users.uid),
+  userId: varchar('user_id', { length: 255 }).references(() => users.uid, { onDelete: 'cascade' }),
   unitId: int('unit_id').references(() => learningContent.id),
   score: int('score').default(0),
   completedAt: timestamp('completed_at').defaultNow(),

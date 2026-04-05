@@ -56,25 +56,30 @@ const AuthLoader = () => (
   </div>
 );
 
-const AdminRedirector = () => {
-  const { role, uid } = useUserStore();
+const GlobalRedirector = () => {
+  const { role, uid, modalidad_postulacion } = useUserStore();
   const navigate = useNavigate();
   const location = useLocation();
 
   useEffect(() => {
-    if (localStorage.getItem('policia-user-storage')) {
-      devLog('[CACHE] Purging legacy session data...');
-      localStorage.removeItem('policia-user-storage');
-      window.location.reload();
-    }
+    // 1. Administration Override (Portals)
     const adminRestrictedPaths = ['/', '/login', '/seleccionar-escuela'];
     const rawEmail = auth.currentUser?.email;
-    // BUG-07 FIX: use centralized isAdminEmail helper
-    if (uid && (role === 'admin' || isAdminEmail(rawEmail)) && adminRestrictedPaths.includes(location.pathname)) {
+    const isSuperAdmin = isAdminEmail(rawEmail);
+
+    if (uid && (role === 'admin' || isSuperAdmin) && adminRestrictedPaths.includes(location.pathname)) {
       devLog('[AUTH] High-Privilege access detected, routing to Command Center');
       navigate('/admin-portal', { replace: true });
+      return;
     }
-  }, [role, uid, navigate, location.pathname]);
+
+    // 2. Onboarding: Mandatory School Selection for Users
+    const authPublicPaths = ['/login', '/yape-checkout', '/seleccionar-escuela'];
+    if (uid && role === 'user' && !modalidad_postulacion && !authPublicPaths.includes(location.pathname)) {
+      devLog('[ONBOARDING] No school selected, routing to School Selector');
+      navigate('/seleccionar-escuela', { replace: true });
+    }
+  }, [role, uid, modalidad_postulacion, navigate, location.pathname]);
 
   return null;
 };
@@ -231,7 +236,7 @@ function AppContent() {
 
   return (
     <div className="relative">
-      <AdminRedirector />
+      <GlobalRedirector />
       <GlobalAlertListener />
       <Toaster position="top-center" theme="dark" richColors />
       <PressureNotification />

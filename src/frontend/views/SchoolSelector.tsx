@@ -149,15 +149,6 @@ export const SchoolSelector: React.FC = () => {
             </motion.button>
           ))}
 
-          <motion.button
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.8 }}
-            onClick={() => handleSelect(null)}
-            className="w-full py-4 text-xs font-black uppercase tracking-widest text-slate-500 hover:text-white transition-colors border border-dashed border-slate-800 rounded-2xl hover:border-slate-600 bg-slate-900/20"
-          >
-            Omitir por ahora (Modo Explorador)
-          </motion.button>
         </div>
 
         {/* Footer */}
