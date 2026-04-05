@@ -161,7 +161,7 @@ const DeleteConfirmModal = ({ uid, name, onConfirm, onCancel }: {
           <input
             type="text"
             value={input}
-            onChange={e => setInput(e.target.value)}
+            onChange={e => setInput(e.target.value.toUpperCase())}
             placeholder="ELIMINAR"
             className="w-full bg-black border border-red-900 rounded px-4 py-2 text-red-400 font-mono text-sm placeholder:text-red-900 focus:border-red-600 outline-none uppercase"
           />
@@ -174,7 +174,7 @@ const DeleteConfirmModal = ({ uid, name, onConfirm, onCancel }: {
             </button>
             <button
               onClick={onConfirm}
-              disabled={input !== 'ELIMINAR'}
+              disabled={input.trim().toUpperCase() !== 'ELIMINAR'}
               className="flex-1 py-2 bg-red-950 border border-red-700 text-red-400 font-black text-[10px] uppercase tracking-widest rounded hover:bg-red-900 transition-colors font-mono disabled:opacity-30 disabled:cursor-not-allowed"
             >
               EJECUTAR BORRADO
