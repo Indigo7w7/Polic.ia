@@ -162,9 +162,14 @@ const DeleteConfirmModal = ({ uid, name, onConfirm, onCancel }: {
             type="text"
             value={input}
             onChange={e => setInput(e.target.value.toUpperCase())}
-            placeholder="ELIMINAR"
+            placeholder="ESCRIBE_ELIMINAR_YA"
             className="w-full bg-black border border-red-900 rounded px-4 py-2 text-red-400 font-mono text-sm placeholder:text-red-900 focus:border-red-600 outline-none uppercase"
           />
+          <div className="flex justify-between items-center px-1">
+            <span className="text-[8px] text-red-900 font-mono uppercase tracking-widest">
+              Status: {input.trim() === 'ELIMINAR' ? 'READY' : 'WAITING_INPUT'}
+            </span>
+          </div>
           <div className="flex gap-3">
             <button
               onClick={onCancel}
@@ -175,7 +180,7 @@ const DeleteConfirmModal = ({ uid, name, onConfirm, onCancel }: {
             <button
               onClick={onConfirm}
               disabled={input.trim().toUpperCase() !== 'ELIMINAR'}
-              className="flex-1 py-2 bg-red-950 border border-red-700 text-red-400 font-black text-[10px] uppercase tracking-widest rounded hover:bg-red-900 transition-colors font-mono disabled:opacity-30 disabled:cursor-not-allowed"
+              className="flex-1 py-2 bg-red-600 border border-red-400 text-white font-black text-[10px] uppercase tracking-widest rounded hover:bg-red-500 transition-colors font-mono disabled:opacity-30 disabled:bg-red-950 disabled:border-red-900 disabled:text-red-400 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(239,68,68,0.2)]"
             >
               EJECUTAR BORRADO
             </button>
