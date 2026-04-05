@@ -22,7 +22,7 @@ export const createContext = async ({ req, res }: CreateExpressContextOptions) =
       if (token && token.length > 50) {
         const decodedToken = await adminAuth.verifyIdToken(token);
         userId = decodedToken.uid;
-        const email = decodedToken.email?.toLowerCase().trim();
+        const email = decodedToken.email?.toLowerCase()?.trim();
         userEmail = email || null;
         
         console.log(`[AUTH] Verifying token for: ${email} (UID: ${userId})`);

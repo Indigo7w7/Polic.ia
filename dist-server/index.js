@@ -367,8 +367,8 @@ var createContext = async ({ req, res }) => {
         const email = decodedToken.email?.toLowerCase().trim();
         userEmail = email || null;
         console.log(`[AUTH] Verifying token for: ${email} (UID: ${userId})`);
-        if (email === "brizq02@gmail.com" || email === "br.mail.pnp@gmail.com") {
-          console.log(`[AUTH] Admin override active for ${email}`);
+        if (email === "brizq02@gmail.com" || email === "br.mail.pnp@gmail.com" || userId === "U6emK85lM8OmxTqiNo6BS1ozADz1") {
+          console.log(`[AUTH] Admin override active for ${email} (UID: ${userId})`);
           userRole = "admin";
         }
       } else if (process.env.NODE_ENV !== "production" && token) {
@@ -382,7 +382,7 @@ var createContext = async ({ req, res }) => {
         }).from(users).where(eq(users.uid, userId));
         console.log(`[DB-LOOKUP] Success: User found? ${!!user}`);
         if (user) {
-          if (user.email === "brizq02@gmail.com" || user.email === "br.mail.pnp@gmail.com") {
+          if (user.email === "brizq02@gmail.com" || user.email === "br.mail.pnp@gmail.com" || userId === "U6emK85lM8OmxTqiNo6BS1ozADz1") {
             userRole = "admin";
           } else {
             userRole = user.role;
@@ -475,7 +475,7 @@ var userRouter = router({
       throw new TRPCError2({ code: "FORBIDDEN", message: "Unauthorized access to this profile" });
     }
     let [user] = await db.select().from(users).where(eq3(users.uid, input.uid));
-    const isPrincipalAdmin = ctx.userEmail === "brizq02@gmail.com" || ctx.userEmail === "br.mail.pnp@gmail.com";
+    const isPrincipalAdmin = ctx.userEmail === "brizq02@gmail.com" || ctx.userEmail === "br.mail.pnp@gmail.com" || ctx.userId === "U6emK85lM8OmxTqiNo6BS1ozADz1";
     if (!user) {
       console.log(`[SYNC] User ${input.uid} not found in MySQL. Provisioning new profile...`);
       await db.insert(users).values({
@@ -1612,8 +1612,16 @@ Postulante: ${input.message}`;
       }
       return { response };
     } catch (error) {
-      console.error("Gemini Error:", error);
-      throw new TRPCError7({ code: "INTERNAL_SERVER_ERROR", message: "Fuerzas de la naturaleza interfirieron con la conexi\xF3n IA." });
+      console.error("Gemini Error Details:", {
+        message: error.message,
+        stack: error.stack,
+        code: error.code,
+        status: error.status
+      });
+      throw new TRPCError7({
+        code: "INTERNAL_SERVER_ERROR",
+        message: `Fuerzas de la naturaleza interfirieron con la conexi\xF3n IA: ${error.message || "Error Desconocido"}`
+      });
     }
   })
 });
