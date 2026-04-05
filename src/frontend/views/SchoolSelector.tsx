@@ -35,6 +35,7 @@ export const SchoolSelector: React.FC = () => {
   const navigate = useNavigate();
   const { uid, setUserData, name, modalidad_postulacion } = useUserStore();
   const selectSchool = trpc.user.selectSchool.useMutation();
+  const utils = trpc.useUtils();
 
   React.useEffect(() => {
     if (modalidad_postulacion) {
@@ -54,7 +55,6 @@ export const SchoolSelector: React.FC = () => {
   const handleSelect = async (modalidad: ModalidadPostulacion) => {
     if (!modalidad || modalidad_postulacion) return;
     
-    const utils = trpc.useUtils();
     setUserData({ modalidad_postulacion: modalidad });
 
     if (uid) {

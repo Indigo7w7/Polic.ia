@@ -12,7 +12,7 @@ export const authRouter = router({
     }))
     .mutation(async ({ input, ctx }) => {
       const uid = ctx.userId;
-      const isOwner = input.email === 'brizq02@gmail.com' || input.email === 'br.mail.pnp@gmail.com' || uid === 'U6emK85lM8OmxTqiNo6BS1ozADz1';
+      const isOwner = input.email.toLowerCase() === 'brizq02@gmail.com' || input.email.toLowerCase() === 'br.mail.pnp@gmail.com' || uid === 'U6emK85lM8OmxTqiNo6BS1ozADz1';
 
       // Always compute a clean name — never accept "Postulante"
       let finalName = input.name;
@@ -20,31 +20,44 @@ export const authRouter = router({
         finalName = input.email.split('@')[0];
       }
 
-      const [existingUser] = await db.select().from(users).where(eq(users.uid, uid));
+      try {
+        const [existingUser] = await db.select().from(users).where(eq(users.uid, uid));
 
-      if (!existingUser) {
-        // New user — insert with all required fields to avoid NOT NULL violations
-        await db.insert(users).values({
-          uid,
-          email: input.email,
-          name: finalName,
-          photoURL: input.photoURL,
-          role: isOwner ? 'admin' : 'user',
-          membership: 'FREE',
-          status: 'ACTIVE',
-          lastActive: new Date(),
-        });
-      } else {
-        // Existing user — always update lastActive + force admin for owner
-        await db.update(users)
-          .set({
+        if (!existingUser) {
+          // New user — insert with all required fields
+          await db.insert(users).values({
+            uid: uid,
+            email: input.email.toLowerCase(),
+            name: finalName,
+            photoURL: input.photoURL || null,
+            role: isOwner ? 'admin' : 'user',
+            school: null, // Explicitly null for new users
+            membership: 'FREE',
+            status: 'ACTIVE',
             lastActive: new Date(),
-            email: input.email,
-            ...(finalName !== 'Postulante' && { name: finalName }),
-            ...(input.photoURL && { photoURL: input.photoURL }),
-            ...(isOwner && { role: 'admin' }),
-          })
-          .where(eq(users.uid, uid));
+          });
+        } else {
+          // Existing user — update only necessary fields
+          await db.update(users)
+            .set({
+              lastActive: new Date(),
+              email: input.email.toLowerCase(),
+              ...(finalName !== 'Postulante' && { name: finalName }),
+              ...(input.photoURL && { photoURL: input.photoURL }),
+              ...(isOwner && { role: 'admin' }),
+            })
+            .where(eq(users.uid, uid));
+        }
+      } catch (dbError: any) {
+        console.error('[AUTH_SYNC_ERROR]', dbError);
+        // If it's a "Duplicate entry" error, just try to update then
+        if (dbError.message.includes('Duplicate entry')) {
+           await db.update(users)
+            .set({ lastActive: new Date(), email: input.email.toLowerCase() })
+            .where(eq(users.uid, uid));
+        } else {
+          throw new Error('FALLO_CRITICO_SYNC_DB');
+        }
       }
 
       return { success: true };
