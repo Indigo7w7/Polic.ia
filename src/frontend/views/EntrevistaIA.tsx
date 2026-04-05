@@ -89,24 +89,32 @@ export const EntrevistaIA: React.FC = () => {
       <div className="fixed inset-0 pointer-events-none z-[60] opacity-[0.05] bg-[url('https://grainy-gradients.vercel.app/noise.svg')] bg-repeat" />
       <div className="fixed inset-0 pointer-events-none z-[60] bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.1)_50%),linear-gradient(90deg,rgba(255,0,0,0.02),rgba(0,255,0,0.01),rgba(0,0,0,0.02))] bg-[length:100%_2px,3px_100%]" />
 
-      <header className="p-4 border-b border-cyan-900 bg-black/80 backdrop-blur-md flex items-center justify-between z-50">
-        <div className="flex items-center gap-3">
-          <button onClick={() => navigate('/')} className="p-2 hover:bg-cyan-950 rounded-lg transition-colors">
-            <ChevronLeft className="w-5 h-5" />
-          </button>
-          <div>
-            <h1 className="text-xs font-black uppercase tracking-[0.3em] flex items-center gap-2">
-              <TerminalIcon className="w-3 h-3 text-cyan-500" />
-              SISTEMA DE EVALUACIÓN PSICOTÁCTICA v2.0
-            </h1>
-            <div className="flex items-center gap-2 mt-1">
-              <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-              <span className="text-[10px] text-emerald-500 font-black tracking-widest uppercase">ENLACE ACTIVO: GENERAL_S_X</span>
+      <header className="p-4 md:p-6 pb-2">
+        <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-6 p-6 bg-slate-900/40 border border-cyan-500/20 rounded-[2.5rem] relative overflow-hidden shadow-2xl backdrop-blur-md">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-cyan-500/[0.03] rounded-full blur-[80px]" />
+          
+          <div className="flex items-center gap-6 relative z-10 w-full md:w-auto">
+            <button 
+              onClick={() => navigate('/')}
+              className="p-3 bg-slate-950 border border-cyan-500/10 rounded-2xl text-cyan-600 hover:text-cyan-400 transition-all hover:scale-105"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+            <div>
+              <div className="text-[10px] font-black text-cyan-600 uppercase tracking-[0.3em] mb-1">Evaluación Psicotáctica_</div>
+              <h1 className="text-2xl font-black text-white uppercase tracking-tighter">Entrevista IA</h1>
             </div>
           </div>
-        </div>
-        <div className="px-3 py-1 bg-amber-500/10 border border-amber-500/20 rounded font-black text-[9px] text-amber-500 tracking-widest">
-           RANGO: PRO
+
+          <div className="flex items-center gap-4 relative z-10">
+            <div className="flex flex-col items-end mr-4">
+              <div className="text-[8px] font-black text-cyan-900 uppercase tracking-[0.2em] mb-1">Enlace Activo</div>
+              <div className="text-xs font-black text-emerald-500 uppercase tracking-widest font-mono">GENERAL_S_X</div>
+            </div>
+            <div className="p-4 bg-slate-950 border border-cyan-500/10 rounded-2xl text-amber-500">
+              <Shield className="w-8 h-8 animate-pulse" />
+            </div>
+          </div>
         </div>
       </header>
 

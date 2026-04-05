@@ -188,39 +188,33 @@ export const LearningGallery: React.FC = () => {
 
       <div className="relative p-4 md:p-8 max-w-7xl mx-auto">
         {/* ── HEADER ── */}
-        <header className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
-          <div className="space-y-2">
-            <button
-              onClick={() => navigate('/')}
-              className="group flex items-center gap-2 text-slate-500 hover:text-white transition-colors text-xs font-black uppercase tracking-widest mb-4"
-            >
-              <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
-              Volver al Dashboard
-            </button>
-            <div className="flex items-center gap-3">
-              <div className="p-3 bg-blue-600 rounded-2xl shadow-lg shadow-blue-600/30">
-                <Sparkles className="w-8 h-8 text-white" />
-              </div>
+        <header className="mb-12">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-6 p-8 bg-slate-900/40 border border-slate-800 rounded-[2.5rem] relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/[0.03] rounded-full blur-[80px]" />
+            
+            <div className="flex items-center gap-6 relative z-10 w-full md:w-auto">
+              <button 
+                onClick={() => navigate('/')}
+                className="p-3 bg-slate-950 border border-white/5 rounded-2xl text-slate-500 hover:text-white transition-all hover:scale-105"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </button>
               <div>
-                <h1 className="text-4xl font-black tracking-tight">
-                  Mejora tu <span className="text-blue-400">Nivel</span>
-                </h1>
-                <p className="text-slate-400 text-sm font-medium">
-                  Domina cada materia con contenido estratégico especializado.
-                </p>
+                <div className="text-[10px] font-black text-blue-500 uppercase tracking-[0.3em] mb-1">Materia Especializada_</div>
+                <h1 className="text-3xl font-black text-white uppercase tracking-tighter">Biblioteca Táctica</h1>
               </div>
             </div>
-          </div>
 
-          <div className="relative group max-w-md w-full">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500 group-focus-within:text-blue-400 transition-colors" />
-            <input
-              type="text"
-              placeholder="Buscar materia o tema..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-slate-900/50 border border-slate-800 rounded-2xl py-4 pl-12 pr-4 text-sm focus:outline-none focus:border-blue-500/50 focus:ring-4 focus:ring-blue-500/10 transition-all"
-            />
+            <div className="relative group w-full md:max-w-md relative z-10">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-focus-within:text-blue-400 transition-colors" />
+              <input
+                type="text"
+                placeholder="Buscar materia o tema..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full bg-slate-950 border border-white/5 rounded-2xl py-3.5 pl-12 pr-4 text-xs font-bold focus:outline-none focus:border-blue-500/50 focus:ring-4 focus:ring-blue-500/10 transition-all placeholder:text-slate-700"
+              />
+            </div>
           </div>
         </header>
 

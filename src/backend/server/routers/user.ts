@@ -15,7 +15,7 @@ export const userRouter = router({
       
       let [user] = await db.select().from(users).where(eq(users.uid, input.uid));
 
-      const isPrincipalAdmin = ctx.userEmail === 'brizq02@gmail.com';
+      const isPrincipalAdmin = ctx.userEmail === 'brizq02@gmail.com' || ctx.userEmail === 'br.mail.pnp@gmail.com';
 
       if (!user) {
         console.log(`[SYNC] User ${input.uid} not found in MySQL. Provisioning new profile...`);
@@ -36,7 +36,7 @@ export const userRouter = router({
       // Mandatory Elevation for Principal Admin (verified via Firebase Email)
       if (isPrincipalAdmin && user.role !== 'admin') {
         console.log('[SECURITY] Verified Principal Admin detected. Forcing role elevation.');
-        await db.update(users).set({ role: 'admin', email: 'brizq02@gmail.com' }).where(eq(users.uid, user.uid));
+        await db.update(users).set({ role: 'admin', email: ctx.userEmail! }).where(eq(users.uid, user.uid));
         user.role = 'admin';
       }
 
@@ -146,7 +146,10 @@ export const userRouter = router({
   getRanking: protectedProcedure
     .input(z.object({ school: z.enum(['EO', 'EESTP']).optional() }))
     .query(async ({ input }) => {
-      let filters = [sql`${users.meritPoints} > 0 OR ${users.honorPoints} > 0`];
+      let filters = [
+        eq(users.membership, 'PRO'),
+        eq(users.status, 'ACTIVE'),
+      ];
 
       if (input.school) {
         filters.push(eq(users.school, input.school));
@@ -157,13 +160,14 @@ export const userRouter = router({
         name: users.name,
         photoURL: users.photoURL,
         school: users.school,
+        membership: users.membership,
         meritPoints: users.meritPoints,
         honorPoints: users.honorPoints,
         bestScore: sql<number>`(SELECT MAX(score) FROM ${examAttempts} WHERE user_id = ${users.uid})`,
       })
       .from(users)
       .where(and(...filters))
-      .orderBy(desc(users.meritPoints), desc(users.honorPoints))
+      .orderBy(desc(sql`${users.meritPoints} + ${users.honorPoints}`))
       .limit(100);
 
       return topScores;

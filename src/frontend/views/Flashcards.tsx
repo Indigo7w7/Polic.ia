@@ -108,22 +108,30 @@ export const Flashcards: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#0f172a] text-[#f8fafc] p-4 md:p-8 font-sans">
-      <header className="max-w-2xl mx-auto mb-8 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button variant="outline" size="icon" onClick={() => navigate('/')}>
-            <ArrowLeft className="w-4 h-4" />
-          </Button>
-          <div>
-            <h1 className="text-2xl font-bold flex items-center gap-2 text-white">
-              <Brain className="w-6 h-6 text-blue-500" />
-              Repaso Inteligente
-              {!isPremium && <span className="ml-2 px-2 py-0.5 bg-amber-500/20 text-amber-400 text-[10px] font-black uppercase tracking-widest rounded-full border border-amber-500/30">MODO DEMO</span>}
-            </h1>
-            <p className="text-sm text-slate-400">Algoritmo Leitner activo</p>
+      <header className="max-w-2xl mx-auto mb-8">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-6 p-8 bg-slate-900/40 border border-slate-800 rounded-[2.5rem] relative overflow-hidden shadow-2xl backdrop-blur-md">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/[0.03] rounded-full blur-[80px]" />
+          
+          <div className="flex items-center gap-6 relative z-10 w-full md:w-auto">
+            <button 
+              onClick={() => navigate('/')}
+              className="p-3 bg-slate-950 border border-white/5 rounded-2xl text-slate-500 hover:text-white transition-all hover:scale-105"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <div>
+              <div className="text-[10px] font-black text-blue-500 uppercase tracking-[0.3em] mb-1">Polígono Cognitivo_</div>
+              <h1 className="text-3xl font-black text-white uppercase tracking-tighter flex items-center gap-2">
+                Repaso 
+                {!isPremium && <span className="px-2 py-0.5 bg-amber-500/20 text-amber-400 text-[10px] font-black uppercase tracking-widest rounded-full border border-amber-500/30">DEMO</span>}
+              </h1>
+            </div>
           </div>
-        </div>
-        <div className="bg-slate-800 px-3 py-1 rounded-full text-xs font-mono">
-          {currentIndex} / {cards.length} Pendientes
+
+          <div className="flex flex-col items-end relative z-10">
+            <div className="text-[8px] font-black text-slate-500 uppercase tracking-[0.2em] mb-1">Mazo en Memoria</div>
+            <div className="text-xs font-black text-slate-300 uppercase tracking-widest font-mono">{currentIndex} / {cards.length}</div>
+          </div>
         </div>
       </header>
 

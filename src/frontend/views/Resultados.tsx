@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
-import { Trophy, XCircle, CheckCircle2, ArrowRight, BrainCircuit, Loader2 } from 'lucide-react';
+import { Trophy, XCircle, CheckCircle2, ArrowRight, BrainCircuit, Loader2, ShieldAlert, Target } from 'lucide-react';
 import { Question } from '../../shared/types';
 import { calcularProximoRepaso } from '../../shared/core/leitnerEngine';
 import { useUserStore } from '../store/useUserStore';
@@ -103,38 +103,47 @@ export const Resultados: React.FC = () => {
   const scorePercentage = questions.length > 0 ? Math.round((correctCount / questions.length) * 100) : 0;
 
   return (
-    <div className="min-h-screen bg-[#0f172a] text-[#f8fafc] p-4 md:p-8 font-sans">
-      <div className="max-w-4xl mx-auto space-y-6">
-        <header className="text-center mb-8 relative">
-          <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-slate-800 border-4 border-slate-700 mb-4 shadow-[0_0_20px_rgba(0,0,0,0.5)]">
-            <Trophy className={`w-10 h-10 ${scorePercentage >= 70 ? 'text-amber-400 drop-shadow-[0_0_10px_rgba(251,191,36,0.5)]' : 'text-slate-400'}`} />
+    <div className="min-h-screen bg-[#020617] text-slate-200 p-4 md:p-8 font-sans relative overflow-hidden">
+      {/* Background patterns */}
+      <div className="fixed inset-0 opacity-[0.015] pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')]" />
+      
+      <div className="max-w-4xl mx-auto space-y-8 pb-12 relative z-10">
+        <header>
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-6 p-8 bg-slate-900/40 border border-slate-800 rounded-[2.5rem] relative overflow-hidden">
+            <div className={`absolute top-0 right-0 w-64 h-64 ${scorePercentage >= 55 ? 'bg-emerald-500' : 'bg-red-500'}/[0.05] rounded-full blur-[80px] pointer-events-none`} />
+            
+            <div className="flex items-center gap-6 relative z-10 w-full md:w-auto">
+              <div className={`p-5 bg-slate-950 border border-white/5 rounded-3xl ${scorePercentage >= 55 ? 'text-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.2)]' : 'text-red-500 shadow-[0_0_20px_rgba(239,68,68,0.2)]'}`}>
+                {scorePercentage >= 55 ? <Trophy className="w-10 h-10" /> : <ShieldAlert className="w-10 h-10" />}
+              </div>
+              <div>
+                <div className={`text-[10px] font-black uppercase tracking-[0.3em] mb-1 ${scorePercentage >= 55 ? 'text-emerald-500' : 'text-red-500'}`}>
+                  {scorePercentage >= 55 ? 'Operación Exitosa_' : 'Misión Fallida_'}
+                </div>
+                <h1 className="text-3xl font-black text-white uppercase tracking-tighter">Reporte de Operaciones</h1>
+              </div>
+            </div>
+
+            <div className="flex flex-col items-end relative z-10">
+              <div className="text-[8px] font-black text-slate-500 uppercase tracking-[0.2em] mb-1">Identificador de Misión</div>
+              <div className="text-xs font-black text-slate-300 uppercase tracking-widest font-mono">PNP-MISSION-{(Math.random() * 1000).toFixed(0)}</div>
+            </div>
           </div>
-          <h1 className="text-3xl font-bold text-white mb-2 flex items-center justify-center gap-3">
-            Resultados del Simulacro
-            {isSaving && <Loader2 className="w-5 h-5 text-blue-400 animate-spin" />}
-          </h1>
-          <p className="text-slate-400">Has completado el examen predictivo.</p>
         </header>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-          <Card className="text-center bg-slate-800/50 border-slate-700">
-            <CardContent className="pt-6">
-              <div className="text-4xl font-mono font-bold text-blue-400 mb-1">{scorePercentage}%</div>
-              <p className="text-sm text-slate-400 uppercase tracking-wider">Precisión</p>
-            </CardContent>
-          </Card>
-          <Card className="text-center bg-slate-800/50 border-slate-700">
-            <CardContent className="pt-6">
-              <div className="text-4xl font-mono font-bold text-emerald-400 mb-1">{correctCount}</div>
-              <p className="text-sm text-slate-400 uppercase tracking-wider">Correctas</p>
-            </CardContent>
-          </Card>
-          <Card className="text-center bg-slate-800/50 border-slate-700">
-            <CardContent className="pt-6">
-              <div className="text-4xl font-mono font-bold text-red-400 mb-1">{failedQuestions.length}</div>
-              <p className="text-sm text-slate-400 uppercase tracking-wider">Incorrectas</p>
-            </CardContent>
-          </Card>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {[
+            { label: 'Precisión Académica', value: `${scorePercentage}%`, color: 'text-blue-400', icon: Target },
+            { label: 'Sectores Asegurados', value: correctCount, color: 'text-emerald-400', icon: CheckCircle2 },
+            { label: 'Bajas Tac/Errores', value: failedQuestions.length, color: 'text-red-400', icon: XCircle },
+          ].map((stat, i) => (
+            <Card key={i} className="bg-slate-900/40 border-slate-800 p-6 flex flex-col items-center justify-center relative overflow-hidden group">
+              <div className={`absolute top-0 left-0 w-1 h-full ${stat.color.replace('text', 'bg')} opacity-50`} />
+              <stat.icon className={`w-5 h-5 ${stat.color} mb-3`} />
+              <div className="text-3xl font-black text-white mb-1 font-mono tracking-tighter">{stat.value}</div>
+              <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">{stat.label}</p>
+            </Card>
+          ))}
         </div>
 
         {failedQuestions.length > 0 && (

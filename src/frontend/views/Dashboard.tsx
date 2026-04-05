@@ -6,13 +6,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card'
 import {
   Shield, Trophy, Lock, LogOut, Zap, BrainCircuit, History,
   ChevronRight, FileText, Clock, ShieldAlert, Play,
-  Brain, Target, ExternalLink, TrendingUp, CheckCircle2, BarChart3,
-  GraduationCap, Unlock, Star, BookOpen, Sparkles, Megaphone, RotateCcw
+  Brain, Target, TrendingUp, CheckCircle2, BarChart3,
+  GraduationCap, Unlock, Star, BookOpen, Megaphone, RotateCcw
 } from 'lucide-react';
 import { trpc } from '../../shared/utils/trpc';
 import { useExamStore } from '../store/useExamStore';
 import { useExamManager } from '../hooks/useExamManager';
-import { Header } from '../components/common/Header';
 import { ExamDocument, LeitnerDocument } from '../../shared/types';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
@@ -27,17 +26,6 @@ import {
 import { getMilitaryRank, getRankColor } from '../utils/ranks';
 import { isExamUnlocked, type ExamLevel } from '../../database/data/examenes_config';
 
-const ResourceButton: React.FC<{ title: string; url: string }> = ({ title, url }) => (
-  <a
-    href={url}
-    target="_blank"
-    rel="noopener noreferrer"
-    className="flex items-center justify-between w-full p-4 bg-slate-800/50 border border-slate-700 rounded-xl hover:bg-slate-700/50 transition-all group"
-  >
-    <span className="text-xs font-bold uppercase tracking-widest text-slate-300 group-hover:text-white transition-colors">{title}</span>
-    <ExternalLink size={16} className="text-blue-400 group-hover:scale-110 transition-transform" />
-  </a>
-);
 
 interface Metrics {
   leitnerCount: number;
@@ -60,6 +48,10 @@ export const Dashboard: React.FC = () => {
   const levelsQuery = trpc.exam.getLevels.useQuery();
   const broadcastQuery = trpc.user.getLastBroadcast.useQuery(undefined, { refetchInterval: 60000 });
   const categoryStatsQuery = trpc.user.getCategoryStats.useQuery({ uid: uid || '' }, { enabled: !!uid });
+  const activeCountQuery = trpc.admin.getActiveCount.useQuery(undefined, {
+    refetchInterval: 30000,
+    refetchOnWindowFocus: true
+  });
 
   const metricsLoading = userStats.isLoading || leitnerStats.isLoading;
   
@@ -94,13 +86,49 @@ export const Dashboard: React.FC = () => {
   const rankStyle = getRankColor(honorPoints);
 
   const welcomeTitle = modalidad_postulacion === 'EO'
-    ? `¡Adelante, ${currentRank} ${firstName}!`
+    ? `CADETE: ${firstName}`
     : modalidad_postulacion === 'EESTP'
-      ? `¡Vamos con todo, ${currentRank} PNP ${firstName}!`
-      : `Modo Explorador: ${firstName}`;
+      ? `ALUMNO PNP: ${firstName}`
+      : `POSTULANTE: ${firstName}`;
+
+  // Logout Handler
+  const handleLogout = async () => {
+    const { auth } = await import('../../firebase');
+    await auth.signOut();
+    useUserStore.getState().setUserData({
+      uid: null,
+      role: 'user',
+      estado_financiero: 'FREE',
+      modalidad_postulacion: null,
+      fecha_expiracion_premium: null,
+    });
+    navigate('/login');
+  };
+
+  const MetricProgress = ({ label, value, max = 100, unit = '', icon: Icon, colorClass }: any) => {
+    const percentage = Math.min((value / max) * 100, 100);
+    return (
+      <div className="space-y-1.5">
+        <div className="flex justify-between items-end">
+          <div className="flex items-center gap-1.5 text-slate-500 uppercase font-black text-[8px] tracking-[0.2em]">
+            <Icon className={`w-2.5 h-2.5 ${colorClass}`} />
+            {label}
+          </div>
+          <span className="text-[9px] font-bold text-slate-400 font-mono">{value}{unit}</span>
+        </div>
+        <div className="h-1 bg-slate-950 rounded-full overflow-hidden border border-white/5">
+          <motion.div 
+            initial={{ width: 0 }}
+            animate={{ width: `${percentage}%` }}
+            className={`h-full ${colorClass.replace('text', 'bg')} shadow-[0_0_8px_rgba(59,130,246,0.1)]`}
+          />
+        </div>
+      </div>
+    );
+  };
 
   const renderExamTrack = (
-    examList: ExamLevel[],
+    examList: any[],
     trackLabel: string,
     trackIcon: React.ReactNode,
     gradient: string,
@@ -180,8 +208,6 @@ export const Dashboard: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#020617] text-slate-200">
-      <Header />
-      
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
         
         {/* BROADCAST ALERT */}
@@ -206,74 +232,78 @@ export const Dashboard: React.FC = () => {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           
           <div className="lg:col-span-8 space-y-6">
-            <div className="flex flex-col md:flex-row md:items-center gap-6 p-6 bg-slate-900/40 border border-slate-800 rounded-3xl relative overflow-hidden">
-               <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/5 rounded-full blur-[80px]" />
+            <div className="p-6 sm:p-8 bg-slate-900/40 border border-slate-800 rounded-[2.5rem] relative overflow-hidden">
+               <div className="absolute top-0 right-0 w-96 h-96 bg-blue-500/[0.03] rounded-full blur-[100px]" />
                
-               <div className="relative shrink-0 flex flex-col items-center gap-2">
-                <div className="w-24 h-24 rounded-full border-2 border-blue-500/30 p-1.5 bg-slate-900 relative">
-                  {photoURL ? (
-                    <img src={photoURL} alt={name} className="w-full h-full rounded-full object-cover" />
-                  ) : (
-                    <div className="w-full h-full rounded-full bg-slate-800 flex items-center justify-center text-slate-500">
-                      <Shield size={40} />
+               <div className="relative flex flex-col sm:flex-row items-center sm:items-start gap-8">
+                <div className="shrink-0 flex flex-col items-center gap-4">
+                  <div className="relative group">
+                    <div className="w-32 h-32 rounded-3xl border border-white/10 p-1 bg-slate-950 overflow-hidden shadow-2xl">
+                      {photoURL ? (
+                        <img src={photoURL} alt={name} className="w-full h-full rounded-[1.25rem] object-cover" />
+                      ) : (
+                        <div className="w-full h-full rounded-[1.25rem] bg-slate-900 flex items-center justify-center text-slate-700">
+                          <Shield size={48} />
+                        </div>
+                      )}
                     </div>
-                  )}
-                  {isPremium && (
-                    <div className="absolute -bottom-1 -right-1 w-8 h-8 bg-amber-500 rounded-full border-4 border-slate-900 flex items-center justify-center">
-                      <Star className="w-4 h-4 text-white fill-current" />
+                    {isPremium && (
+                      <div className="absolute -bottom-2 -right-2 w-10 h-10 bg-gradient-to-br from-amber-400 to-amber-600 rounded-2xl border-4 border-slate-950 flex items-center justify-center shadow-lg">
+                        <Star className="w-5 h-5 text-white fill-current" />
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div className="flex flex-col items-center px-4 py-2 bg-slate-950/50 border border-white/5 rounded-2xl">
+                    <span className="text-[8px] font-black uppercase tracking-[0.3em] text-slate-500 mb-1">Status Online</span>
+                    <div className="flex items-center gap-2">
+                       <span className="flex h-2 w-2 relative">
+                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                         <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                       </span>
+                       <span className="text-xs font-black text-emerald-500 font-mono">{activeCountQuery.data?.count || 1}</span>
                     </div>
-                  )}
+                  </div>
                 </div>
-                <div className="flex flex-col items-center">
-                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Puesto Ranking</span>
-                  <div className="flex items-center gap-1 text-amber-500">
-                    <Trophy className="w-3.5 h-3.5" />
-                    <span className="text-sm font-bold">#{rankPos}</span>
+
+                <div className="flex-1 space-y-6 text-center sm:text-left pt-2">
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-center sm:justify-start gap-3 flex-wrap">
+                      <h1 className="text-3xl font-black text-white uppercase tracking-tighter sm:text-4xl">
+                        {welcomeTitle}
+                      </h1>
+                      <button onClick={handleLogout} className="p-2 text-slate-600 hover:text-red-500 transition-colors" title="Desconectar Operativo">
+                        <LogOut className="w-5 h-5" />
+                      </button>
+                    </div>
+                    <div className="flex items-center justify-center sm:justify-start gap-3 mt-2">
+                      <div className={`px-3 py-1 border rounded-lg text-[10px] font-black uppercase tracking-[0.2em] ${rankStyle}`}>
+                         {currentRank}
+                      </div>
+                      <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest">#{rankPos} Global</span>
+                    </div>
+                  </div>
+
+                  {/* MINI PROGRESS BARS (HUD) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4 pt-4 border-t border-white/5">
+                    <MetricProgress label="Volumen Entrenamiento" value={metrics.examCount} max={50} unit=" exm" icon={FileText} colorClass="text-blue-400" />
+                    <MetricProgress label="Eficacia Académica" value={metrics.avgScore} unit="%" icon={Zap} colorClass="text-amber-400" />
+                    <MetricProgress label="Retención Cognitiva" value={metrics.leitnerCount} max={500} unit=" flash" icon={BrainCircuit} colorClass="text-purple-400" />
+                    <MetricProgress label="Rendimiento Pico" value={metrics.bestScore} unit="%" icon={CheckCircle2} colorClass="text-emerald-400" />
+                  </div>
+
+                  <div className="flex flex-wrap justify-center sm:justify-start gap-3 pt-2">
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-950/40 rounded-xl border border-white/5">
+                      <Trophy size={12} className="text-amber-500" />
+                      <span className="text-[10px] font-black uppercase text-slate-400">{(userStats.data as any)?.meritPoints || 0} <span className="text-slate-600 ml-1">Mérito</span></span>
+                    </div>
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-950/40 rounded-xl border border-white/5">
+                      <Star size={12} className="text-emerald-500" />
+                      <span className="text-[10px] font-black uppercase text-slate-400">{(userStats.data as any)?.honorPoints || 0} <span className="text-slate-600 ml-1">Honor</span></span>
+                    </div>
                   </div>
                 </div>
               </div>
-
-              <div className="flex-1 text-center md:text-left">
-                <div className="flex flex-col md:flex-row md:items-center gap-3">
-                  <h1 className="text-2xl font-black text-white uppercase tracking-tighter sm:text-3xl">
-                    {welcomeTitle}
-                  </h1>
-                  <div className={`px-3 py-1 border rounded-lg text-[10px] font-black uppercase tracking-widest inline-block ${rankStyle}`}>
-                     {currentRank}
-                  </div>
-                  <span className="text-[8px] text-slate-800 font-mono">v.04.01.H</span>
-                </div>
-                <p className="text-sm text-slate-400 mt-1">
-                  {isPremium ? "Unidad de Élite - Rango PRO [Acceso Total]" : "Unidad en Entrenamiento - Rango FREE"}
-                </p>
-                <div className="mt-4 flex flex-wrap justify-center md:justify-start gap-4">
-                  <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-800/40 rounded-full border border-slate-700/50">
-                    <Trophy size={12} className="text-amber-500" />
-                    <span className="text-[11px] font-black uppercase text-slate-300">{(userStats.data as any)?.meritPoints || 0} <span className="text-slate-600 ml-1">Mérito</span></span>
-                  </div>
-                  <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-800/40 rounded-full border border-slate-700/50">
-                    <Star size={12} className="text-emerald-500" />
-                    <span className="text-[11px] font-black uppercase text-slate-300">{(userStats.data as any)?.honorPoints || 0} <span className="text-slate-600 ml-1">Honor</span></span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              {[
-                { label: 'Exámenes', val: metrics.examCount, icon: <FileText className="text-blue-400" /> },
-                { label: 'Promedio', val: `${metrics.avgScore}%`, icon: <Zap className="text-amber-400" /> },
-                { label: 'Leitner', val: metrics.leitnerCount, icon: <BrainCircuit className="text-purple-500" /> },
-                { label: 'Mejor Nota', val: `${metrics.bestScore}%`, icon: <CheckCircle2 className="text-emerald-500" /> },
-              ].map((stat, i) => (
-                <motion.div key={stat.label} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 * i }} className="bg-slate-900/40 border border-slate-800 p-4 rounded-2xl">
-                  <div className="flex items-center gap-2 mb-2">
-                    {stat.icon}
-                    <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">{stat.label}</span>
-                  </div>
-                  <div className="text-xl font-black text-white uppercase tracking-tight">{stat.val}</div>
-                </motion.div>
-              ))}
             </div>
 
             {/* Radar and Weakness */}
@@ -346,17 +376,6 @@ export const Dashboard: React.FC = () => {
               ))}
             </div>
 
-            <Card className="bg-slate-900/40 border-slate-800">
-              <CardHeader className="py-4 border-b border-slate-800/50">
-                <CardTitle className="text-xs font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-amber-400" /> Material Estratégico
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-4 space-y-3">
-                <ResourceButton title="Prospecto de Admisión 2025" url="#" />
-                <ResourceButton title="Guía de Doctrina Policial" url="#" />
-              </CardContent>
-            </Card>
           </div>
         </div>
 
@@ -371,7 +390,7 @@ export const Dashboard: React.FC = () => {
                   <p className="text-[10px] font-black tracking-widest text-slate-500 uppercase">Ruta de Mando</p>
                 </div>
               </div>
-              {renderExamTrack((levelsQuery.data?.filter(l => l.school === 'EO') || []) as any, 'Fase Evaluación', <Zap size={14} className="text-amber-500" />, 'from-blue-600/20 to-blue-900/10', '')}
+               {renderExamTrack((levelsQuery.data?.filter(l => l.school === 'EO') || []) as any, 'Fase Evaluación', <Zap size={14} className="text-amber-500" />, 'from-blue-600/20 to-blue-900/10', '')}
             </div>
           )}
           {showEESTP && (

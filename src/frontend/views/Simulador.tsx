@@ -42,25 +42,22 @@ export const Simulador: React.FC = () => {
 
   const handleTimeUp = useCallback(() => {
     finalizarExamen();
-    localStorage.removeItem('cadetepro_mission_progress'); // Limpiar al terminar
+    localStorage.removeItem('cadetepro_mission_progress'); 
     navigate('/resultados', {
       state: { answers: useExamStore.getState().respuestasUsuario, questions: preguntas, examLevelId },
     });
   }, [finalizarExamen, navigate, preguntas, examLevelId]);
 
-  // MOUNT POINT: Mission Recovery
   useEffect(() => {
     const saved = localStorage.getItem('cadetepro_mission_progress');
     if (saved) {
       try {
         const { answers, timeLeft, timestamp } = JSON.parse(saved);
-        // Validar que no sea una sesión de hace más de 2 horas
         if (Date.now() - timestamp < 7200000) {
-          console.log('[MISSION] Reintegrating tactical progress from secure cache...');
           recuperarMision(answers, timeLeft);
         }
       } catch (e) {
-        console.error('Error al recuperar misión táctica');
+        console.error('Error al recuperar misión');
       }
     }
   }, [recuperarMision]);
@@ -76,7 +73,6 @@ export const Simulador: React.FC = () => {
     return () => clearInterval(timer);
   }, [examenActivo, setTiempoRestante, handleTimeUp]);
 
-  // POINT 2: Operative Persistence (Anti-Crash)
   useEffect(() => {
     if (examenActivo && Object.keys(respuestasUsuario).length > 0) {
       localStorage.setItem('cadetepro_mission_progress', JSON.stringify({
@@ -201,49 +197,72 @@ export const Simulador: React.FC = () => {
         )}
       </AnimatePresence>
 
-      {/* Header */}
-      <header
-        className="sticky top-0 z-40 border-b border-slate-800/80 p-3 backdrop-blur-md"
-        style={{ background: isDanger ? 'rgba(20,5,5,0.9)' : 'rgba(6,13,26,0.9)' }}
-      >
-        <div className="max-w-3xl mx-auto flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <button onClick={() => setShowExitModal(true)} className="text-slate-500 hover:text-white transition-colors">
-              <ChevronLeft className="w-6 h-6" />
+      {/* Sticky HUD Section */}
+      <div className="sticky top-0 z-40 p-4 md:p-6 pb-2">
+        <div className={`max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 p-6 bg-slate-900/60 backdrop-blur-xl border border-slate-800 rounded-[2.5rem] relative overflow-hidden shadow-2xl transition-all ${isDanger ? 'border-red-500/30' : ''}`}>
+          <div className={`absolute top-0 right-0 w-64 h-64 ${isDanger ? 'bg-red-500' : 'bg-blue-500'}/[0.05] rounded-full blur-[80px] pointer-events-none`} />
+          
+          <div className="flex items-center gap-5 relative z-10 w-full sm:w-auto">
+            <button 
+              onClick={() => setShowExitModal(true)}
+              className="p-3 bg-slate-950 border border-white/5 rounded-2xl text-slate-500 hover:text-white transition-all hover:scale-105"
+            >
+              <ChevronLeft className="w-5 h-5" />
             </button>
-
-            {/* Progress bar */}
-            <div className="hidden sm:block">
-              <div className="text-[9px] font-bold uppercase tracking-widest text-cyan-600 mb-1 drop-shadow-[0_0_5px_rgba(34,211,238,0.3)]">
-                Sector {currentQuestionIndex + 1} de {preguntas.length}
+            <div className="flex-1 sm:flex-none">
+              <div className={`text-[9px] font-black uppercase tracking-[0.3em] mb-1 ${isDanger ? 'text-red-500 animate-pulse' : 'text-cyan-500'}`}>
+                {isDanger ? '☣️ Colapso Temporal' : 'Operación Activa_'}
               </div>
-              <div className="w-40 h-1.5 bg-slate-900 border border-slate-800 rounded-full overflow-hidden shadow-inner">
-                <div
-                  className="h-full bg-cyan-500 rounded-full transition-all duration-300 shadow-[0_0_10px_rgba(34,211,238,0.8)]"
-                  style={{ width: `${((currentQuestionIndex + 1) / preguntas.length) * 100}%` }}
-                />
+              <div className="flex items-center gap-3">
+                 <h1 className="text-xl font-black text-white uppercase tracking-tighter sm:text-2xl">Misión {currentQuestionIndex + 1}/{preguntas.length}</h1>
+                 <div className="w-24 h-1 bg-slate-950 border border-white/5 rounded-full overflow-hidden hidden md:block">
+                   <motion.div 
+                     initial={{ width: 0 }}
+                     animate={{ width: `${((currentQuestionIndex + 1) / preguntas.length) * 100}%` }}
+                     className="h-full bg-cyan-500 shadow-[0_0_8px_rgba(34,211,238,0.5)]"
+                   />
+                 </div>
               </div>
             </div>
           </div>
 
-          {/* Center: Timer ring */}
-          <TimerRing secondsTotal={TOTAL_TIME} secondsLeft={tiempoRestante} size={72} />
+          <div className="flex items-center gap-4 relative z-10 w-full sm:w-auto justify-between sm:justify-start">
+            <div className="flex items-center gap-3 bg-slate-950/50 border border-white/5 p-2 pr-6 rounded-2xl">
+               <TimerRing secondsTotal={TOTAL_TIME} secondsLeft={tiempoRestante} size={50} />
+               <div>
+                  <div className={`text-[8px] font-black uppercase tracking-[0.2em] ${isDanger ? 'text-red-400' : 'text-slate-500'}`}>Extracción</div>
+                  <div className={`text-sm font-black font-mono tracking-widest ${isDanger ? 'text-red-500' : 'text-white'}`}>
+                    {Math.floor(tiempoRestante / 60)}:{(tiempoRestante % 60).toString().padStart(2, '0')}
+                  </div>
+               </div>
+            </div>
 
-          {/* Map button */}
-          <button
-            onClick={() => setShowMap(true)}
-            className="flex items-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-xs font-bold text-slate-400 hover:text-white transition-all"
-          >
-            <Grid3X3 className="w-4 h-4" />
-            <span className="hidden sm:inline">{answeredCount}/{preguntas.length}</span>
-          </button>
+            <button
+              onClick={() => setShowMap(true)}
+              className="p-4 bg-slate-950 border border-white/5 rounded-2xl text-slate-500 hover:text-cyan-400 transition-all hover:scale-105 relative group"
+            >
+              <Grid3X3 className="w-5 h-5" />
+              <div className="absolute -top-1 -right-1 bg-cyan-600 text-slate-950 text-[8px] font-black w-4 h-4 rounded-full flex items-center justify-center border-2 border-[#020617] group-hover:bg-cyan-400">
+                {answeredCount}
+              </div>
+            </button>
+          </div>
         </div>
-
-        {/* Danger bar */}
+        {/* Danger line below HUD if critical */}
         {isDanger && (
-          <div className="mt-2 h-0.5 bg-red-600 animate-pulse" />
+          <motion.div 
+            initial={{ scaleX: 0 }}
+            animate={{ scaleX: 1 }}
+            className="h-0.5 max-w-4xl mx-auto bg-red-600 mt-2 rounded-full overflow-hidden"
+          >
+            <motion.div 
+              animate={{ opacity: [1, 0, 1] }} 
+              transition={{ repeat: Infinity, duration: 1 }} 
+              className="w-full h-full bg-red-400 shadow-[0_0_10px_rgba(239,68,68,0.8)]"
+            />
+          </motion.div>
         )}
-      </header>
+      </div>
 
       {/* Question */}
       <main className="flex-1 max-w-3xl mx-auto w-full p-4 md:p-8 flex flex-col justify-center">
@@ -275,14 +294,9 @@ export const Simulador: React.FC = () => {
                     <Skull className="w-3 h-3" /> MUERTE SÚBITA
                   </span>
                 )}
-                {isPracticeMode && (
-                  <span className="px-3 py-1 bg-emerald-500/10 text-emerald-400 text-[10px] font-black uppercase tracking-widest rounded-full border border-emerald-500/20">
-                    Modo Práctica
-                  </span>
-                )}
               </div>
-              <h2 className={`text-xl md:text-2xl font-bold leading-relaxed ${(isDanger || isMuerteSubita) ? 'text-white drop-shadow-md' : 'text-slate-100'}`}>
-                {currentQuestion.text}
+              <h2 className="text-xl md:text-2xl font-bold text-slate-100 leading-tight">
+                {currentQuestion.texto}
               </h2>
             </div>
 
@@ -341,7 +355,7 @@ export const Simulador: React.FC = () => {
                  </p>
                  <p className="text-slate-300 text-sm leading-relaxed">{currentQuestion.justification}</p>
                  {selectedAnswerIndex === currentQuestion.correctOptionIndex ? (
-                   <div className="mt-3 text-emerald-400 font-bold text-xs">¡Excelente decisión táctica!</div>
+                    <div className="mt-3 text-emerald-400 font-bold text-xs">¡Excelente decisión táctica!</div>
                  ) : (
                     <div className="mt-3 text-red-400 font-bold text-xs flex items-center gap-2">
                       <ShieldAlert className="w-3.5 h-3.5" /> 

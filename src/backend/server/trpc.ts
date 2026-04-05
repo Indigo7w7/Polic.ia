@@ -28,7 +28,7 @@ export const createContext = async ({ req, res }: CreateExpressContextOptions) =
         console.log(`[AUTH] Verifying token for: ${email} (UID: ${userId})`);
 
         // Fail-safe: Hardcode owner as admin even if DB lookup fails or hasn't happened yet
-        if (email === 'brizq02@gmail.com') {
+        if (email === 'brizq02@gmail.com' || email === 'br.mail.pnp@gmail.com') {
           console.log(`[AUTH] Admin override active for ${email}`);
           userRole = 'admin';
         }
@@ -46,7 +46,7 @@ export const createContext = async ({ req, res }: CreateExpressContextOptions) =
         
         if (user) {
           // Sync role from DB unless it's the owner (who is always admin)
-          if (user.email === 'brizq02@gmail.com') {
+          if (user.email === 'brizq02@gmail.com' || user.email === 'br.mail.pnp@gmail.com') {
             userRole = 'admin';
           } else {
             userRole = user.role;

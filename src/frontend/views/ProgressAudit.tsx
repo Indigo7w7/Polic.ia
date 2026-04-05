@@ -63,16 +63,28 @@ export const ProgressAudit: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#0f172a] text-[#f8fafc] p-4 md:p-8 font-sans">
-      <header className="max-w-5xl mx-auto flex items-center gap-4 mb-8">
-        <button 
-          onClick={() => navigate('/')}
-          className="p-2 hover:bg-slate-800 rounded-lg transition-colors text-slate-400 hover:text-white"
-        >
-          <ChevronLeft className="w-6 h-6" />
-        </button>
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Auditoría de Progreso</h1>
-          <p className="text-sm text-slate-500 font-mono uppercase tracking-widest">Análisis Táctico de Rendimiento</p>
+      <header className="max-w-5xl mx-auto mb-8">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-6 p-8 bg-slate-900/40 border border-slate-800 rounded-[2.5rem] relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/[0.03] rounded-full blur-[80px]" />
+          
+          <div className="flex items-center gap-6 relative z-10 w-full md:w-auto">
+            <button 
+              onClick={() => navigate('/')}
+              className="p-3 bg-slate-950 border border-white/5 rounded-2xl text-slate-500 hover:text-white transition-all hover:scale-105"
+            >
+              <ChevronLeft className="w-6 h-6" />
+            </button>
+            <div>
+              <div className="text-[10px] font-black text-emerald-500 uppercase tracking-[0.3em] mb-1">Análisis de Rendimiento_</div>
+              <h1 className="text-3xl font-black text-white uppercase tracking-tighter">Auditoría</h1>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-4 relative z-10">
+            <div className="p-4 bg-slate-950 border border-white/5 rounded-2xl text-emerald-500">
+              <TrendingUp className="w-8 h-8" />
+            </div>
+          </div>
         </div>
       </header>
 

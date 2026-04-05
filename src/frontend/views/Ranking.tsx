@@ -22,39 +22,41 @@ export const Ranking: React.FC = () => {
   const rankingQuery = trpc.user.getRanking.useQuery({ school: schoolFilter });
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white pb-20 font-sans">
-      {/* Header Premium */}
-      <div className="relative h-72 overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-b from-blue-900/60 to-slate-950 z-10" />
-        <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-30" />
-        
-        {/* Animated Background Pulse */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-blue-500/20 rounded-full blur-[120px] animate-pulse" />
+    <div className="min-h-screen bg-[#020617] text-slate-200 pb-20 font-sans">
+      <div className="max-w-5xl mx-auto px-6 pt-12 mb-8">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-6 p-8 bg-slate-900/40 border border-slate-800 rounded-[2.5rem] relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/[0.03] rounded-full blur-[80px]" />
+          
+          <div className="flex items-center gap-6 relative z-10">
+            <button 
+              onClick={() => navigate('/')}
+              className="p-3 bg-slate-950 border border-white/5 rounded-2xl text-slate-500 hover:text-white transition-all hover:scale-105"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <div>
+              <div className="text-[10px] font-black text-blue-500 uppercase tracking-[0.3em] mb-1">Escalafón de Élite_</div>
+              <h1 className="text-3xl font-black text-white uppercase tracking-tighter flex items-center gap-3">
+                Salón del Honor <span className="text-[10px] bg-yellow-500 text-yellow-950 px-2 py-0.5 rounded-md self-center">PRO</span>
+              </h1>
+            </div>
+          </div>
 
-        <div className="relative z-20 max-w-5xl mx-auto px-6 pt-12 flex flex-col items-center text-center">
-          <button 
-            onClick={() => navigate('/')}
-            className="absolute left-6 top-12 p-3 bg-slate-900/80 rounded-2xl border border-slate-700 text-slate-400 hover:text-white transition-all hover:scale-110 active:scale-95"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          
-          <motion.div
-            initial={{ scale: 0.5, opacity: 0, rotate: -20 }}
-            animate={{ scale: 1, opacity: 1, rotate: 0 }}
-            className="p-5 bg-gradient-to-br from-yellow-400 to-amber-600 rounded-3xl shadow-[0_0_40px_rgba(245,158,11,0.3)] mb-6"
-          >
-            <Trophy className="w-14 h-14 text-yellow-950" />
-          </motion.div>
-          
-          <h1 className="text-4xl font-black uppercase tracking-tighter italic bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent">Salón del Honor</h1>
-          <p className="text-blue-400 text-[10px] uppercase tracking-[0.4em] font-black mt-3">Escalafón General de Oficiales Investigadores</p>
+          <div className="flex items-center gap-4 relative z-10">
+            <div className="p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-2xl">
+              <Trophy className="w-8 h-8 text-yellow-500" />
+            </div>
+            <div className="text-left">
+              <div className="text-[8px] font-black text-slate-500 uppercase tracking-[0.2em]">Estatus de Élite</div>
+              <div className="text-xs font-black text-slate-300 uppercase tracking-widest mt-0.5">Vanguardia PNP</div>
+            </div>
+          </div>
         </div>
       </div>
 
-      <main className="max-w-2xl mx-auto px-4 -mt-16 relative z-30">
+      <main className="max-w-5xl mx-auto px-6 relative z-30">
         {/* Filtros Tácticos */}
-        <div className="flex gap-2 p-1.5 bg-slate-900/80 backdrop-blur-md border border-slate-800 rounded-2xl mb-6 w-fit mx-auto">
+        <div className="flex gap-2 p-1.5 bg-slate-900/60 backdrop-blur-md border border-slate-800 rounded-2xl mb-8 w-fit mx-auto sm:mx-0">
           {[
             { id: undefined, label: 'GENERAL', color: 'bg-blue-600' },
             { id: 'EO', label: 'OFICIALES', color: 'bg-cyan-600' },
@@ -161,6 +163,7 @@ export const Ranking: React.FC = () => {
                           {rank.title}
                         </span>
                         <span className="text-[8px] font-bold text-slate-600 uppercase tracking-widest">{user.school || 'POSTULANTE'}</span>
+                        <span className="text-[8px] font-black text-yellow-500/80 border border-yellow-500/30 px-1 rounded">PRO</span>
                       </div>
                     </div>
                   </div>

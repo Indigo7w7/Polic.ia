@@ -90,19 +90,32 @@ export const Reentrenamiento: React.FC = () => {
   return (
     <div className="min-h-screen bg-[#020617] text-white flex flex-col font-sans">
       {/* Header */}
-      <header className="p-4 border-b border-slate-800 bg-slate-900/50 backdrop-blur-md flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <button onClick={() => navigate('/')} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400">
-            <ChevronLeft className="w-6 h-6" />
-          </button>
-          <div>
-            <h1 className="text-sm font-black uppercase tracking-widest text-blue-400">Zona Anti-Fallo</h1>
-            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Corrigiendo sector {currentIndex + 1} de {questions.length}</p>
+      <header className="p-4 md:p-6 pb-2">
+        <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-6 p-6 bg-slate-900/40 border border-slate-800 rounded-[2.5rem] relative overflow-hidden shadow-2xl backdrop-blur-md">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/[0.03] rounded-full blur-[80px]" />
+          
+          <div className="flex items-center gap-6 relative z-10 w-full md:w-auto">
+            <button 
+              onClick={() => navigate('/')}
+              className="p-3 bg-slate-950 border border-white/5 rounded-2xl text-slate-500 hover:text-white transition-all hover:scale-105"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+            <div>
+              <div className="text-[10px] font-black text-blue-500 uppercase tracking-[0.3em] mb-1">Zona Anti-Fallo_</div>
+              <h1 className="text-3xl font-black text-white uppercase tracking-tighter">Reentrenamiento</h1>
+            </div>
           </div>
-        </div>
-        <div className="flex items-center gap-2 px-3 py-1 bg-amber-500/10 border border-amber-500/20 rounded-full">
-           <Zap className="w-3 h-3 text-amber-400 fill-current" />
-           <span className="text-[9px] font-black text-amber-400 uppercase tracking-widest">ENTRENAMIENTO PRO</span>
+
+          <div className="flex items-center gap-4 relative z-10">
+            <div className="flex flex-col items-end mr-4">
+              <div className="text-[8px] font-black text-slate-500 uppercase tracking-[0.2em] mb-1">Progreso en Sector</div>
+              <div className="text-xs font-black text-slate-300 uppercase tracking-widest font-mono">{currentIndex + 1} / {questions.length}</div>
+            </div>
+            <div className="p-4 bg-slate-950 border border-white/5 rounded-2xl text-amber-500">
+              <Zap className="w-8 h-8 fill-current animate-pulse" />
+            </div>
+          </div>
         </div>
       </header>
 
