@@ -35,6 +35,42 @@ async function run() {
     }
   }
 
+  // ─── CASCADE DELETE SURGERY ───
+  const tablesToFix = [
+    { name: 'exam_attempts', fk: 'exam_attempts_user_id_users_uid_fk', col: 'user_id' },
+    { name: 'leitner_cards', fk: 'leitner_cards_user_id_users_uid_fk', col: 'user_id' },
+    { name: 'stripe_subscriptions', fk: 'stripe_subscriptions_user_id_users_uid_fk', col: 'user_id' },
+    { name: 'admin_logs', fk: 'admin_logs_admin_id_users_uid_fk', col: 'admin_id' },
+    { name: 'yape_audits', fk: 'yape_audits_user_id_users_uid_fk', col: 'user_id' },
+    { name: 'failed_drills', fk: 'failed_drills_user_id_users_uid_fk', col: 'user_id' },
+    { name: 'learning_progress', fk: 'learning_progress_user_id_users_uid_fk', col: 'user_id' }
+  ];
+
+  for (const table of tablesToFix) {
+    console.log(`[SYS] Patching table: ${table.name}...`);
+    try {
+      // 1. Drop existing FK
+      try {
+        await pool.query(`ALTER TABLE ${table.name} DROP FOREIGN KEY ${table.fk};`);
+        console.log(`      [-] FK vieja eliminada.`);
+      } catch (e) {
+        console.log(`      [!] FK no encontrada o ya eliminada.`);
+      }
+
+      // 2. Add CASCADE FK
+      await pool.query(`
+        ALTER TABLE ${table.name} 
+        ADD CONSTRAINT ${table.fk} 
+        FOREIGN KEY (${table.col}) 
+        REFERENCES users(uid) 
+        ON DELETE CASCADE;
+      `);
+      console.log(`      [+] ✅ CASCADA habilitada.`);
+    } catch (err) {
+      console.error(`      [❌] ERROR:`, err.message);
+    }
+  }
+
   console.log('--- DB PATCH FINISHED ---');
   process.exit(0);
 }
