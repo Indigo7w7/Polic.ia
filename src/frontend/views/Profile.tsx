@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, Suspense, lazy } from 'react';
 import { trpc } from '../../shared/utils/trpc';
 import { auth } from '@/src/firebase';
 import { useUserStore } from '../store/useUserStore';
@@ -9,6 +9,8 @@ import { Card, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { usePlayerRank } from '../hooks/usePlayerRank';
 import { RankShield } from '../components/RankShield';
+
+const AptitudeRadar = lazy(() => import('../components/dashboard/AptitudeRadar').then(m => ({ default: m.AptitudeRadar })));
 
 const AVATAR_SEEDS = ['Alpha', 'Bravo', 'Delta', 'Echo', 'Falcon', 'Ghost', 'Hunter', 'Iron', 'Justice', 'Knight', 'Major', 'Nova', 'Oscar', 'Patriot', 'Ranger', 'Strike', 'Titan', 'Vanguard', 'Wolf', 'Xavier'];
 
@@ -38,6 +40,17 @@ export const Profile: React.FC = () => {
   const achievementsQuery = trpc.gamification.getAchievements.useQuery(undefined, {
     enabled: !!uid,
   });
+
+  const dashboardQuery = trpc.user.getDashboardSummary.useQuery(
+    { uid: uid || '', school: undefined },
+    { enabled: !!uid, refetchOnWindowFocus: false }
+  );
+  const categoryStats = dashboardQuery.data?.categoryStats || [];
+  const weakestArea = categoryStats.length > 0
+    ? [...categoryStats].sort((a, b) => a.score - b.score)[0]?.score < 50
+      ? [...categoryStats].sort((a, b) => a.score - b.score)[0]?.area
+      : null
+    : null;
 
   // Hydrate form from backend data (source of truth)
   React.useEffect(() => {
@@ -215,6 +228,18 @@ export const Profile: React.FC = () => {
             </div>
           </CardContent>
         </Card>
+
+        {/* Radar de Aptitud */}
+        <div className="rounded-2xl overflow-hidden border border-slate-800">
+          <div className="px-4 py-3 bg-slate-900/80 border-b border-slate-800">
+            <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
+              <Shield className="w-3 h-3 text-blue-400" /> Radar de Aptitud
+            </h3>
+          </div>
+          <Suspense fallback={<div className="h-48 bg-slate-900/20 animate-pulse" />}>
+            <AptitudeRadar categoryStats={categoryStats} weakestArea={weakestArea} />
+          </Suspense>
+        </div>
 
         {/* Datos personales */}
         <Card className={`bg-slate-900/50 border-slate-800 ${!canEdit ? 'opacity-75' : ''}`}>

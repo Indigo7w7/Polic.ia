@@ -1,0 +1,1 @@
+const i=(e,r)=>e>=1e3?r==="EO"?"General de División":"Suboficial Superior":e>=500?r==="EO"?"Coronel":"Suboficial Brigadier":e>=250?r==="EO"?"Mayor":"Suboficial de 1ra":e>=100?r==="EO"?"Teniente":"Suboficial de 2da":e>=50?r==="EO"?"Alférez":"Suboficial de 3ra":e>=10?r==="EO"?"Cadete":"Alumno":"Postulante";export{i as g};

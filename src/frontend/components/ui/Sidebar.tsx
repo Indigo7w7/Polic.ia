@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Home, BookOpen, BrainCircuit, RotateCcw, Target, X, LayoutGrid, Shield, Sliders, Trophy } from 'lucide-react';
+import { Home, BookOpen, BrainCircuit, RotateCcw, X, Shield, Sliders, Trophy } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 export const Sidebar: React.FC = () => {
@@ -11,13 +11,11 @@ export const Sidebar: React.FC = () => {
   const isActive = (p: string) => location.pathname === p;
 
   const navItems = [
-    { path: '/',          icon: Home,     label: 'Inicio'   },
-    { path: '/galeria',   icon: BookOpen, label: 'Galería'  },
-    { path: '/progreso',  icon: Target,   label: 'Radar'    },
-    { path: '/poligono',  icon: BrainCircuit, label: 'Polígono' },
-    { path: '/dashboard/scenarios', icon: Shield, label: 'Central 105' },
-    { path: '/generator', icon: Sliders, label: 'Generador' },
-    { path: '/medallas',    icon: Trophy,  label: 'Medallas'  },
+    { path: '/',          icon: Home,         label: 'Inicio'    },
+    { path: '/galeria',   icon: BookOpen,     label: 'Galería'   },
+    { path: '/poligono',  icon: BrainCircuit, label: 'Polígono'  },
+    { path: '/generator', icon: Sliders,      label: 'Generador' },
+    { path: '/medallas',  icon: Trophy,       label: 'Medallas'  },
   ];
 
   return (

@@ -361,7 +361,7 @@ var achievements = mysqlTable("achievements", {
   description: text("description"),
   icon: varchar("icon", { length: 50 }),
   pointsReward: int("points_reward").default(0).notNull(),
-  category: mysqlEnum("category", ["EXAM", "LEITNER", "GENERAL"]).default("GENERAL"),
+  category: mysqlEnum("category", ["EXAM", "LEITNER", "STREAK", "SOCIAL", "GENERAL"]).default("GENERAL"),
   createdAt: timestamp("created_at").defaultNow()
 });
 var userAchievements = mysqlTable("user_achievements", {
@@ -681,7 +681,7 @@ var authRouter = router({
 
 // src/backend/server/routers/user.ts
 import { z as z2 } from "zod";
-import { eq as eq3, sql as sql2, desc, and, gte } from "drizzle-orm";
+import { eq as eq4, sql as sql3, desc, and as and2, gte } from "drizzle-orm";
 import { TRPCError as TRPCError3 } from "@trpc/server";
 
 // src/backend/server/utils/logger.ts
@@ -702,9 +702,35 @@ var logger = {
   }
 };
 
+// src/backend/server/utils/gamification.ts
+import { eq as eq3, and, sql as sql2 } from "drizzle-orm";
+async function unlockAchievement(userId, code) {
+  const [achievement] = await db.select().from(achievements).where(eq3(achievements.code, code));
+  if (!achievement) return null;
+  const [existing] = await db.select().from(userAchievements).where(and(
+    eq3(userAchievements.userId, userId),
+    eq3(userAchievements.achievementId, achievement.id)
+  ));
+  if (existing) return null;
+  await db.insert(userAchievements).values({
+    userId,
+    achievementId: achievement.id
+  });
+  if (achievement.pointsReward > 0) {
+    await db.update(users).set({ meritPoints: sql2`${users.meritPoints} + ${achievement.pointsReward}` }).where(eq3(users.uid, userId));
+  }
+  return {
+    code: achievement.code,
+    title: achievement.title,
+    description: achievement.description,
+    icon: achievement.icon,
+    pointsReward: achievement.pointsReward
+  };
+}
+
 // src/backend/server/routers/user.ts
 var getCategoryStatsData = async (uid) => {
-  const stats = await db.execute(sql2`
+  const stats = await db.execute(sql3`
     SELECT 
       la.name as area,
       AVG(aa.is_correct) * 100 as score
@@ -726,7 +752,7 @@ var userRouter = router({
     if (ctx.userId !== input.uid && ctx.userRole !== "admin") {
       throw new TRPCError3({ code: "FORBIDDEN", message: "Unauthorized access to this profile" });
     }
-    let [user] = await db.select(USER_FIELDS).from(users).where(eq3(users.uid, input.uid));
+    let [user] = await db.select(USER_FIELDS).from(users).where(eq4(users.uid, input.uid));
     if (!user) {
       console.log(`[SYNC] User ${input.uid} not found in MySQL. Provisioning new profile...`);
       await db.insert(users).values({
@@ -738,11 +764,11 @@ var userRouter = router({
         status: "ACTIVE",
         lastActive: /* @__PURE__ */ new Date()
       });
-      [user] = await db.select(USER_FIELDS).from(users).where(eq3(users.uid, input.uid));
+      [user] = await db.select(USER_FIELDS).from(users).where(eq4(users.uid, input.uid));
     }
     if (!user) throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: "Failed to provision user profile" });
     if (user.membership === "PRO" && user.premiumExpiration && user.premiumExpiration < /* @__PURE__ */ new Date()) {
-      await db.update(users).set({ membership: "FREE", premiumExpiration: null }).where(eq3(users.uid, user.uid));
+      await db.update(users).set({ membership: "FREE", premiumExpiration: null }).where(eq4(users.uid, user.uid));
       user.membership = "FREE";
       user.premiumExpiration = null;
     }
@@ -758,7 +784,7 @@ var userRouter = router({
   }),
   claimDailyLeitner: protectedProcedure.input(z2.object({ uid: z2.string() })).mutation(async ({ ctx, input }) => {
     if (ctx.userId !== input.uid) throw new TRPCError3({ code: "FORBIDDEN" });
-    const [user] = await db.select(USER_FIELDS).from(users).where(eq3(users.uid, input.uid));
+    const [user] = await db.select(USER_FIELDS).from(users).where(eq4(users.uid, input.uid));
     if (!user) throw new TRPCError3({ code: "NOT_FOUND" });
     const now = /* @__PURE__ */ new Date();
     const lastUpdate = user.lastStreakUpdate ? new Date(user.lastStreakUpdate) : /* @__PURE__ */ new Date(0);
@@ -778,18 +804,23 @@ var userRouter = router({
       pointsToGive += 200;
     }
     await db.update(users).set({
-      honorPoints: sql2`${users.honorPoints} + ${pointsToGive}`,
+      honorPoints: sql3`${users.honorPoints} + ${pointsToGive}`,
       currentStreak: streak,
       lastStreakUpdate: now
-    }).where(eq3(users.uid, input.uid));
+    }).where(eq4(users.uid, input.uid));
     logger.info(`[REWARD] User ${input.uid} claimed daily reward. Points: ${pointsToGive}, Streak: ${streak}`);
-    return { success: true, pointsAwarded: pointsToGive, newStreak: streak };
+    const achievementsUnlocked = [];
+    if (streak === 7) {
+      const ach = await unlockAchievement(input.uid, "STREAK_7");
+      if (ach) achievementsUnlocked.push(ach);
+    }
+    return { success: true, pointsAwarded: pointsToGive, newStreak: streak, achievementsUnlocked };
   }),
   selectSchool: protectedProcedure.input(z2.object({ uid: z2.string(), school: z2.enum(["EO", "EESTP"]) })).mutation(async ({ ctx, input }) => {
     if (ctx.userId !== input.uid) {
       throw new TRPCError3({ code: "FORBIDDEN", message: "Unauthorized school selection" });
     }
-    const [user] = await db.select(USER_FIELDS).from(users).where(eq3(users.uid, input.uid));
+    const [user] = await db.select(USER_FIELDS).from(users).where(eq4(users.uid, input.uid));
     if (!user) throw new TRPCError3({ code: "NOT_FOUND", message: "User not found" });
     if (user.school) {
       throw new TRPCError3({
@@ -797,8 +828,8 @@ var userRouter = router({
         message: "La selecci\xF3n de escuela ya ha sido procesada y es irreversible."
       });
     }
-    await db.update(users).set({ school: input.school }).where(eq3(users.uid, input.uid));
-    const [updatedUser] = await db.select(USER_FIELDS).from(users).where(eq3(users.uid, input.uid));
+    await db.update(users).set({ school: input.school }).where(eq4(users.uid, input.uid));
+    const [updatedUser] = await db.select(USER_FIELDS).from(users).where(eq4(users.uid, input.uid));
     return { success: true, school: input.school, user: updatedUser };
   }),
   getStats: protectedProcedure.input(z2.object({ uid: z2.string() })).query(async ({ ctx, input }) => {
@@ -808,14 +839,14 @@ var userRouter = router({
     const [user] = await db.select({
       honorPoints: users.honorPoints,
       meritPoints: users.meritPoints
-    }).from(users).where(eq3(users.uid, input.uid));
+    }).from(users).where(eq4(users.uid, input.uid));
     const stats = await db.select({
-      totalAttempts: sql2`count(${examAttempts.id})`,
-      averageScore: sql2`avg(${examAttempts.score})`,
-      bestScore: sql2`max(${examAttempts.score})`,
-      lastExamDate: sql2`max(${examAttempts.startedAt})`,
-      passedCount: sql2`sum(case when ${examAttempts.passed} = 1 then 1 else 0 end)`
-    }).from(examAttempts).where(eq3(examAttempts.userId, input.uid));
+      totalAttempts: sql3`count(${examAttempts.id})`,
+      averageScore: sql3`avg(${examAttempts.score})`,
+      bestScore: sql3`max(${examAttempts.score})`,
+      lastExamDate: sql3`max(${examAttempts.startedAt})`,
+      passedCount: sql3`sum(case when ${examAttempts.passed} = 1 then 1 else 0 end)`
+    }).from(examAttempts).where(eq4(examAttempts.userId, input.uid));
     return {
       ...stats[0] || { totalAttempts: 0, averageScore: 0, bestScore: 0, lastExamDate: null, passedCount: 0 },
       honorPoints: user?.honorPoints || 0,
@@ -824,11 +855,10 @@ var userRouter = router({
   }),
   getRanking: protectedProcedure.input(z2.object({ school: z2.enum(["EO", "EESTP"]).optional() })).query(async ({ input }) => {
     let filters = [
-      eq3(users.membership, "PRO"),
-      eq3(users.status, "ACTIVE")
+      eq4(users.status, "ACTIVE")
     ];
     if (input.school) {
-      filters.push(eq3(users.school, input.school));
+      filters.push(eq4(users.school, input.school));
     }
     const topScores = await db.select({
       uid: users.uid,
@@ -838,9 +868,31 @@ var userRouter = router({
       membership: users.membership,
       meritPoints: users.meritPoints,
       honorPoints: users.honorPoints,
-      bestScore: sql2`(SELECT MAX(score) FROM ${examAttempts} WHERE user_id = ${users.uid})`
-    }).from(users).where(and(...filters)).orderBy(desc(users.meritPoints)).limit(100);
+      totalPoints: sql3`${users.honorPoints} + ${users.meritPoints}`,
+      bestScore: sql3`(SELECT MAX(score) FROM ${examAttempts} WHERE user_id = ${users.uid})`
+    }).from(users).where(and2(...filters)).orderBy(desc(sql3`${users.honorPoints} + ${users.meritPoints}`)).limit(100);
     return topScores;
+  }),
+  /** Calculates school-wide aggregates for the "Battle Board" */
+  getSchoolBattleStats: protectedProcedure.query(async () => {
+    const stats = await db.execute(sql3`
+        SELECT 
+          u.school,
+          AVG(ea.score) * 100 as avg_efficacy,
+          SUM(u.honor_points) as total_honor,
+          COUNT(DISTINCT u.uid) as user_count
+        FROM users u
+        LEFT JOIN exam_attempts ea ON u.uid = ea.user_id AND ea.started_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+        WHERE u.school IS NOT NULL AND u.status = 'ACTIVE'
+        GROUP BY u.school
+      `);
+    const rows = Array.isArray(stats) ? stats[0] || stats : stats.rows || [];
+    return rows.map((r) => ({
+      school: r.school,
+      avgEfficacy: Math.round(Number(r.avg_efficacy || 0)),
+      totalHonor: Number(r.total_honor || 0),
+      userCount: Number(r.user_count || 0)
+    }));
   }),
   updateProfile: protectedProcedure.input(z2.object({
     uid: z2.string(),
@@ -852,7 +904,7 @@ var userRouter = router({
     if (ctx.userId !== input.uid) {
       throw new TRPCError3({ code: "FORBIDDEN", message: "Unauthorized profile update" });
     }
-    const [user] = await db.select(USER_FIELDS).from(users).where(eq3(users.uid, input.uid));
+    const [user] = await db.select(USER_FIELDS).from(users).where(eq4(users.uid, input.uid));
     if (!user) throw new TRPCError3({ code: "NOT_FOUND", message: "User not found" });
     await db.update(users).set({
       ...input.name && { name: input.name },
@@ -860,20 +912,20 @@ var userRouter = router({
       ...input.age !== void 0 && { age: input.age },
       ...input.city && { city: input.city },
       profileEdited: true
-    }).where(eq3(users.uid, input.uid));
+    }).where(eq4(users.uid, input.uid));
     return { success: true };
   }),
   updateLastSeen: protectedProcedure.input(z2.object({ uid: z2.string() })).mutation(async ({ ctx, input }) => {
     if (ctx.userId !== input.uid) {
       throw new TRPCError3({ code: "FORBIDDEN", message: "Unauthorized lastSeen update" });
     }
-    await db.update(users).set({ lastActive: /* @__PURE__ */ new Date() }).where(eq3(users.uid, input.uid));
+    await db.update(users).set({ lastActive: /* @__PURE__ */ new Date() }).where(eq4(users.uid, input.uid));
     return { success: true };
   }),
   getLastBroadcast: protectedProcedure.query(async () => {
     const activeBroadcasts = await db.select().from(globalNotifications).where(
-      and(
-        eq3(globalNotifications.isActive, true),
+      and2(
+        eq4(globalNotifications.isActive, true),
         globalNotifications.expiresAt ? gte(globalNotifications.expiresAt, /* @__PURE__ */ new Date()) : void 0
       )
     ).orderBy(desc(globalNotifications.createdAt)).limit(1);
@@ -892,16 +944,16 @@ var userRouter = router({
     const [userStats, leitnerStatsRaw, categoryStats, rankResults, broadcastResult] = await Promise.all([
       // 1. Core User Stats
       db.select({
-        totalAttempts: sql2`count(${examAttempts.id})`,
-        averageScore: sql2`avg(${examAttempts.score})`,
-        bestScore: sql2`max(${examAttempts.score})`,
-        lastExamDate: sql2`max(${examAttempts.startedAt})`,
-        passedCount: sql2`sum(case when ${examAttempts.passed} = 1 then 1 else 0 end)`,
-        meritPoints: sql2`(SELECT merit_points FROM users WHERE uid = ${input.uid})`,
-        honorPoints: sql2`(SELECT honor_points FROM users WHERE uid = ${input.uid})`
-      }).from(examAttempts).where(eq3(examAttempts.userId, input.uid)),
+        totalAttempts: sql3`count(${examAttempts.id})`,
+        averageScore: sql3`avg(${examAttempts.score})`,
+        bestScore: sql3`max(${examAttempts.score})`,
+        lastExamDate: sql3`max(${examAttempts.startedAt})`,
+        passedCount: sql3`sum(case when ${examAttempts.passed} = 1 then 1 else 0 end)`,
+        meritPoints: sql3`(SELECT merit_points FROM users WHERE uid = ${input.uid})`,
+        honorPoints: sql3`(SELECT honor_points FROM users WHERE uid = ${input.uid})`
+      }).from(examAttempts).where(eq4(examAttempts.userId, input.uid)),
       // 2. Leitner Counts
-      db.execute(sql2`
+      db.execute(sql3`
           SELECT
             COUNT(CASE WHEN state = 'new' AND queue >= 0 THEN 1 END) as new_count,
             COUNT(CASE WHEN state IN ('learning','relearning') AND queue >= 0 THEN 1 END) as learning_count,
@@ -917,14 +969,14 @@ var userRouter = router({
         uid: users.uid,
         meritPoints: users.meritPoints,
         honorPoints: users.honorPoints
-      }).from(users).where(and(
-        eq3(users.membership, "PRO"),
-        eq3(users.status, "ACTIVE"),
-        input.school ? eq3(users.school, input.school) : void 0
+      }).from(users).where(and2(
+        eq4(users.membership, "PRO"),
+        eq4(users.status, "ACTIVE"),
+        input.school ? eq4(users.school, input.school) : void 0
       )).orderBy(desc(users.meritPoints)).limit(500),
       // 5. Latest Broadcast
-      db.select().from(globalNotifications).where(and(
-        eq3(globalNotifications.isActive, true),
+      db.select().from(globalNotifications).where(and2(
+        eq4(globalNotifications.isActive, true),
         globalNotifications.expiresAt ? gte(globalNotifications.expiresAt, /* @__PURE__ */ new Date()) : void 0
       )).orderBy(desc(globalNotifications.createdAt)).limit(1)
     ]);
@@ -951,7 +1003,7 @@ var userRouter = router({
 // src/backend/server/routers/exam.ts
 import { TRPCError as TRPCError4 } from "@trpc/server";
 import { z as z3 } from "zod";
-import { eq as eq4, desc as desc2, and as and2, sql as sql3, inArray } from "drizzle-orm";
+import { eq as eq5, desc as desc2, and as and3, sql as sql4, inArray } from "drizzle-orm";
 var examRouter = router({
   /** Fetch questions from DB dynamically (for admin-uploaded exams or custom ones) */
   getQuestionsByFilter: protectedProcedure.input(z3.object({
@@ -965,22 +1017,22 @@ var examRouter = router({
     let query = db.select().from(examQuestions);
     const filters = [];
     if (input.school) {
-      filters.push(sql3`(${examQuestions.schoolType} = ${input.school} OR ${examQuestions.schoolType} = 'BOTH')`);
+      filters.push(sql4`(${examQuestions.schoolType} = ${input.school} OR ${examQuestions.schoolType} = 'BOTH')`);
     }
     if (input.areaId) {
-      filters.push(eq4(examQuestions.areaId, input.areaId));
+      filters.push(eq5(examQuestions.areaId, input.areaId));
     }
     if (input.areaIds && input.areaIds.length > 0) {
       filters.push(inArray(examQuestions.areaId, input.areaIds));
     }
     if (input.difficulty) {
-      filters.push(eq4(examQuestions.difficulty, input.difficulty));
+      filters.push(eq5(examQuestions.difficulty, input.difficulty));
     }
     if (input.examId) {
-      filters.push(eq4(examQuestions.examId, input.examId));
+      filters.push(eq5(examQuestions.examId, input.examId));
     }
-    const whereClause = filters.length > 0 ? and2(...filters) : void 0;
-    const questions = await db.select().from(examQuestions).where(whereClause).orderBy(sql3`RAND()`).limit(input.limit);
+    const whereClause = filters.length > 0 ? and3(...filters) : void 0;
+    const questions = await db.select().from(examQuestions).where(whereClause).orderBy(sql4`RAND()`).limit(input.limit);
     return questions;
   }),
   /** Smart Exam Generator: Analyzes radar and builds a personalized challenge */
@@ -989,7 +1041,7 @@ var examRouter = router({
     limit: z3.number().min(10).max(100).default(50),
     requestedDifficulty: z3.enum(["EASY", "MEDIUM", "HARD"]).optional()
   })).mutation(async ({ input, ctx }) => {
-    const stats = await db.execute(sql3`
+    const stats = await db.execute(sql4`
         SELECT 
           la.id,
           la.name as area,
@@ -1018,18 +1070,18 @@ var examRouter = router({
     }
     const weakAreaIds = areaStats.sort((a, b) => a.score - b.score).slice(0, 3).map((a) => a.id);
     const filters = [
-      sql3`(${examQuestions.schoolType} = ${input.school} OR ${examQuestions.schoolType} = 'BOTH')`,
-      eq4(examQuestions.difficulty, finalDifficulty)
+      sql4`(${examQuestions.schoolType} = ${input.school} OR ${examQuestions.schoolType} = 'BOTH')`,
+      eq5(examQuestions.difficulty, finalDifficulty)
     ];
     const weakLimit = Math.floor(input.limit * 0.6);
     const restLimit = input.limit - weakLimit;
     let finalQuestions = [];
     if (weakAreaIds.length > 0) {
-      const weakQuestions = await db.select().from(examQuestions).where(and2(...filters, inArray(examQuestions.areaId, weakAreaIds))).orderBy(sql3`RAND()`).limit(weakLimit);
-      const restQuestions = await db.select().from(examQuestions).where(and2(...filters, sql3`${examQuestions.areaId} NOT IN (${sql3.join(weakAreaIds, sql3`, `)})`)).orderBy(sql3`RAND()`).limit(restLimit);
+      const weakQuestions = await db.select().from(examQuestions).where(and3(...filters, inArray(examQuestions.areaId, weakAreaIds))).orderBy(sql4`RAND()`).limit(weakLimit);
+      const restQuestions = await db.select().from(examQuestions).where(and3(...filters, sql4`${examQuestions.areaId} NOT IN (${sql4.join(weakAreaIds, sql4`, `)})`)).orderBy(sql4`RAND()`).limit(restLimit);
       finalQuestions = [...weakQuestions, ...restQuestions];
     } else {
-      finalQuestions = await db.select().from(examQuestions).where(and2(...filters)).orderBy(sql3`RAND()`).limit(input.limit);
+      finalQuestions = await db.select().from(examQuestions).where(and3(...filters)).orderBy(sql4`RAND()`).limit(input.limit);
     }
     return {
       questions: finalQuestions.sort(() => Math.random() - 0.5),
@@ -1072,9 +1124,9 @@ var examRouter = router({
           }))
         );
         const examQuestionIds = input.answers.map((a) => a.questionId);
-        const existingCards = await tx.select().from(leitnerCards).where(and2(
-          eq4(leitnerCards.userId, input.userId),
-          sql3`${leitnerCards.questionId} IN (${sql3.join(examQuestionIds, sql3`, `)})`
+        const existingCards = await tx.select().from(leitnerCards).where(and3(
+          eq5(leitnerCards.userId, input.userId),
+          sql4`${leitnerCards.questionId} IN (${sql4.join(examQuestionIds, sql4`, `)})`
         ));
         const cardMap = new Map(existingCards.map((c) => [c.questionId, c]));
         for (const ans of input.answers) {
@@ -1086,26 +1138,26 @@ var examRouter = router({
                 state: "relearning",
                 queue: 3,
                 scheduledDays: 0,
-                lapses: sql3`${leitnerCards.lapses} + 1`,
+                lapses: sql4`${leitnerCards.lapses} + 1`,
                 nextReview,
                 lastReview: /* @__PURE__ */ new Date()
-              }).where(eq4(leitnerCards.id, existingCard.id));
+              }).where(eq5(leitnerCards.id, existingCard.id));
             } else if (existingCard.state === "relearning") {
               const nextReview = new Date(Date.now() + 24 * 60 * 6e4);
               await tx.update(leitnerCards).set({
                 state: "review",
                 queue: 2,
                 scheduledDays: 1,
-                reps: sql3`${leitnerCards.reps} + 1`,
+                reps: sql4`${leitnerCards.reps} + 1`,
                 nextReview,
                 lastReview: /* @__PURE__ */ new Date()
-              }).where(eq4(leitnerCards.id, existingCard.id));
+              }).where(eq5(leitnerCards.id, existingCard.id));
             } else {
               await tx.update(leitnerCards).set({
-                reps: sql3`${leitnerCards.reps} + 1`,
-                level: sql3`LEAST(${leitnerCards.level} + 1, 5)`,
+                reps: sql4`${leitnerCards.reps} + 1`,
+                level: sql4`LEAST(${leitnerCards.level} + 1, 5)`,
                 lastReview: /* @__PURE__ */ new Date()
-              }).where(eq4(leitnerCards.id, existingCard.id));
+              }).where(eq5(leitnerCards.id, existingCard.id));
             }
           } else if (!ans.isCorrect) {
             const nextReview = new Date(Date.now() + 10 * 6e4);
@@ -1126,7 +1178,7 @@ var examRouter = router({
           }
         }
       }
-      const [stats] = await tx.select({ bestScore: sql3`MAX(${examAttempts.score})` }).from(examAttempts).where(eq4(examAttempts.userId, input.userId));
+      const [stats] = await tx.select({ bestScore: sql4`MAX(${examAttempts.score})` }).from(examAttempts).where(eq5(examAttempts.userId, input.userId));
       const previousBest = stats?.bestScore || 0;
       let meritPointsEarned = 0;
       if (input.passed) meritPointsEarned += 200;
@@ -1134,36 +1186,34 @@ var examRouter = router({
         meritPointsEarned += 500;
       }
       if (meritPointsEarned > 0) {
-        await tx.update(users).set({ meritPoints: sql3`${users.meritPoints} + ${meritPointsEarned}` }).where(eq4(users.uid, input.userId));
+        await tx.update(users).set({ meritPoints: sql4`${users.meritPoints} + ${meritPointsEarned}` }).where(eq5(users.uid, input.userId));
       }
       return { success: true, attemptId: attempt.insertId, meritPointsEarned, previousBest };
     });
     const achievementsUnlocked = [];
     try {
-      const [{ count }] = await db.select({ count: sql3`count(*)` }).from(examAttempts).where(eq4(examAttempts.userId, input.userId));
-      if (Number(count) === 1) {
-        const [ach] = await db.select().from(achievements).where(eq4(achievements.code, "FIRST_EXAM"));
-        if (ach) {
-          await db.insert(userAchievements).values({ userId: input.userId, achievementId: ach.id }).onDuplicateKeyUpdate({ set: { userId: input.userId } });
-          achievementsUnlocked.push(ach);
-          await db.update(users).set({ meritPoints: sql3`${users.meritPoints} + ${ach.pointsReward}` }).where(eq4(users.uid, input.userId));
-        }
+      const achFirst = await unlockAchievement(input.userId, "FIRST_EXAM");
+      if (achFirst) achievementsUnlocked.push(achFirst);
+      if (input.score >= 85) {
+        const achElite = await unlockAchievement(input.userId, "ELITE_OFFICER");
+        if (achElite) achievementsUnlocked.push(achElite);
       }
-      if (input.score >= 20) {
-        const [ach] = await db.select().from(achievements).where(eq4(achievements.code, "ELITE_OFFICER"));
-        if (ach) {
-          const [alreadyHas] = await db.select().from(userAchievements).where(and2(eq4(userAchievements.userId, input.userId), eq4(userAchievements.achievementId, ach.id)));
-          if (!alreadyHas) {
-            await db.insert(userAchievements).values({ userId: input.userId, achievementId: ach.id });
-            achievementsUnlocked.push(ach);
-            await db.update(users).set({ meritPoints: sql3`${users.meritPoints} + ${ach.pointsReward}` }).where(eq4(users.uid, input.userId));
-          }
-        }
+      if (input.score === 100 && input.answers.length >= 20) {
+        const achPerfect = await unlockAchievement(input.userId, "PERFECT_EXAM");
+        if (achPerfect) achievementsUnlocked.push(achPerfect);
       }
     } catch (err) {
       console.error("[EXAM_POST_PROCESS_ERROR]", err);
     }
-    return { ...result, achievementsUnlocked };
+    const [{ meritPoints }] = await db.select({ meritPoints: users.meritPoints }).from(users).where(eq5(users.uid, input.userId));
+    return {
+      success: true,
+      attemptId: result.attemptId,
+      meritPointsEarned: result.meritPointsEarned,
+      previousBest: result.previousBest,
+      newTotalPoints: meritPoints,
+      achievementsUnlocked
+    };
   }),
   getHistory: protectedProcedure.input(z3.object({
     userId: z3.string(),
@@ -1173,7 +1223,7 @@ var examRouter = router({
     if (ctx.userId !== input.userId && ctx.userRole !== "admin") {
       throw new TRPCError4({ code: "FORBIDDEN", message: "Unauthorized access to history" });
     }
-    return await db.select().from(examAttempts).where(eq4(examAttempts.userId, input.userId)).orderBy(desc2(examAttempts.startedAt)).limit(input.limit).offset(input.offset);
+    return await db.select().from(examAttempts).where(eq5(examAttempts.userId, input.userId)).orderBy(desc2(examAttempts.startedAt)).limit(input.limit).offset(input.offset);
   }),
   /** Get available exam levels for the student dashboard */
   getLevels: protectedProcedure.query(async () => {
@@ -1193,16 +1243,16 @@ var examRouter = router({
       areaId: examQuestions.areaId,
       difficulty: examQuestions.difficulty,
       schoolType: examQuestions.schoolType
-    }).from(attemptAnswers).innerJoin(examQuestions, eq4(attemptAnswers.questionId, examQuestions.id)).innerJoin(examAttempts, eq4(attemptAnswers.attemptId, examAttempts.id)).where(and2(
-      eq4(examAttempts.userId, input.userId),
-      eq4(attemptAnswers.isCorrect, false)
+    }).from(attemptAnswers).innerJoin(examQuestions, eq5(attemptAnswers.questionId, examQuestions.id)).innerJoin(examAttempts, eq5(attemptAnswers.attemptId, examAttempts.id)).where(and3(
+      eq5(examAttempts.userId, input.userId),
+      eq5(attemptAnswers.isCorrect, false)
     )).groupBy(examQuestions.id).limit(input.limit).offset(input.offset);
   })
 });
 
 // src/backend/server/routers/learning.ts
 import { z as z4 } from "zod";
-import { eq as eq5, or, and as and3 } from "drizzle-orm";
+import { eq as eq6, or, and as and4 } from "drizzle-orm";
 var learningRouter = router({
   getAreas: protectedProcedure.query(async () => {
     return await db.select().from(learningAreas);
@@ -1211,13 +1261,13 @@ var learningRouter = router({
     areaId: z4.number(),
     school: z4.enum(["EO", "EESTP", "BOTH"]).optional()
   })).query(async ({ input }) => {
-    const areaFilter = eq5(learningContent.areaId, input.areaId);
+    const areaFilter = eq6(learningContent.areaId, input.areaId);
     if (input.school && input.school !== "BOTH") {
       const schoolFilter = or(
-        eq5(learningContent.schoolType, input.school),
-        eq5(learningContent.schoolType, "BOTH")
+        eq6(learningContent.schoolType, input.school),
+        eq6(learningContent.schoolType, "BOTH")
       );
-      return await db.select().from(learningContent).where(and3(areaFilter, schoolFilter));
+      return await db.select().from(learningContent).where(and4(areaFilter, schoolFilter));
     }
     return await db.select().from(learningContent).where(areaFilter);
   })
@@ -1226,7 +1276,7 @@ var learningRouter = router({
 // src/backend/server/routers/leitner.ts
 import { TRPCError as TRPCError5 } from "@trpc/server";
 import { z as z5 } from "zod";
-import { eq as eq6, and as and4, lte, sql as sql4, or as or2, isNull, gte as gte2 } from "drizzle-orm";
+import { eq as eq7, and as and5, lte, sql as sql5, or as or2, isNull, gte as gte2 } from "drizzle-orm";
 
 // src/shared/utils/fsrs.ts
 var FSRS_W = [
@@ -1406,23 +1456,23 @@ var leitnerRouter = router({
       questionId: leitnerCards.questionId,
       learningContentId: leitnerCards.learningContentId,
       questionIndex: leitnerCards.questionIndex,
-      question: sql4`COALESCE(${examQuestions.question}, JSON_UNQUOTE(JSON_EXTRACT(${leitnerCards.learningContentId} IS NOT NULL ? (SELECT questions FROM learning_content WHERE id = ${leitnerCards.learningContentId}) : NULL, CONCAT('$[', ${leitnerCards.questionIndex}, '].title'))))`,
-      options: sql4`COALESCE(${examQuestions.options}, JSON_EXTRACT((SELECT questions FROM learning_content WHERE id = ${leitnerCards.learningContentId}), CONCAT('$[', ${leitnerCards.questionIndex}, '].options')))`,
-      correctOption: sql4`COALESCE(${examQuestions.correctOption}, CAST(JSON_EXTRACT((SELECT questions FROM learning_content WHERE id = ${leitnerCards.learningContentId}), CONCAT('$[', ${leitnerCards.questionIndex}, '].correctOption')) AS UNSIGNED))`
-    }).from(leitnerCards).leftJoin(examQuestions, eq6(leitnerCards.questionId, examQuestions.id)).where(and4(
-      eq6(leitnerCards.userId, input.userId),
+      question: sql5`COALESCE(${examQuestions.question}, JSON_UNQUOTE(JSON_EXTRACT(${leitnerCards.learningContentId} IS NOT NULL ? (SELECT questions FROM learning_content WHERE id = ${leitnerCards.learningContentId}) : NULL, CONCAT('$[', ${leitnerCards.questionIndex}, '].title'))))`,
+      options: sql5`COALESCE(${examQuestions.options}, JSON_EXTRACT((SELECT questions FROM learning_content WHERE id = ${leitnerCards.learningContentId}), CONCAT('$[', ${leitnerCards.questionIndex}, '].options')))`,
+      correctOption: sql5`COALESCE(${examQuestions.correctOption}, CAST(JSON_EXTRACT((SELECT questions FROM learning_content WHERE id = ${leitnerCards.learningContentId}), CONCAT('$[', ${leitnerCards.questionIndex}, '].correctOption')) AS UNSIGNED))`
+    }).from(leitnerCards).leftJoin(examQuestions, eq7(leitnerCards.questionId, examQuestions.id)).where(and5(
+      eq7(leitnerCards.userId, input.userId),
       // Excluir mazos dinámicos (-3), enterradas (-2), y suspendidas (-1)
       gte2(leitnerCards.queue, 0),
-      input.deckTag ? eq6(leitnerCards.deckTag, input.deckTag) : void 0,
+      input.deckTag ? eq7(leitnerCards.deckTag, input.deckTag) : void 0,
       or2(
         // Tarjetas nuevas
-        eq6(leitnerCards.state, "new"),
+        eq7(leitnerCards.state, "new"),
         // Tarjetas en aprendizaje/reaprendizaje (siempre disponibles)
-        eq6(leitnerCards.state, "learning"),
-        eq6(leitnerCards.state, "relearning"),
+        eq7(leitnerCards.state, "learning"),
+        eq7(leitnerCards.state, "relearning"),
         // Tarjetas en repaso: solo si ya vencieron
-        and4(
-          eq6(leitnerCards.state, "review"),
+        and5(
+          eq7(leitnerCards.state, "review"),
           or2(
             isNull(leitnerCards.nextReview),
             lte(leitnerCards.nextReview, cutoff)
@@ -1430,8 +1480,8 @@ var leitnerRouter = router({
         )
       )
     )).orderBy(
-      sql4`FIELD(${leitnerCards.state}, 'relearning', 'learning', 'review', 'new')`,
-      input.interleave ? sql4`RAND()` : leitnerCards.nextReview
+      sql5`FIELD(${leitnerCards.state}, 'relearning', 'learning', 'review', 'new')`,
+      input.interleave ? sql5`RAND()` : leitnerCards.nextReview
     ).limit(input.limit);
     return cards.map((card) => {
       const fsrsCard = {
@@ -1462,7 +1512,7 @@ var leitnerRouter = router({
     timeTaken: z5.number().optional()
     // ms
   })).mutation(async ({ ctx, input }) => {
-    const [card] = await db.select().from(leitnerCards).where(eq6(leitnerCards.id, input.id));
+    const [card] = await db.select().from(leitnerCards).where(eq7(leitnerCards.id, input.id));
     if (!card) throw new TRPCError5({ code: "NOT_FOUND" });
     if (card.userId !== ctx.userId) throw new TRPCError5({ code: "FORBIDDEN" });
     const now = /* @__PURE__ */ new Date();
@@ -1500,7 +1550,7 @@ var leitnerRouter = router({
       nextReview,
       lastReview: now,
       level: Math.min((card.level || 0) + (input.ease >= 3 ? 1 : 0), 5)
-    }).where(eq6(leitnerCards.id, input.id));
+    }).where(eq7(leitnerCards.id, input.id));
     const [log] = await db.insert(reviewLogs).values({
       cardId: card.id,
       userId: ctx.userId,
@@ -1533,22 +1583,20 @@ var leitnerRouter = router({
         },
         reviewLogId: log?.id
       }
-    }).where(eq6(users.uid, ctx.userId));
+    }).where(eq7(users.uid, ctx.userId));
     if (input.ease >= 3) {
-      await db.update(users).set({ honorPoints: sql4`${users.honorPoints} + 5` }).where(eq6(users.uid, ctx.userId));
+      await db.update(users).set({ honorPoints: sql5`${users.honorPoints} + 5` }).where(eq7(users.uid, ctx.userId));
     }
     const achievementsUnlocked = [];
-    const [stats] = await db.select({ totalReps: sql4`SUM(${leitnerCards.reps})` }).from(leitnerCards).where(eq6(leitnerCards.userId, ctx.userId));
-    if (Number(stats?.totalReps || 0) >= 50) {
-      const [ach] = await db.select().from(achievements).where(eq6(achievements.code, "FLASH_50"));
-      if (ach) {
-        const [alreadyHas] = await db.select().from(userAchievements).where(and4(eq6(userAchievements.userId, ctx.userId), eq6(userAchievements.achievementId, ach.id)));
-        if (!alreadyHas) {
-          await db.insert(userAchievements).values({ userId: ctx.userId, achievementId: ach.id });
-          achievementsUnlocked.push(ach);
-          await db.update(users).set({ honorPoints: sql4`${users.honorPoints} + ${ach.pointsReward}` }).where(eq6(users.uid, ctx.userId));
-        }
-      }
+    const [stats] = await db.select({ totalReps: sql5`SUM(${leitnerCards.reps})` }).from(leitnerCards).where(eq7(leitnerCards.userId, ctx.userId));
+    const reps = Number(stats?.totalReps || 0);
+    if (reps >= 50) {
+      const ach = await unlockAchievement(ctx.userId, "FLASH_50");
+      if (ach) achievementsUnlocked.push(ach);
+    }
+    if (reps >= 500) {
+      const ach = await unlockAchievement(ctx.userId, "FLASH_500");
+      if (ach) achievementsUnlocked.push(ach);
     }
     return {
       success: true,
@@ -1561,7 +1609,7 @@ var leitnerRouter = router({
   }),
   // ── Deshacer última calificación (Undo/Ctrl+Z) ───────────────────────────
   undoLastReview: protectedProcedure.mutation(async ({ ctx }) => {
-    const [user] = await db.select({ flashcardUndoState: users.flashcardUndoState }).from(users).where(eq6(users.uid, ctx.userId));
+    const [user] = await db.select({ flashcardUndoState: users.flashcardUndoState }).from(users).where(eq7(users.uid, ctx.userId));
     const entry = user?.flashcardUndoState;
     if (!entry || !entry.cardId) throw new TRPCError5({ code: "NOT_FOUND", message: "No hay evaluaci\xF3n para deshacer." });
     await db.update(leitnerCards).set({
@@ -1576,18 +1624,18 @@ var leitnerRouter = router({
       nextReview: entry.previousState.nextReview ? new Date(entry.previousState.nextReview) : null,
       lastReview: entry.previousState.lastReview ? new Date(entry.previousState.lastReview) : null,
       level: entry.previousState.level
-    }).where(eq6(leitnerCards.id, entry.cardId));
+    }).where(eq7(leitnerCards.id, entry.cardId));
     if (entry.reviewLogId) {
-      await db.delete(reviewLogs).where(eq6(reviewLogs.id, entry.reviewLogId));
+      await db.delete(reviewLogs).where(eq7(reviewLogs.id, entry.reviewLogId));
     }
-    await db.update(users).set({ flashcardUndoState: null }).where(eq6(users.uid, ctx.userId));
+    await db.update(users).set({ flashcardUndoState: null }).where(eq7(users.uid, ctx.userId));
     return { success: true };
   }),
   // ── Estadísticas de Sesión ────────────────────────────────────────────────
   getStats: protectedProcedure.input(z5.object({ userId: z5.string() })).query(async ({ ctx, input }) => {
     if (ctx.userId !== input.userId) throw new TRPCError5({ code: "FORBIDDEN" });
     const cutoff = getTodayCutoff();
-    const execResult = await db.execute(sql4`
+    const execResult = await db.execute(sql5`
         SELECT
           COUNT(CASE WHEN state = 'new' AND queue >= 0 THEN 1 END) as new_count,
           COUNT(CASE WHEN state IN ('learning','relearning') AND queue >= 0 THEN 1 END) as learning_count,
@@ -1609,7 +1657,7 @@ var leitnerRouter = router({
   getAnalytics: protectedProcedure.input(z5.object({ userId: z5.string() })).query(async ({ ctx, input }) => {
     if (ctx.userId !== input.userId) throw new TRPCError5({ code: "FORBIDDEN" });
     const [analyticsResult, forecastResult, diffResult] = await Promise.all([
-      db.execute(sql4`
+      db.execute(sql5`
           SELECT
             DATE(reviewed_at) as day,
             ROUND(COUNT(CASE WHEN ease > 1 THEN 1 END) * 100.0 / COUNT(*), 1) as retention_pct,
@@ -1620,7 +1668,7 @@ var leitnerRouter = router({
           GROUP BY DATE(reviewed_at)
           ORDER BY day ASC
         `),
-      db.execute(sql4`
+      db.execute(sql5`
           SELECT
             DATE(next_review) as due_date,
             COUNT(*) as cards_due
@@ -1631,7 +1679,7 @@ var leitnerRouter = router({
           GROUP BY DATE(next_review)
           ORDER BY due_date ASC
         `),
-      db.execute(sql4`
+      db.execute(sql5`
           SELECT
             CASE
               WHEN difficulty <= 3 THEN 'Fácil'
@@ -1656,7 +1704,7 @@ var leitnerRouter = router({
   // ── Métodos legacy (compatibilidad hacia atrás) ───────────────────────────
   updateCard: protectedProcedure.input(z5.object({ id: z5.number(), success: z5.boolean() })).mutation(async ({ ctx, input }) => {
     const ease = input.success ? 3 : 1;
-    const [card] = await db.select().from(leitnerCards).where(eq6(leitnerCards.id, input.id));
+    const [card] = await db.select().from(leitnerCards).where(eq7(leitnerCards.id, input.id));
     if (!card) throw new TRPCError5({ code: "NOT_FOUND" });
     if (card.userId !== ctx.userId) throw new TRPCError5({ code: "FORBIDDEN" });
     const fsrsCard = {
@@ -1681,15 +1729,15 @@ var leitnerRouter = router({
       nextReview,
       queue: result.nextState === "review" ? 2 : 1,
       level: Math.min((card.level || 0) + (input.success ? 1 : 0), 5)
-    }).where(eq6(leitnerCards.id, input.id));
+    }).where(eq7(leitnerCards.id, input.id));
     return { success: true, nextLevel: card.level, nextReview };
   }),
   getStatsByArea: protectedProcedure.input(z5.object({ userId: z5.string() })).query(async ({ ctx, input }) => {
     if (ctx.userId !== input.userId) throw new TRPCError5({ code: "FORBIDDEN" });
     const stats = await db.select({
-      areaName: sql4`la.name`,
-      count: sql4`count(${leitnerCards.id})`
-    }).from(leitnerCards).innerJoin(sql4`exam_questions eq`, sql4`eq.id = ${leitnerCards.questionId}`).innerJoin(sql4`learning_areas la`, sql4`la.id = eq.area_id`).where(eq6(leitnerCards.userId, input.userId)).groupBy(sql4`la.name`);
+      areaName: sql5`la.name`,
+      count: sql5`count(${leitnerCards.id})`
+    }).from(leitnerCards).innerJoin(sql5`exam_questions eq`, sql5`eq.id = ${leitnerCards.questionId}`).innerJoin(sql5`learning_areas la`, sql5`la.id = eq.area_id`).where(eq7(leitnerCards.userId, input.userId)).groupBy(sql5`la.name`);
     return stats;
   }),
   // ── Ecosistema: Reentrenamiento sincroniza FSRS por questionId ────────────
@@ -1699,9 +1747,9 @@ var leitnerRouter = router({
     ease: z5.union([z5.literal(1), z5.literal(2), z5.literal(3), z5.literal(4)]),
     timeTaken: z5.number().optional()
   })).mutation(async ({ ctx, input }) => {
-    let [card] = await db.select().from(leitnerCards).where(and4(
-      eq6(leitnerCards.userId, ctx.userId),
-      eq6(leitnerCards.questionId, input.questionId)
+    let [card] = await db.select().from(leitnerCards).where(and5(
+      eq7(leitnerCards.userId, ctx.userId),
+      eq7(leitnerCards.questionId, input.questionId)
     ));
     if (!card) {
       const nextReview2 = /* @__PURE__ */ new Date();
@@ -1720,9 +1768,9 @@ var leitnerRouter = router({
         level: 1,
         nextReview: nextReview2
       });
-      [card] = await db.select().from(leitnerCards).where(and4(
-        eq6(leitnerCards.userId, ctx.userId),
-        eq6(leitnerCards.questionId, input.questionId)
+      [card] = await db.select().from(leitnerCards).where(and5(
+        eq7(leitnerCards.userId, ctx.userId),
+        eq7(leitnerCards.questionId, input.questionId)
       ));
     }
     if (!card) return { success: false };
@@ -1757,13 +1805,13 @@ var leitnerRouter = router({
       queue: result.nextState === "review" ? 2 : result.nextState === "learning" ? 1 : 3,
       nextReview,
       lastReview: now
-    }).where(eq6(leitnerCards.id, card.id));
+    }).where(eq7(leitnerCards.id, card.id));
     console.log(`[ECOSYSTEM] Reentrenamiento\u2192FSRS: q#${input.questionId} ease=${input.ease} \u2192 ${result.nextState} (+${result.scheduledDays}d)`);
     return { success: true, scheduledDays: result.scheduledDays, nextState: result.nextState };
   }),
   getCountByLevel: protectedProcedure.input(z5.object({ userId: z5.string(), level: z5.number() })).query(async ({ ctx, input }) => {
     if (ctx.userId !== input.userId) throw new TRPCError5({ code: "FORBIDDEN" });
-    const [res] = await db.select({ count: sql4`count(*)` }).from(leitnerCards).where(and4(eq6(leitnerCards.userId, input.userId), eq6(leitnerCards.level, input.level)));
+    const [res] = await db.select({ count: sql5`count(*)` }).from(leitnerCards).where(and5(eq7(leitnerCards.userId, input.userId), eq7(leitnerCards.level, input.level)));
     return res?.count || 0;
   }),
   // ── Ecosistema: Sembrar flashcards desde preguntas específicas (ej. desde Galería) ──
@@ -1773,9 +1821,9 @@ var leitnerRouter = router({
     let created = 0;
     let skipped = 0;
     for (const questionId of input.questionIds) {
-      const [existing] = await db.select({ id: leitnerCards.id }).from(leitnerCards).where(and4(
-        eq6(leitnerCards.userId, ctx.userId),
-        eq6(leitnerCards.questionId, questionId)
+      const [existing] = await db.select({ id: leitnerCards.id }).from(leitnerCards).where(and5(
+        eq7(leitnerCards.userId, ctx.userId),
+        eq7(leitnerCards.questionId, questionId)
       ));
       if (existing) {
         skipped++;
@@ -1811,50 +1859,50 @@ var leitnerRouter = router({
       state: leitnerCards.state,
       question: examQuestions.question,
       deckTag: leitnerCards.deckTag
-    }).from(leitnerCards).leftJoin(examQuestions, eq6(leitnerCards.questionId, examQuestions.id)).where(and4(
-      eq6(leitnerCards.userId, input.userId),
+    }).from(leitnerCards).leftJoin(examQuestions, eq7(leitnerCards.questionId, examQuestions.id)).where(and5(
+      eq7(leitnerCards.userId, input.userId),
       or2(
-        sql4`MATCH(${examQuestions.question}) AGAINST (${input.query} IN BOOLEAN MODE)`,
-        eq6(leitnerCards.deckTag, input.query)
+        sql5`MATCH(${examQuestions.question}) AGAINST (${input.query} IN BOOLEAN MODE)`,
+        eq7(leitnerCards.deckTag, input.query)
       )
     )).limit(50);
     return results;
   }),
   // ── Pila de Reversión (Undo / Ctrl+Z) ──
   clearUndo: protectedProcedure.mutation(async ({ ctx }) => {
-    await db.update(users).set({ flashcardUndoState: null }).where(eq6(users.uid, ctx.userId));
+    await db.update(users).set({ flashcardUndoState: null }).where(eq7(users.uid, ctx.userId));
     return { success: true };
   })
 });
 
 // src/backend/server/routers/membership_admin.ts
 import { z as z6 } from "zod";
-import { eq as eq7, sql as sql5, and as and5, like, or as or3 } from "drizzle-orm";
+import { eq as eq8, sql as sql6, and as and6, like, or as or3 } from "drizzle-orm";
 import { TRPCError as TRPCError6 } from "@trpc/server";
 var adminRouter = router({
   // ─── BROADCAST (Alerta Roja) ───
   getActiveBroadcast: publicProcedure.query(async () => {
     const [active] = await db.select().from(globalNotifications).where(
-      and5(
-        sql5`${globalNotifications.isActive} = 1`,
-        sql5`(${globalNotifications.expiresAt} IS NULL OR ${globalNotifications.expiresAt} > NOW())`
+      and6(
+        sql6`${globalNotifications.isActive} = 1`,
+        sql6`(${globalNotifications.expiresAt} IS NULL OR ${globalNotifications.expiresAt} > NOW())`
       )
-    ).orderBy(sql5`${globalNotifications.createdAt} desc`).limit(1);
+    ).orderBy(sql6`${globalNotifications.createdAt} desc`).limit(1);
     return active || null;
   }),
   // ─── STATS ───
   getAdminStats: adminProcedure.query(async () => {
     const [userCounts] = await db.select({
-      total: sql5`count(${users.uid})`,
-      premium: sql5`sum(case when ${users.membership} = 'PRO' then 1 else 0 end)`,
-      free: sql5`sum(case when ${users.membership} = 'FREE' then 1 else 0 end)`,
-      activeUsers: sql5`sum(case when ${users.lastActive} >= NOW() - INTERVAL 5 MINUTE then 1 else 0 end)`
+      total: sql6`count(${users.uid})`,
+      premium: sql6`sum(case when ${users.membership} = 'PRO' then 1 else 0 end)`,
+      free: sql6`sum(case when ${users.membership} = 'FREE' then 1 else 0 end)`,
+      activeUsers: sql6`sum(case when ${users.lastActive} >= NOW() - INTERVAL 5 MINUTE then 1 else 0 end)`
     }).from(users);
     const [revenueObj] = await db.select({
-      dailyIncome: sql5`sum(case when DATE(${adminLogs.createdAt}) = CURDATE() AND ${adminLogs.action} LIKE '%MANUAL_OVERRIDE: Set % to PRO' then 145 else 0 end)`
+      dailyIncome: sql6`sum(case when DATE(${adminLogs.createdAt}) = CURDATE() AND ${adminLogs.action} LIKE '%MANUAL_OVERRIDE: Set % to PRO' then 145 else 0 end)`
     }).from(adminLogs);
     const [questionsStats] = await db.select({
-      total: sql5`count(${examQuestions.id})`
+      total: sql6`count(${examQuestions.id})`
     }).from(examQuestions);
     const stats = {
       totalUsers: Number(userCounts?.total) || 0,
@@ -1870,12 +1918,12 @@ var adminRouter = router({
   // ─── DASHBOARD STATS ───
   getDashboardStats: adminProcedure.query(async () => {
     const [counts] = await db.select({
-      total: sql5`count(${users.uid})`,
-      pro: sql5`sum(case when ${users.membership} = 'PRO' then 1 else 0 end)`,
-      free: sql5`sum(case when ${users.membership} = 'FREE' then 1 else 0 end)`,
-      active: sql5`sum(case when ${users.status} = 'ACTIVE' then 1 else 0 end)`,
-      blocked: sql5`sum(case when ${users.status} = 'BLOCKED' then 1 else 0 end)`,
-      online: sql5`sum(case when ${users.lastActive} >= NOW() - INTERVAL 5 MINUTE then 1 else 0 end)`
+      total: sql6`count(${users.uid})`,
+      pro: sql6`sum(case when ${users.membership} = 'PRO' then 1 else 0 end)`,
+      free: sql6`sum(case when ${users.membership} = 'FREE' then 1 else 0 end)`,
+      active: sql6`sum(case when ${users.status} = 'ACTIVE' then 1 else 0 end)`,
+      blocked: sql6`sum(case when ${users.status} = 'BLOCKED' then 1 else 0 end)`,
+      online: sql6`sum(case when ${users.lastActive} >= NOW() - INTERVAL 5 MINUTE then 1 else 0 end)`
     }).from(users);
     return {
       totalUsers: Number(counts?.total) || 0,
@@ -1896,8 +1944,8 @@ var adminRouter = router({
         like(users.email, `%${input.search}%`)
       ));
     }
-    const whereClause = filters.length > 0 ? and5(...filters) : void 0;
-    return await db.select(USER_FIELDS).from(users).where(whereClause).orderBy(sql5`${users.createdAt} desc`);
+    const whereClause = filters.length > 0 ? and6(...filters) : void 0;
+    return await db.select(USER_FIELDS).from(users).where(whereClause).orderBy(sql6`${users.createdAt} desc`);
   }),
   updateUserMembership: adminProcedure.input(z6.object({
     uid: z6.string(),
@@ -1908,7 +1956,7 @@ var adminRouter = router({
     await db.update(users).set({
       membership: input.membership,
       premiumExpiration: expiration
-    }).where(eq7(users.uid, input.uid));
+    }).where(eq8(users.uid, input.uid));
     await db.insert(adminLogs).values({
       action: `MANUAL_OVERRIDE: Set ${input.uid} to ${input.membership}`
     });
@@ -1921,10 +1969,10 @@ var adminRouter = router({
   })).mutation(async ({ input }) => {
     if (input.membership) {
       const expiration = input.membership === "PRO" ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1e3) : null;
-      await db.update(users).set({ membership: input.membership, premiumExpiration: expiration }).where(eq7(users.uid, input.targetUid));
+      await db.update(users).set({ membership: input.membership, premiumExpiration: expiration }).where(eq8(users.uid, input.targetUid));
     }
     if (input.status) {
-      await db.update(users).set({ status: input.status }).where(eq7(users.uid, input.targetUid));
+      await db.update(users).set({ status: input.status }).where(eq8(users.uid, input.targetUid));
     }
     return { success: true };
   }),
@@ -1954,7 +2002,7 @@ var adminRouter = router({
   }),
   deleteUser: adminProcedure.input(z6.object({ uid: z6.string() })).mutation(async ({ input }) => {
     console.log(`[ADMIN] DELETING USER: ${input.uid}`);
-    await db.delete(users).where(eq7(users.uid, input.uid));
+    await db.delete(users).where(eq8(users.uid, input.uid));
     await db.insert(adminLogs).values({
       action: `DELETE_USER: Removed ${input.uid} from system`
     });
@@ -1964,21 +2012,21 @@ var adminRouter = router({
     uid: z6.string(),
     school: z6.enum(["EO", "EESTP"])
   })).mutation(async ({ input }) => {
-    await db.update(users).set({ school: input.school }).where(eq7(users.uid, input.uid));
+    await db.update(users).set({ school: input.school }).where(eq8(users.uid, input.uid));
     await db.insert(adminLogs).values({
       action: `Changed school for ${input.uid} to ${input.school}`
     });
-    const [updatedUser] = await db.select(USER_FIELDS).from(users).where(eq7(users.uid, input.uid));
+    const [updatedUser] = await db.select(USER_FIELDS).from(users).where(eq8(users.uid, input.uid));
     return { success: true, user: updatedUser };
   }),
   getActiveCount: adminProcedure.query(async () => {
     const [result] = await db.select({
-      count: sql5`count(${users.uid})`
-    }).from(users).where(sql5`${users.lastActive} >= NOW() - INTERVAL 5 MINUTE`);
+      count: sql6`count(${users.uid})`
+    }).from(users).where(sql6`${users.lastActive} >= NOW() - INTERVAL 5 MINUTE`);
     return { count: result.count || 0 };
   }),
   toggleAdminRole: adminProcedure.input(z6.object({ uid: z6.string(), isAdmin: z6.boolean() })).mutation(async ({ input }) => {
-    await db.update(users).set({ role: input.isAdmin ? "admin" : "user" }).where(eq7(users.uid, input.uid));
+    await db.update(users).set({ role: input.isAdmin ? "admin" : "user" }).where(eq8(users.uid, input.uid));
     await db.insert(adminLogs).values({
       action: `Set ${input.uid} role to ${input.isAdmin ? "admin" : "user"}`
     });
@@ -1998,7 +2046,7 @@ var adminRouter = router({
   }),
   getContent: adminProcedure.input(z6.object({ areaId: z6.number().optional() }).optional()).query(async ({ input }) => {
     if (input?.areaId) {
-      return await db.select().from(learningContent).where(eq7(learningContent.areaId, input.areaId));
+      return await db.select().from(learningContent).where(eq8(learningContent.areaId, input.areaId));
     }
     return await db.select().from(learningContent);
   }),
@@ -2021,12 +2069,12 @@ var adminRouter = router({
     schoolType: z6.enum(["EO", "EESTP", "BOTH"]).optional()
   })).mutation(async ({ input }) => {
     const { id, ...data } = input;
-    await db.update(learningContent).set(data).where(eq7(learningContent.id, id));
+    await db.update(learningContent).set(data).where(eq8(learningContent.id, id));
     await db.insert(adminLogs).values({ action: `Updated content #${id}` });
     return { success: true };
   }),
   deleteContent: adminProcedure.input(z6.object({ id: z6.number() })).mutation(async ({ input }) => {
-    await db.delete(learningContent).where(eq7(learningContent.id, input.id));
+    await db.delete(learningContent).where(eq8(learningContent.id, input.id));
     await db.insert(adminLogs).values({ action: `Deleted content #${input.id}` });
     return { success: true };
   }),
@@ -2037,10 +2085,10 @@ var adminRouter = router({
     schoolType: z6.enum(["EO", "EESTP", "BOTH"]).optional()
   }).optional()).query(async ({ input }) => {
     const filters = [];
-    if (input?.areaId) filters.push(eq7(examQuestions.areaId, input.areaId));
-    if (input?.difficulty) filters.push(eq7(examQuestions.difficulty, input.difficulty));
-    if (input?.schoolType) filters.push(eq7(examQuestions.schoolType, input.schoolType));
-    const whereClause = filters.length > 0 ? and5(...filters) : void 0;
+    if (input?.areaId) filters.push(eq8(examQuestions.areaId, input.areaId));
+    if (input?.difficulty) filters.push(eq8(examQuestions.difficulty, input.difficulty));
+    if (input?.schoolType) filters.push(eq8(examQuestions.schoolType, input.schoolType));
+    const whereClause = filters.length > 0 ? and6(...filters) : void 0;
     return await db.select().from(examQuestions).where(whereClause).limit(200);
   }),
   createQuestion: adminProcedure.input(z6.object({
@@ -2067,12 +2115,12 @@ var adminRouter = router({
     schoolType: z6.enum(["EO", "EESTP", "BOTH"]).optional()
   })).mutation(async ({ input }) => {
     const { id, ...data } = input;
-    await db.update(examQuestions).set(data).where(eq7(examQuestions.id, id));
+    await db.update(examQuestions).set(data).where(eq8(examQuestions.id, id));
     await db.insert(adminLogs).values({ action: `Updated question #${id}` });
     return { success: true };
   }),
   deleteQuestion: adminProcedure.input(z6.object({ id: z6.number() })).mutation(async ({ input }) => {
-    await db.delete(examQuestions).where(eq7(examQuestions.id, input.id));
+    await db.delete(examQuestions).where(eq8(examQuestions.id, input.id));
     await db.insert(adminLogs).values({ action: `Deleted question #${input.id}` });
     return { success: true };
   }),
@@ -2093,18 +2141,18 @@ var adminRouter = router({
   }),
   // ─── ADMIN LOGS ───
   getLogs: adminProcedure.input(z6.object({ limit: z6.number().min(1).max(100).default(50) }).optional()).query(async ({ input }) => {
-    return await db.select().from(adminLogs).orderBy(sql5`${adminLogs.createdAt} desc`).limit(input?.limit || 50);
+    return await db.select().from(adminLogs).orderBy(sql6`${adminLogs.createdAt} desc`).limit(input?.limit || 50);
   })
 });
 
 // src/backend/server/routers/admin_exams.ts
 import { z as z7 } from "zod";
-import { eq as eq9, and as and7, desc as desc3 } from "drizzle-orm";
+import { eq as eq10, and as and8, desc as desc3 } from "drizzle-orm";
 
 // src/backend/server/utils/examIngest.ts
 import fs from "fs";
 import path from "path";
-import { eq as eq8, and as and6 } from "drizzle-orm";
+import { eq as eq9, and as and7 } from "drizzle-orm";
 async function ingestLocalExams(overwrite = false) {
   const results = [];
   try {
@@ -2126,15 +2174,15 @@ async function ingestLocalExams(overwrite = false) {
           results.push({ file, success: false, error: "Missing school or level in JSON/filename" });
           continue;
         }
-        const existing = await db.select().from(exams).where(and6(eq8(exams.school, school), eq8(exams.level, levelNum)));
+        const existing = await db.select().from(exams).where(and7(eq9(exams.school, school), eq9(exams.level, levelNum)));
         if (existing.length > 0) {
           if (!overwrite) {
             results.push({ file, success: true, alreadyExists: true });
             continue;
           }
           const examId2 = existing[0].id;
-          await db.delete(examQuestions).where(eq8(examQuestions.examId, examId2));
-          await db.delete(exams).where(eq8(exams.id, examId2));
+          await db.delete(examQuestions).where(eq9(examQuestions.examId, examId2));
+          await db.delete(exams).where(eq9(exams.id, examId2));
           console.log(`[INGEST] Overwriting ${school} Level ${levelNum}...`);
         }
         const [newExam] = await db.insert(exams).values({
@@ -2187,15 +2235,15 @@ var adminExamRouter = router({
   })).mutation(async ({ input }) => {
     let finalLevel = input.level;
     if (!finalLevel) {
-      const [lastExam] = await db.select().from(exams).where(eq9(exams.school, input.school)).orderBy(desc3(exams.level)).limit(1);
+      const [lastExam] = await db.select().from(exams).where(eq10(exams.school, input.school)).orderBy(desc3(exams.level)).limit(1);
       finalLevel = (lastExam?.level || 0) + 1;
     }
     const finalTitle = input.title || `Nivel ${finalLevel.toString().padStart(2, "0")}`;
     return await db.transaction(async (tx) => {
-      let [existing] = await tx.select().from(exams).where(and7(eq9(exams.school, input.school), eq9(exams.level, finalLevel)));
+      let [existing] = await tx.select().from(exams).where(and8(eq10(exams.school, input.school), eq10(exams.level, finalLevel)));
       if (existing) {
-        await tx.delete(examQuestions).where(eq9(examQuestions.examId, existing.id));
-        await tx.update(exams).set({ title: finalTitle, isDemo: input.isDemo }).where(eq9(exams.id, existing.id));
+        await tx.delete(examQuestions).where(eq10(examQuestions.examId, existing.id));
+        await tx.update(exams).set({ title: finalTitle, isDemo: input.isDemo }).where(eq10(exams.id, existing.id));
       } else {
         const [newExam] = await tx.insert(exams).values({
           school: input.school,
@@ -2234,9 +2282,9 @@ var adminExamRouter = router({
   /** Delete an exam and its questions */
   deleteExam: adminProcedure.input(z7.object({ examId: z7.number() })).mutation(async ({ input }) => {
     return await db.transaction(async (tx) => {
-      await tx.delete(examQuestions).where(eq9(examQuestions.examId, input.examId));
-      await tx.delete(examMaterials).where(eq9(examMaterials.examId, input.examId));
-      await tx.delete(exams).where(eq9(exams.id, input.examId));
+      await tx.delete(examQuestions).where(eq10(examQuestions.examId, input.examId));
+      await tx.delete(examMaterials).where(eq10(examMaterials.examId, input.examId));
+      await tx.delete(exams).where(eq10(exams.id, input.examId));
       return { success: true };
     });
   }),
@@ -2255,18 +2303,18 @@ var adminExamRouter = router({
   }),
   /** Get materials for a specific exam */
   getMaterials: adminProcedure.input(z7.object({ examId: z7.number() })).query(async ({ input }) => {
-    return await db.select().from(examMaterials).where(eq9(examMaterials.examId, input.examId)).orderBy(desc3(examMaterials.createdAt));
+    return await db.select().from(examMaterials).where(eq10(examMaterials.examId, input.examId)).orderBy(desc3(examMaterials.createdAt));
   }),
   /** Delete a specific material */
   deleteMaterial: adminProcedure.input(z7.object({ id: z7.number() })).mutation(async ({ input }) => {
-    await db.delete(examMaterials).where(eq9(examMaterials.id, input.id));
+    await db.delete(examMaterials).where(eq10(examMaterials.id, input.id));
     return { success: true };
   })
 });
 
 // src/backend/server/routers/admin_courses.ts
 import { z as z8 } from "zod";
-import { eq as eq10, desc as desc4, and as and8 } from "drizzle-orm";
+import { eq as eq11, desc as desc4, and as and9 } from "drizzle-orm";
 import { TRPCError as TRPCError7 } from "@trpc/server";
 var adminCourseRouter = router({
   /* -------------------------------------------------------------------------- */
@@ -2304,13 +2352,13 @@ var adminCourseRouter = router({
       isPublished: z8.boolean().optional()
     })
   })).mutation(async ({ input }) => {
-    await db.update(courses).set(input.data).where(eq10(courses.id, input.courseId));
+    await db.update(courses).set(input.data).where(eq11(courses.id, input.courseId));
     return { success: true };
   }),
   deleteCourse: adminProcedure.input(z8.object({ courseId: z8.number() })).mutation(async ({ input }) => {
     await db.transaction(async (tx) => {
-      await tx.delete(courseMaterials).where(eq10(courseMaterials.courseId, input.courseId));
-      await tx.delete(courses).where(eq10(courses.id, input.courseId));
+      await tx.delete(courseMaterials).where(eq11(courseMaterials.courseId, input.courseId));
+      await tx.delete(courses).where(eq11(courses.id, input.courseId));
     });
     return { success: true };
   }),
@@ -2318,7 +2366,7 @@ var adminCourseRouter = router({
   /*                          MATERIAL MANAGEMENT                               */
   /* -------------------------------------------------------------------------- */
   getCourseMaterials: protectedProcedure.input(z8.object({ courseId: z8.number() })).query(async ({ input }) => {
-    return await db.select().from(courseMaterials).where(eq10(courseMaterials.courseId, input.courseId)).orderBy(courseMaterials.order);
+    return await db.select().from(courseMaterials).where(eq11(courseMaterials.courseId, input.courseId)).orderBy(courseMaterials.order);
   }),
   addMaterialToCourse: adminProcedure.input(z8.object({
     courseId: z8.number(),
@@ -2337,7 +2385,7 @@ var adminCourseRouter = router({
     return { success: true, materialId: newMaterial.insertId };
   }),
   deleteCourseMaterial: adminProcedure.input(z8.object({ materialId: z8.number() })).mutation(async ({ input }) => {
-    await db.delete(courseMaterials).where(eq10(courseMaterials.id, input.materialId));
+    await db.delete(courseMaterials).where(eq11(courseMaterials.id, input.materialId));
     return { success: true };
   }),
   /* -------------------------------------------------------------------------- */
@@ -2362,8 +2410,8 @@ var adminCourseRouter = router({
   }),
   deleteLearningArea: adminProcedure.input(z8.object({ id: z8.number() })).mutation(async ({ input }) => {
     await db.transaction(async (tx) => {
-      await tx.delete(learningContent).where(eq10(learningContent.areaId, input.id));
-      await tx.delete(learningAreas).where(eq10(learningAreas.id, input.id));
+      await tx.delete(learningContent).where(eq11(learningContent.areaId, input.id));
+      await tx.delete(learningAreas).where(eq11(learningAreas.id, input.id));
     });
     return { success: true };
   }),
@@ -2376,10 +2424,10 @@ var adminCourseRouter = router({
     return { success: true };
   }),
   getLearningContent: adminProcedure.input(z8.object({ areaId: z8.number() })).query(async ({ input }) => {
-    return await db.select().from(learningContent).where(eq10(learningContent.areaId, input.areaId)).orderBy(learningContent.level, learningContent.orderInTopic);
+    return await db.select().from(learningContent).where(eq11(learningContent.areaId, input.areaId)).orderBy(learningContent.level, learningContent.orderInTopic);
   }),
   deleteLearningContent: adminProcedure.input(z8.object({ id: z8.number() })).mutation(async ({ input }) => {
-    await db.delete(learningContent).where(eq10(learningContent.id, input.id));
+    await db.delete(learningContent).where(eq11(learningContent.id, input.id));
     return { success: true };
   }),
   /** Rename a topic (folder) across all its units in an area */
@@ -2390,9 +2438,9 @@ var adminCourseRouter = router({
   })).mutation(async ({ input }) => {
     const normalized = input.newName.trim().toUpperCase();
     await db.update(learningContent).set({ topic: normalized }).where(
-      and8(
-        eq10(learningContent.areaId, input.areaId),
-        eq10(learningContent.topic, input.oldName.trim().toUpperCase())
+      and9(
+        eq11(learningContent.areaId, input.areaId),
+        eq11(learningContent.topic, input.oldName.trim().toUpperCase())
       )
     );
     return { success: true };
@@ -2400,9 +2448,9 @@ var adminCourseRouter = router({
   /** Delete an entire topic (folder) and all its units */
   deleteTopic: adminProcedure.input(z8.object({ areaId: z8.number(), topicName: z8.string() })).mutation(async ({ input }) => {
     await db.delete(learningContent).where(
-      and8(
-        eq10(learningContent.areaId, input.areaId),
-        eq10(learningContent.topic, input.topicName.trim().toUpperCase())
+      and9(
+        eq11(learningContent.areaId, input.areaId),
+        eq11(learningContent.topic, input.topicName.trim().toUpperCase())
       )
     );
     return { success: true };
@@ -2444,13 +2492,13 @@ var adminCourseRouter = router({
     console.log("[DEBUG-TACTICAL] Received Syllabus Payload:", JSON.stringify(input).substring(0, 500));
     const normalizedAreaName = input.areaName.trim().toUpperCase();
     return await db.transaction(async (tx) => {
-      let [area] = await tx.select().from(learningAreas).where(eq10(learningAreas.name, normalizedAreaName));
+      let [area] = await tx.select().from(learningAreas).where(eq11(learningAreas.name, normalizedAreaName));
       let areaId = area?.id;
       if (!areaId) {
         const [res] = await tx.insert(learningAreas).values({ name: normalizedAreaName });
         areaId = res.insertId;
       }
-      const activeUsers = input.autoFlashcards ? await tx.select({ uid: users.uid }).from(users).where(eq10(users.status, "ACTIVE")) : [];
+      const activeUsers = input.autoFlashcards ? await tx.select({ uid: users.uid }).from(users).where(eq11(users.status, "ACTIVE")) : [];
       let created = 0;
       let updated = 0;
       for (let topicIdx = 0; topicIdx < input.topics.length; topicIdx++) {
@@ -2462,9 +2510,9 @@ var adminCourseRouter = router({
           const normalizedTitle = unit.title.trim().toUpperCase();
           const effectiveSchoolType = unit.schoolType ?? topic.schoolType ?? "BOTH";
           const [existing] = await tx.select().from(learningContent).where(
-            and8(
-              eq10(learningContent.areaId, areaId),
-              eq10(learningContent.title, normalizedTitle)
+            and9(
+              eq11(learningContent.areaId, areaId),
+              eq11(learningContent.title, normalizedTitle)
             )
           ).limit(1);
           if (existing) {
@@ -2475,7 +2523,7 @@ var adminCourseRouter = router({
               level: autoLevel,
               orderInTopic: unitIdx,
               schoolType: effectiveSchoolType
-            }).where(eq10(learningContent.id, existing.id));
+            }).where(eq11(learningContent.id, existing.id));
             updated++;
           } else {
             const [res] = await tx.insert(learningContent).values({
@@ -2540,16 +2588,16 @@ var adminCourseRouter = router({
   }),
   /** Permitir que el admin asigne flashcards manualmente de una unidad */
   enrollFlashcardsFromUnit: adminProcedure.input(z8.object({ unitId: z8.number() })).mutation(async ({ input }) => {
-    const [unit] = await db.select().from(learningContent).where(eq10(learningContent.id, input.unitId));
+    const [unit] = await db.select().from(learningContent).where(eq11(learningContent.id, input.unitId));
     if (!unit) throw new TRPCError7({ code: "NOT_FOUND", message: "Unidad no encontrada" });
-    const activeUsers = await db.select({ uid: users.uid }).from(users).where(eq10(users.status, "ACTIVE"));
-    const mapEntries = await db.select().from(contentFsrsMap).where(eq10(contentFsrsMap.contentId, input.unitId));
+    const activeUsers = await db.select({ uid: users.uid }).from(users).where(eq11(users.status, "ACTIVE"));
+    const mapEntries = await db.select().from(contentFsrsMap).where(eq11(contentFsrsMap.contentId, input.unitId));
     if (mapEntries.length === 0) {
       return { success: false, message: "La unidad no tiene preguntas mapeadas o no existen." };
     }
     let created = 0;
     await db.transaction(async (tx) => {
-      const existingCards = await tx.select().from(leitnerCards).where(eq10(leitnerCards.learningContentId, input.unitId));
+      const existingCards = await tx.select().from(leitnerCards).where(eq11(leitnerCards.learningContentId, input.unitId));
       const existingSet = new Set(
         existingCards.map((c) => `${c.userId}-${c.questionIndex}`)
       );
@@ -2587,9 +2635,9 @@ var adminCourseRouter = router({
   }),
   /** Export area content grouped by topic for the Eagle Eye Explorer editor */
   getAreaJSON: adminProcedure.input(z8.object({ areaId: z8.number() })).query(async ({ input }) => {
-    const [area] = await db.select().from(learningAreas).where(eq10(learningAreas.id, input.areaId));
+    const [area] = await db.select().from(learningAreas).where(eq11(learningAreas.id, input.areaId));
     if (!area) throw new TRPCError7({ code: "NOT_FOUND", message: "\xC1rea no encontrada" });
-    const content = await db.select().from(learningContent).where(eq10(learningContent.areaId, input.areaId)).orderBy(learningContent.level, learningContent.orderInTopic);
+    const content = await db.select().from(learningContent).where(eq11(learningContent.areaId, input.areaId)).orderBy(learningContent.level, learningContent.orderInTopic);
     const topicsMap = /* @__PURE__ */ new Map();
     for (const unit of content) {
       const t2 = unit.topic ?? "GENERAL";
@@ -2614,7 +2662,7 @@ var adminCourseRouter = router({
 // src/backend/server/routers/ai.ts
 import { z as z9 } from "zod";
 import { TRPCError as TRPCError8 } from "@trpc/server";
-import { eq as eq11, sql as sql7 } from "drizzle-orm";
+import { eq as eq12, sql as sql8 } from "drizzle-orm";
 
 // src/backend/utils/aiClient.ts
 import { GoogleGenerativeAI } from "@google/generative-ai";
@@ -2662,7 +2710,7 @@ var aiRouter = router({
         message: "Entorno IA no configurado: Falta la llave de mando."
       });
     }
-    const [user] = await db.select(USER_FIELDS).from(users).where(eq11(users.uid, ctx.userId));
+    const [user] = await db.select(USER_FIELDS).from(users).where(eq12(users.uid, ctx.userId));
     if (!user) {
       logger.error(`[AI-CHAT] Profile not found: ${ctx.userId}`);
       throw new TRPCError8({ code: "NOT_FOUND", message: "No se encontr\xF3 tu perfil t\xE1ctico." });
@@ -2690,7 +2738,7 @@ Postulante: ${input.message}`;
       const result = await chatSession.sendMessage(actualMessage);
       const response = result.response.text();
       if (response.toLowerCase().includes("felicitaciones") || response.toLowerCase().includes("buena respuesta")) {
-        await db.update(users).set({ honorPoints: sql7`${users.honorPoints} + 10` }).where(eq11(users.uid, ctx.userId));
+        await db.update(users).set({ honorPoints: sql8`${users.honorPoints} + 10` }).where(eq12(users.uid, ctx.userId));
       }
       return { response };
     } catch (error) {
@@ -2708,28 +2756,28 @@ Postulante: ${input.message}`;
 
 // src/backend/server/routers/interview.ts
 import { z as z10 } from "zod";
-import { eq as eq12, and as and9, sql as sql8 } from "drizzle-orm";
+import { eq as eq13, and as and10, sql as sql9 } from "drizzle-orm";
 var interviewRouter = router({
   // ── 1. FIND OR CREATE SESSION ──────────────────────────────────────
   findOrCreate: protectedProcedure.input(z10.object({ userId: z10.string(), userName: z10.string() })).mutation(async ({ input, ctx }) => {
     const [existing] = await db.select().from(interviewSessions).where(
-      and9(
-        sql8`(${interviewSessions.userAId} = ${input.userId} OR ${interviewSessions.userBId} = ${input.userId})`,
-        sql8`${interviewSessions.status} != 'done'`,
-        sql8`${interviewSessions.isPractice} = false`
+      and10(
+        sql9`(${interviewSessions.userAId} = ${input.userId} OR ${interviewSessions.userBId} = ${input.userId})`,
+        sql9`${interviewSessions.status} != 'done'`,
+        sql9`${interviewSessions.isPractice} = false`
       )
     ).limit(1);
     if (existing) {
       return { session: existing, role: existing.userAId === input.userId ? "A" : "B" };
     }
     const [available] = await db.select().from(interviewSessions).where(
-      and9(
-        eq12(interviewSessions.status, "waiting"),
-        sql8`${interviewSessions.userBId} IS NULL`,
-        sql8`${interviewSessions.userAId} != ${input.userId}`,
-        sql8`${interviewSessions.isPractice} = false`
+      and10(
+        eq13(interviewSessions.status, "waiting"),
+        sql9`${interviewSessions.userBId} IS NULL`,
+        sql9`${interviewSessions.userAId} != ${input.userId}`,
+        sql9`${interviewSessions.isPractice} = false`
       )
-    ).orderBy(sql8`${interviewSessions.createdAt} ASC`).limit(1);
+    ).orderBy(sql9`${interviewSessions.createdAt} ASC`).limit(1);
     if (available) {
       const coinFlip = Math.random() > 0.5;
       const interviewerId = coinFlip ? available.userAId : input.userId;
@@ -2739,8 +2787,8 @@ var interviewRouter = router({
         status: "active",
         currentTurnStatus: "questioning",
         currentInterviewerId: interviewerId
-      }).where(eq12(interviewSessions.id, available.id));
-      const [updated] = await db.select().from(interviewSessions).where(eq12(interviewSessions.id, available.id));
+      }).where(eq13(interviewSessions.id, available.id));
+      const [updated] = await db.select().from(interviewSessions).where(eq13(interviewSessions.id, available.id));
       if (ctx.io) {
         ctx.io.to(`session_${available.id}`).emit("session_update", { type: "match_found", session: updated });
       }
@@ -2754,19 +2802,19 @@ var interviewRouter = router({
       isPractice: false
     });
     const insertId = insertResult[0]?.insertId;
-    const [newSession] = await db.select().from(interviewSessions).where(eq12(interviewSessions.id, insertId));
+    const [newSession] = await db.select().from(interviewSessions).where(eq13(interviewSessions.id, insertId));
     return { session: newSession, role: "A" };
   }),
   // ── 2. POLL SESSION STATE ──────────────────────────────────────────
   getSession: protectedProcedure.input(z10.object({ sessionId: z10.number() })).query(async ({ input }) => {
-    const [session] = await db.select().from(interviewSessions).where(eq12(interviewSessions.id, input.sessionId));
+    const [session] = await db.select().from(interviewSessions).where(eq13(interviewSessions.id, input.sessionId));
     return session || null;
   }),
   // ── 3. POLL MESSAGES ──────────────────────────────────────────────
   getMessages: protectedProcedure.input(z10.object({ sessionId: z10.number(), since: z10.number().optional() })).query(async ({ input }) => {
     const msgs = await db.select().from(interviewMessages).where(
-      input.since && input.since > 0 ? and9(eq12(interviewMessages.sessionId, input.sessionId), sql8`${interviewMessages.id} > ${input.since}`) : eq12(interviewMessages.sessionId, input.sessionId)
-    ).orderBy(sql8`${interviewMessages.id} ASC`).limit(200);
+      input.since && input.since > 0 ? and10(eq13(interviewMessages.sessionId, input.sessionId), sql9`${interviewMessages.id} > ${input.since}`) : eq13(interviewMessages.sessionId, input.sessionId)
+    ).orderBy(sql9`${interviewMessages.id} ASC`).limit(200);
     return msgs;
   }),
   // ── 4. SEND MESSAGE (Automatic Turn Progression) ──────────────────
@@ -2776,7 +2824,7 @@ var interviewRouter = router({
     userName: z10.string(),
     message: z10.string().min(1).max(2e3)
   })).mutation(async ({ input, ctx }) => {
-    const [session] = await db.select().from(interviewSessions).where(eq12(interviewSessions.id, input.sessionId));
+    const [session] = await db.select().from(interviewSessions).where(eq13(interviewSessions.id, input.sessionId));
     if (!session) throw new Error("Sesi\xF3n no encontrada");
     if (session.status === "rating" || session.status === "done") throw new Error("La sesi\xF3n ya termin\xF3");
     const isInterviewer = session.currentInterviewerId === input.userId;
@@ -2829,8 +2877,8 @@ var interviewRouter = router({
       status: nextStatus,
       currentInterviewerId: nextInterviewerId,
       updatedAt: /* @__PURE__ */ new Date()
-    }).where(eq12(interviewSessions.id, input.sessionId));
-    const [finalSession] = await db.select().from(interviewSessions).where(eq12(interviewSessions.id, input.sessionId));
+    }).where(eq13(interviewSessions.id, input.sessionId));
+    const [finalSession] = await db.select().from(interviewSessions).where(eq13(interviewSessions.id, input.sessionId));
     if (ctx.io) {
       ctx.io.to(`session_${input.sessionId}`).emit("session_update", { type: "new_message", session: finalSession });
     }
@@ -2838,22 +2886,39 @@ var interviewRouter = router({
   }),
   // ── 7. SUBMIT FINAL SCORE ──────────────────────────────────────────
   submitScore: protectedProcedure.input(z10.object({ sessionId: z10.number(), userId: z10.string(), score: z10.number().min(0).max(20) })).mutation(async ({ input, ctx }) => {
-    const [session] = await db.select().from(interviewSessions).where(eq12(interviewSessions.id, input.sessionId));
+    const [session] = await db.select().from(interviewSessions).where(eq13(interviewSessions.id, input.sessionId));
     if (!session) throw new Error("Sesi\xF3n no encontrada");
     if (session.userAId === input.userId) {
-      await db.update(interviewSessions).set({ scoreAtoB: input.score }).where(eq12(interviewSessions.id, input.sessionId));
+      await db.update(interviewSessions).set({ scoreAtoB: input.score }).where(eq13(interviewSessions.id, input.sessionId));
     } else {
-      await db.update(interviewSessions).set({ scoreBtoA: input.score }).where(eq12(interviewSessions.id, input.sessionId));
+      await db.update(interviewSessions).set({ scoreBtoA: input.score }).where(eq13(interviewSessions.id, input.sessionId));
     }
-    const [updated] = await db.select().from(interviewSessions).where(eq12(interviewSessions.id, input.sessionId));
+    const [updated] = await db.select().from(interviewSessions).where(eq13(interviewSessions.id, input.sessionId));
     if (updated.scoreAtoB !== null && updated.scoreBtoA !== null) {
-      await db.update(interviewSessions).set({ status: "done" }).where(eq12(interviewSessions.id, input.sessionId));
+      await db.update(interviewSessions).set({ status: "done" }).where(eq13(interviewSessions.id, input.sessionId));
     }
-    const [finalSession] = await db.select().from(interviewSessions).where(eq12(interviewSessions.id, input.sessionId));
+    const [finalSession] = await db.select().from(interviewSessions).where(eq13(interviewSessions.id, input.sessionId));
+    const achievementsUnlocked = [];
+    if (finalSession.status === "done") {
+      const scoreForA = finalSession.scoreBtoA || 0;
+      const scoreForB = finalSession.scoreAtoB || 0;
+      if (scoreForA >= 18) {
+        const ach = await unlockAchievement(finalSession.userAId, "INTERVIEW_ACE");
+        if (ach) achievementsUnlocked.push(ach);
+      }
+      if (scoreForB >= 18) {
+        const ach = await unlockAchievement(finalSession.userBId, "INTERVIEW_ACE");
+        if (ach) achievementsUnlocked.push(ach);
+      }
+    }
     if (ctx.io) {
-      ctx.io.to(`session_${input.sessionId}`).emit("session_update", { type: "score_submitted", session: finalSession });
+      ctx.io.to(`session_${input.sessionId}`).emit("session_update", {
+        type: "score_submitted",
+        session: finalSession,
+        achievementsUnlocked
+      });
     }
-    return { ok: true };
+    return { ok: true, achievementsUnlocked };
   }),
   // ── 8. START PRACTICE SESSION ──────────────────────────────────────
   startPractice: protectedProcedure.input(z10.object({ userId: z10.string(), userName: z10.string() })).mutation(async ({ input }) => {
@@ -2870,7 +2935,7 @@ var interviewRouter = router({
       // user starts as interviewer
     });
     const insertId = insertResult[0]?.insertId;
-    const [session] = await db.select().from(interviewSessions).where(eq12(interviewSessions.id, insertId));
+    const [session] = await db.select().from(interviewSessions).where(eq13(interviewSessions.id, insertId));
     await db.insert(interviewMessages).values({
       sessionId: insertId,
       senderId: "PRACTICE_BOT",
@@ -2882,7 +2947,7 @@ var interviewRouter = router({
   }),
   // ── 9. CANCEL / LEAVE SESSION ──────────────────────────────────────
   cancelSession: protectedProcedure.input(z10.object({ sessionId: z10.number() })).mutation(async ({ input, ctx }) => {
-    await db.update(interviewSessions).set({ status: "done" }).where(eq12(interviewSessions.id, input.sessionId));
+    await db.update(interviewSessions).set({ status: "done" }).where(eq13(interviewSessions.id, input.sessionId));
     if (ctx.io) {
       ctx.io.to(`session_${input.sessionId}`).emit("session_update", { type: "session_cancelled" });
     }
@@ -2892,7 +2957,7 @@ var interviewRouter = router({
 
 // src/backend/server/routers/learning_review.ts
 import { z as z11 } from "zod";
-import { eq as eq13, and as and10, sql as sql9 } from "drizzle-orm";
+import { eq as eq14, and as and11, sql as sql10 } from "drizzle-orm";
 var learningReviewRouter = router({
   /** Record a failure in a specific drill question */
   recordDrillFailure: protectedProcedure.input(z11.object({
@@ -2901,17 +2966,17 @@ var learningReviewRouter = router({
   })).mutation(async ({ input, ctx }) => {
     const userId = ctx.userId;
     const existing = await db.select().from(failedDrills).where(
-      and10(
-        eq13(failedDrills.userId, userId),
-        eq13(failedDrills.unitId, input.unitId),
-        eq13(failedDrills.questionIndex, input.questionIndex)
+      and11(
+        eq14(failedDrills.userId, userId),
+        eq14(failedDrills.unitId, input.unitId),
+        eq14(failedDrills.questionIndex, input.questionIndex)
       )
     ).limit(1);
     if (existing.length > 0) {
       await db.update(failedDrills).set({
-        attempts: sql9`${failedDrills.attempts} + 1`,
+        attempts: sql10`${failedDrills.attempts} + 1`,
         lastFailedAt: /* @__PURE__ */ new Date()
-      }).where(eq13(failedDrills.id, existing[0].id));
+      }).where(eq14(failedDrills.id, existing[0].id));
     } else {
       await db.insert(failedDrills).values({
         userId,
@@ -2926,8 +2991,8 @@ var learningReviewRouter = router({
     const userId = ctx.userId;
     const results = await db.select({
       unitId: failedDrills.unitId,
-      count: sql9`count(*)`
-    }).from(failedDrills).where(eq13(failedDrills.userId, userId)).groupBy(failedDrills.unitId);
+      count: sql10`count(*)`
+    }).from(failedDrills).where(eq14(failedDrills.userId, userId)).groupBy(failedDrills.unitId);
     return results;
   }),
   /** Get the questions for a perfection session of a specific unit or entire area */
@@ -2938,15 +3003,15 @@ var learningReviewRouter = router({
     const userId = ctx.userId;
     let units = [];
     if (input.unitId) {
-      units = await db.select().from(learningContent).where(eq13(learningContent.id, input.unitId)).limit(1);
+      units = await db.select().from(learningContent).where(eq14(learningContent.id, input.unitId)).limit(1);
     } else if (input.areaId) {
-      units = await db.select().from(learningContent).where(eq13(learningContent.areaId, input.areaId));
+      units = await db.select().from(learningContent).where(eq14(learningContent.areaId, input.areaId));
     }
     if (units.length === 0) return [];
     const failed = await db.select({
       unitId: failedDrills.unitId,
       index: failedDrills.questionIndex
-    }).from(failedDrills).where(eq13(failedDrills.userId, userId));
+    }).from(failedDrills).where(eq14(failedDrills.userId, userId));
     const failedMap = /* @__PURE__ */ new Map();
     failed.forEach((f) => {
       if (!f.unitId) return;
@@ -2970,10 +3035,10 @@ var learningReviewRouter = router({
     questionIndex: z11.number()
   })).mutation(async ({ input, ctx }) => {
     await db.delete(failedDrills).where(
-      and10(
-        eq13(failedDrills.userId, ctx.userId),
-        eq13(failedDrills.unitId, input.unitId),
-        eq13(failedDrills.questionIndex, input.questionIndex)
+      and11(
+        eq14(failedDrills.userId, ctx.userId),
+        eq14(failedDrills.unitId, input.unitId),
+        eq14(failedDrills.questionIndex, input.questionIndex)
       )
     );
     return { success: true };
@@ -2982,7 +3047,7 @@ var learningReviewRouter = router({
 
 // src/backend/server/routers/learning_progress.ts
 import { z as z12 } from "zod";
-import { eq as eq14, and as and11, desc as desc5 } from "drizzle-orm";
+import { eq as eq15, and as and12, desc as desc5 } from "drizzle-orm";
 var learningProgressRouter = router({
   /** Mark a unit as completed with a specific score and award honor points (0-20) */
   completeUnit: protectedProcedure.input(z12.object({
@@ -2997,16 +3062,16 @@ var learningProgressRouter = router({
     const awardedPoints = Math.round(input.score / input.totalQuestions * 20);
     return await db.transaction(async (tx) => {
       const [existing] = await tx.select().from(learningProgress).where(
-        and11(
-          eq14(learningProgress.userId, userId),
-          eq14(learningProgress.unitId, input.unitId)
+        and12(
+          eq15(learningProgress.userId, userId),
+          eq15(learningProgress.unitId, input.unitId)
         )
       ).limit(1);
       const currentBestPoints = existing ? Math.round((existing.score || 0) / input.totalQuestions * 20) : 0;
       const pointsDifference = Math.max(0, awardedPoints - currentBestPoints);
       if (existing) {
         if (input.score > (existing.score || 0)) {
-          await tx.update(learningProgress).set({ score: input.score, completedAt: /* @__PURE__ */ new Date() }).where(eq14(learningProgress.id, existing.id));
+          await tx.update(learningProgress).set({ score: input.score, completedAt: /* @__PURE__ */ new Date() }).where(eq15(learningProgress.id, existing.id));
         }
       } else {
         await tx.insert(learningProgress).values({
@@ -3016,20 +3081,20 @@ var learningProgressRouter = router({
         });
       }
       if (pointsDifference > 0) {
-        const [user] = await tx.select().from(users).where(eq14(users.uid, userId));
+        const [user] = await tx.select().from(users).where(eq15(users.uid, userId));
         if (user) {
           await tx.update(users).set({
             honorPoints: (user.honorPoints || 0) + pointsDifference,
             lastActive: /* @__PURE__ */ new Date()
-          }).where(eq14(users.uid, userId));
+          }).where(eq15(users.uid, userId));
         }
       }
-      const mapEntries = await tx.select().from(contentFsrsMap).where(eq14(contentFsrsMap.contentId, input.unitId));
+      const mapEntries = await tx.select().from(contentFsrsMap).where(eq15(contentFsrsMap.contentId, input.unitId));
       if (mapEntries.length > 0) {
         const existingCards = await tx.select().from(leitnerCards).where(
-          and11(
-            eq14(leitnerCards.userId, userId),
-            eq14(leitnerCards.learningContentId, input.unitId)
+          and12(
+            eq15(leitnerCards.userId, userId),
+            eq15(leitnerCards.learningContentId, input.unitId)
           )
         );
         const existingSet = new Set(existingCards.map((c) => c.questionIndex));
@@ -3067,7 +3132,7 @@ var learningProgressRouter = router({
   /** Get all completed units for the current user */
   getUserProgress: protectedProcedure.query(async ({ ctx }) => {
     const userId = ctx.userId;
-    const progress = await db.select().from(learningProgress).where(eq14(learningProgress.userId, userId)).orderBy(desc5(learningProgress.completedAt));
+    const progress = await db.select().from(learningProgress).where(eq15(learningProgress.userId, userId)).orderBy(desc5(learningProgress.completedAt));
     return progress;
   }),
   /** Get the global leaderboard (Top students by Honor Points) */
@@ -3079,14 +3144,14 @@ var learningProgressRouter = router({
       honorPoints: users.honorPoints,
       meritPoints: users.meritPoints
       // BUG-11 FIX: renamed from misleading 'rank' alias
-    }).from(users).where(eq14(users.status, "ACTIVE")).orderBy(desc5(users.honorPoints)).limit(100);
+    }).from(users).where(eq15(users.status, "ACTIVE")).orderBy(desc5(users.honorPoints)).limit(100);
     return topUsers;
   })
 });
 
 // src/backend/server/routers/exams_progress.ts
 import { z as z13 } from "zod";
-import { eq as eq15 } from "drizzle-orm";
+import { eq as eq16 } from "drizzle-orm";
 var examProgressRouter = router({
   saveProgress: protectedProcedure.input(z13.object({
     examLevelId: z13.number().nullable(),
@@ -3099,7 +3164,7 @@ var examProgressRouter = router({
     timeSpentPerQuestion: z13.record(z13.string(), z13.number()),
     timeLeft: z13.number()
   })).mutation(async ({ ctx, input }) => {
-    const [existing] = await db.select().from(examProgress).where(eq15(examProgress.userId, ctx.userId));
+    const [existing] = await db.select().from(examProgress).where(eq16(examProgress.userId, ctx.userId));
     if (existing) {
       await db.update(examProgress).set({
         examLevelId: input.examLevelId,
@@ -3111,7 +3176,7 @@ var examProgressRouter = router({
         flaggedQuestions: input.flaggedQuestions,
         timeSpentPerQuestion: input.timeSpentPerQuestion,
         timeLeft: input.timeLeft
-      }).where(eq15(examProgress.id, existing.id));
+      }).where(eq16(examProgress.id, existing.id));
     } else {
       await db.insert(examProgress).values({
         userId: ctx.userId,
@@ -3128,19 +3193,19 @@ var examProgressRouter = router({
     return { success: true };
   }),
   loadProgress: protectedProcedure.query(async ({ ctx }) => {
-    const [progress] = await db.select().from(examProgress).where(eq15(examProgress.userId, ctx.userId));
+    const [progress] = await db.select().from(examProgress).where(eq16(examProgress.userId, ctx.userId));
     if (!progress) return null;
     return progress;
   }),
   deleteProgress: protectedProcedure.mutation(async ({ ctx }) => {
-    await db.delete(examProgress).where(eq15(examProgress.userId, ctx.userId));
+    await db.delete(examProgress).where(eq16(examProgress.userId, ctx.userId));
     return { success: true };
   })
 });
 
 // src/backend/server/routers/gamification.ts
 import { z as z14 } from "zod";
-import { eq as eq16, and as and13, sql as sql10 } from "drizzle-orm";
+import { eq as eq17, and as and14, sql as sql11 } from "drizzle-orm";
 var gamificationRouter = router({
   /** Fetch all achievements with current user's unlocked status */
   getAchievements: protectedProcedure.query(async ({ ctx }) => {
@@ -3148,7 +3213,7 @@ var gamificationRouter = router({
     const unlockedOnes = await db.select({
       achievementId: userAchievements.achievementId,
       unlockedAt: userAchievements.unlockedAt
-    }).from(userAchievements).where(eq16(userAchievements.userId, ctx.userId));
+    }).from(userAchievements).where(eq17(userAchievements.userId, ctx.userId));
     const unlockedIds = new Set(unlockedOnes.map((u) => u.achievementId));
     return allAchievements.map((a) => ({
       ...a,
@@ -3160,11 +3225,11 @@ var gamificationRouter = router({
   checkAndUnlock: protectedProcedure.input(z14.object({
     code: z14.string()
   })).mutation(async ({ ctx, input }) => {
-    const [achievement] = await db.select().from(achievements).where(eq16(achievements.code, input.code));
+    const [achievement] = await db.select().from(achievements).where(eq17(achievements.code, input.code));
     if (!achievement) return { success: false, message: "Achievement not found" };
-    const [existing] = await db.select().from(userAchievements).where(and13(
-      eq16(userAchievements.userId, ctx.userId),
-      eq16(userAchievements.achievementId, achievement.id)
+    const [existing] = await db.select().from(userAchievements).where(and14(
+      eq17(userAchievements.userId, ctx.userId),
+      eq17(userAchievements.achievementId, achievement.id)
     ));
     if (existing) return { success: false, alreadyUnlocked: true };
     await db.insert(userAchievements).values({
@@ -3172,7 +3237,7 @@ var gamificationRouter = router({
       achievementId: achievement.id
     });
     if (achievement.pointsReward && achievement.pointsReward > 0) {
-      await db.update(users).set({ meritPoints: sql10`${users.meritPoints} + ${achievement.pointsReward}` }).where(eq16(users.uid, ctx.userId));
+      await db.update(users).set({ meritPoints: sql11`${users.meritPoints} + ${achievement.pointsReward}` }).where(eq17(users.uid, ctx.userId));
     }
     return { success: true, achievement };
   })
@@ -3181,19 +3246,19 @@ var gamificationRouter = router({
 // src/backend/server/routers/scenarios.ts
 import { TRPCError as TRPCError9 } from "@trpc/server";
 import { z as z15 } from "zod";
-import { eq as eq17, and as and14, desc as desc6, sql as sql11 } from "drizzle-orm";
+import { eq as eq18, and as and15, desc as desc6, sql as sql12 } from "drizzle-orm";
 var scenariosRouter = router({
   // ── Listar Sesiones y Escenarios ──────────
   list: protectedProcedure.query(async ({ ctx }) => {
     const scenarios = await db.select().from(policeScenarios).orderBy(desc6(policeScenarios.createdAt));
-    const attempts = await db.select().from(scenarioAttempts).where(eq17(scenarioAttempts.userId, ctx.userId)).orderBy(desc6(scenarioAttempts.createdAt));
+    const attempts = await db.select().from(scenarioAttempts).where(eq18(scenarioAttempts.userId, ctx.userId)).orderBy(desc6(scenarioAttempts.createdAt));
     return { scenarios, attempts };
   }),
   // ── Empezar o Retomar un Escenario ──────────
   startOrResume: protectedProcedure.input(z15.object({ scenarioId: z15.number() })).mutation(async ({ ctx, input }) => {
-    const [scenario] = await db.select().from(policeScenarios).where(eq17(policeScenarios.id, input.scenarioId));
+    const [scenario] = await db.select().from(policeScenarios).where(eq18(policeScenarios.id, input.scenarioId));
     if (!scenario) throw new TRPCError9({ code: "NOT_FOUND", message: "Escenario no existe." });
-    const [existing] = await db.select().from(scenarioAttempts).where(and14(eq17(scenarioAttempts.userId, ctx.userId), eq17(scenarioAttempts.scenarioId, scenario.id), eq17(scenarioAttempts.status, "IN_PROGRESS")));
+    const [existing] = await db.select().from(scenarioAttempts).where(and15(eq18(scenarioAttempts.userId, ctx.userId), eq18(scenarioAttempts.scenarioId, scenario.id), eq18(scenarioAttempts.status, "IN_PROGRESS")));
     if (existing) {
       return { attemptId: existing.id, initialEvent: scenario.initialEvent, existingHistory: existing.chatHistory };
     }
@@ -3216,11 +3281,11 @@ var scenariosRouter = router({
   })).mutation(async ({ ctx, input }) => {
     const genAI2 = getAIClient();
     if (!genAI2) throw new TRPCError9({ code: "INTERNAL_SERVER_ERROR", message: "Entorno IA no configurado." });
-    const [attempt] = await db.select().from(scenarioAttempts).where(eq17(scenarioAttempts.id, input.attemptId));
+    const [attempt] = await db.select().from(scenarioAttempts).where(eq18(scenarioAttempts.id, input.attemptId));
     if (!attempt) throw new TRPCError9({ code: "NOT_FOUND", message: "Intento no encontrado." });
     if (attempt.userId !== ctx.userId) throw new TRPCError9({ code: "FORBIDDEN" });
     if (attempt.status === "COMPLETED") throw new TRPCError9({ code: "BAD_REQUEST", message: "El caso ya est\xE1 cerrado." });
-    const [scenario] = await db.select().from(policeScenarios).where(eq17(policeScenarios.id, attempt.scenarioId));
+    const [scenario] = await db.select().from(policeScenarios).where(eq18(policeScenarios.id, attempt.scenarioId));
     const SYSTEM_PROMPT2 = `
 Eres un Simulador de Entorno Policial inmersivo para la plataforma Polic.ia.
 Vas a evaluar y jugar un rol din\xE1mico (infractor, v\xEDctima o narrador) en el siguiente escenario: 
@@ -3283,25 +3348,38 @@ Acci\xF3n del Polic\xEDa: ${input.message}`;
           feedback: finalFeedback,
           chatHistory: updatedHistory,
           endedAt: /* @__PURE__ */ new Date()
-        }).where(eq17(scenarioAttempts.id, attempt.id));
+        }).where(eq18(scenarioAttempts.id, attempt.id));
         if (isPassed && finalScore >= 60) {
           await db.update(users).set({
-            honorPoints: sql11`${users.honorPoints} + 50`,
-            meritPoints: sql11`${users.meritPoints} + ${finalScore}`
-          }).where(eq17(users.uid, ctx.userId));
+            honorPoints: sql12`${users.honorPoints} + 50`,
+            meritPoints: sql12`${users.meritPoints} + ${finalScore}`
+          }).where(eq18(users.uid, ctx.userId));
         }
-      } else {
+        const achievementsUnlocked = [];
+        const [{ count }] = await db.select({ count: sql12`count(*)` }).from(scenarioAttempts).where(and15(eq18(scenarioAttempts.userId, ctx.userId), eq18(scenarioAttempts.status, "COMPLETED")));
+        if (Number(count) >= 5) {
+          const ach = await unlockAchievement(ctx.userId, "SCENARIO_5");
+          if (ach) achievementsUnlocked.push(ach);
+        }
+        return {
+          response: cleanedResponse,
+          isEnded: scenarioEnded,
+          score: finalScore,
+          passed: isPassed,
+          feedback: finalFeedback,
+          achievementsUnlocked
+        };
         await db.update(scenarioAttempts).set({
           chatHistory: updatedHistory
-        }).where(eq17(scenarioAttempts.id, attempt.id));
+        }).where(eq18(scenarioAttempts.id, attempt.id));
+        return {
+          response: cleanedResponse,
+          isEnded: scenarioEnded,
+          score: finalScore,
+          passed: isPassed,
+          feedback: finalFeedback
+        };
       }
-      return {
-        response: cleanedResponse,
-        isEnded: scenarioEnded,
-        score: finalScore,
-        passed: isPassed,
-        feedback: finalFeedback
-      };
     } catch (error) {
       logger.error("[SCENARIO_INTERACT_ERROR]", { attemptId: input.attemptId, error: error.message });
       throw new TRPCError9({ code: "INTERNAL_SERVER_ERROR", message: `Fallo del sistema AI: ${error.message}` });
@@ -3332,7 +3410,7 @@ var appRouter = router({
 import fs2 from "fs";
 import path2 from "path";
 import zlib from "zlib";
-import { eq as eq18 } from "drizzle-orm";
+import { eq as eq19 } from "drizzle-orm";
 import { createServer } from "http";
 
 // src/backend/server/socket.ts
@@ -3431,8 +3509,8 @@ app.get("/api/export/deck", async (req, res) => {
   try {
     const userId = req.query.userId;
     if (!userId) return res.status(400).json({ error: "Falta userId" });
-    const cards = await db.select().from(leitnerCards).where(eq18(leitnerCards.userId, userId));
-    const logs = await db.select().from(reviewLogs).where(eq18(reviewLogs.userId, userId));
+    const cards = await db.select().from(leitnerCards).where(eq19(leitnerCards.userId, userId));
+    const logs = await db.select().from(reviewLogs).where(eq19(reviewLogs.userId, userId));
     const exportData = { manifest: { version: 1, exportedAt: (/* @__PURE__ */ new Date()).toISOString(), cardCount: cards.length, logCount: logs.length }, collection: cards, review_log: logs };
     res.setHeader("Content-Type", "application/gzip");
     res.setHeader("Content-Disposition", 'attachment; filename="policia_deck.pkg"');
