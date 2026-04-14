@@ -21,6 +21,8 @@ export default defineConfig(({mode}) => {
           manualChunks: {
             'react-vendor': ['react', 'react-dom', 'react-router-dom'],
             'ui': ['lucide-react', 'sonner', 'motion'],
+            'firebase-vendor': ['firebase/app', 'firebase/auth', 'firebase/firestore'],
+            'query-vendor': ['@tanstack/react-query', '@trpc/client', '@trpc/react-query'],
           },
         },
       },

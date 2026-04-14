@@ -68,3 +68,13 @@
 .crt-text {
   animation: crt-flicker 5s infinite;
 }
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scan {
+  from { transform: translateY(-100%); }
+  to { transform: translateY(50%); }
+}

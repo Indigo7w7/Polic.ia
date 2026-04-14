@@ -465,9 +465,9 @@ export const AdminCommandCenter = () => {
     if (!message) return;
     const typeStr = window.prompt('TIPO (INFO / WARNING / EVENT):', 'WARNING');
     const type    = (['INFO', 'WARNING', 'EVENT'].includes(typeStr?.toUpperCase() || '') ? typeStr?.toUpperCase() : 'WARNING') as any;
-    const hours   = parseInt(window.prompt('DURACIÓN EN HORAS:', '2') || '2', 10);
+    const minutes = parseInt(window.prompt('DURACIÓN EN MINUTOS (ej. 30):', '30') || '30', 10);
     try {
-      await sendBroadcast.mutateAsync({ title, message, type, durationHours: hours });
+      await sendBroadcast.mutateAsync({ title, message, type, durationMinutes: minutes });
       toast.success('¡Alerta emitida a todas las unidades!');
       utils.admin.getActiveBroadcast.invalidate();
     } catch {
@@ -504,7 +504,11 @@ export const AdminCommandCenter = () => {
         toast.success(`Nivel sincronizado para ${activeExamSchool}`);
         examsQuery.refetch();
       } catch (err: any) {
-        toast.error(`Error: ${err.message}`);
+        let msg = err.message || 'Error desconocido';
+        if (msg.includes('Unexpected token') || msg.includes('<!DOCTYPE')) {
+          msg = 'BACKEND OFFLINE. El servidor maestro está devolviendo páginas de error en lugar de procesos.';
+        }
+        toast.error(`Error: ${msg}`);
       } finally {
         setUploading(false);
         event.target.value = '';
@@ -602,7 +606,11 @@ export const AdminCommandCenter = () => {
         utils.learning.getAreas.invalidate();
         utils.learning.getContentByArea.invalidate();
       } catch (err: any) {
-        toast.error(`Error de importación: ${err.message}`);
+        let msg = err.message || 'Error desconocido';
+        if (msg.includes('Unexpected token') || msg.includes('<!DOCTYPE')) {
+          msg = 'BACKEND OFFLINE. El servidor TRPC principal rechazó la conexión (¿Railway en pausa?).';
+        }
+        toast.error(`Error de importación: ${msg}`);
       } finally {
         setUploading(false);
       }
@@ -670,7 +678,11 @@ export const AdminCommandCenter = () => {
               utils.learning.getContentByArea.invalidate();
               setEditingAreaId(null);
             } catch (err: any) {
-              toast.error(`Error de sistema: ${err.message}`);
+              let msg = err.message || 'Error desconocido';
+              if (msg.includes('Unexpected token') || msg.includes('<!DOCTYPE')) {
+                msg = 'FALLO DE SINCRONIZACIÓN: El servidor Maestro (Backend) está respondiendo con código en lugar de datos. Verifica si está activo o en mantenimiento.';
+              }
+              toast.error(`Error de sistema: ${msg}`);
             }
           }}
         />

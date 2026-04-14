@@ -1,6 +1,6 @@
 import { router, adminProcedure, protectedProcedure } from '../trpc';
 import { z } from 'zod';
-import { db, courses, courseMaterials, learningAreas, learningContent } from '../../../database/db';
+import { db, courses, courseMaterials, learningAreas, learningContent, contentFsrsMap, users, leitnerCards } from '../../../database/db';
 import { eq, desc, and } from 'drizzle-orm';
 import { TRPCError } from '@trpc/server';
 
@@ -221,6 +221,7 @@ export const adminCourseRouter = router({
   uploadTacticalSyllabus: adminProcedure
     .input(z.object({
       areaName: z.string().min(1),
+      autoFlashcards: z.boolean().optional().default(false),
       topics: z.array(z.object({
         name: z.string().min(1),
         schoolType: z.enum(['EO', 'EESTP', 'BOTH']).optional(),
@@ -247,6 +248,10 @@ export const adminCourseRouter = router({
           const [res] = await tx.insert(learningAreas).values({ name: normalizedAreaName });
           areaId = res.insertId;
         }
+
+        const activeUsers = input.autoFlashcards 
+          ? await tx.select({ uid: users.uid }).from(users).where(eq(users.status, 'ACTIVE'))
+          : [];
 
         let created = 0;
         let updated = 0;
@@ -288,7 +293,7 @@ export const adminCourseRouter = router({
                 .where(eq(learningContent.id, existing.id));
               updated++;
             } else {
-              await tx.insert(learningContent).values({
+              const [res] = await tx.insert(learningContent).values({
                 areaId,
                 topic: normalizedTopicName,
                 title: normalizedTitle,
@@ -298,6 +303,54 @@ export const adminCourseRouter = router({
                 orderInTopic: unitIdx,
                 schoolType: effectiveSchoolType,
               });
+              const contentId = res.insertId;
+              
+              // ── ECOSISTEMA V2: Mapeo de Flashcards ────────────────────────
+              if (unit.questions && (unit.questions as any[]).length > 0) {
+                const deckTag = `galeria:${normalizedAreaName.toLowerCase()}:${normalizedTopicName.toLowerCase()}`;
+                
+                const mapInsertions = [];
+                for (let i = 0; i < (unit.questions as any[]).length; i++) {
+                  mapInsertions.push({
+                    contentId,
+                    questionId: null, // No es de simulacro
+                    questionIndex: i,
+                    deckTag,
+                  });
+                }
+                if (mapInsertions.length > 0) {
+                  await tx.insert(contentFsrsMap).values(mapInsertions);
+                }
+
+                if (input.autoFlashcards && activeUsers.length > 0) {
+                  const cardInsertions = [];
+                  for (let i = 0; i < (unit.questions as any[]).length; i++) {
+                    for (const user of activeUsers) {
+                      cardInsertions.push({
+                        userId: user.uid,
+                        learningContentId: contentId,
+                        questionIndex: i,
+                        deckTag,
+                        state: 'new' as const,
+                        stability: 0.1,
+                        difficulty: 5.0,
+                        reps: 0,
+                        lapses: 0,
+                        scheduledDays: 0,
+                        elapsedDays: 0,
+                        queue: 0,
+                        mod: Date.now()
+                      });
+                    }
+                  }
+                  
+                  // Bulk insert in chunks of 5000 to prevent packet too large errors
+                  const chunkSize = 5000;
+                  for (let c = 0; c < cardInsertions.length; c += chunkSize) {
+                    await tx.insert(leitnerCards).values(cardInsertions.slice(c, c + chunkSize));
+                  }
+                }
+              }
               created++;
             }
           }
@@ -305,6 +358,65 @@ export const adminCourseRouter = router({
 
         return { success: true, areaId, created, updated };
       });
+    }),
+
+  /** Permitir que el admin asigne flashcards manualmente de una unidad */
+  enrollFlashcardsFromUnit: adminProcedure
+    .input(z.object({ unitId: z.number() }))
+    .mutation(async ({ input }) => {
+      const [unit] = await db.select().from(learningContent).where(eq(learningContent.id, input.unitId));
+      if (!unit) throw new TRPCError({ code: 'NOT_FOUND', message: 'Unidad no encontrada' });
+      
+      const activeUsers = await db.select({ uid: users.uid }).from(users).where(eq(users.status, 'ACTIVE'));
+      const mapEntries = await db.select().from(contentFsrsMap).where(eq(contentFsrsMap.contentId, input.unitId));
+      
+      if (mapEntries.length === 0) {
+        return { success: false, message: 'La unidad no tiene preguntas mapeadas o no existen.' };
+      }
+
+      let created = 0;
+      await db.transaction(async (tx) => {
+        // Obtenemos flashcards existentes para esta unidad de una vez
+        const existingCards = await tx.select()
+          .from(leitnerCards)
+          .where(eq(leitnerCards.learningContentId, input.unitId));
+          
+        const existingSet = new Set(
+          existingCards.map(c => `${c.userId}-${c.questionIndex}`)
+        );
+
+        const cardInsertions = [];
+        for (const user of activeUsers) {
+          for (const map of mapEntries) {
+            if (map.questionIndex === null) continue;
+            const key = `${user.uid}-${map.questionIndex}`;
+            if (!existingSet.has(key)) {
+              cardInsertions.push({
+                userId: user.uid,
+                learningContentId: input.unitId,
+                questionIndex: map.questionIndex,
+                deckTag: map.deckTag,
+                state: 'new' as const,
+                stability: 0.1,
+                difficulty: 5.0,
+                reps: 0,
+                lapses: 0,
+                scheduledDays: 0,
+                elapsedDays: 0,
+                queue: 0,
+                mod: Date.now()
+              });
+              created++;
+            }
+          }
+        }
+        
+        const chunkSize = 5000;
+        for (let c = 0; c < cardInsertions.length; c += chunkSize) {
+          await tx.insert(leitnerCards).values(cardInsertions.slice(c, c + chunkSize));
+        }
+      });
+      return { success: true, created };
     }),
 
   /** Export area content grouped by topic for the Eagle Eye Explorer editor */

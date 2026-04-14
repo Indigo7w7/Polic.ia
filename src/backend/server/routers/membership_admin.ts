@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { db, users, adminLogs, examQuestions, learningAreas, learningContent, globalNotifications } from '../../../database/db';
 import { eq, sql, and, like, or } from 'drizzle-orm';
 import { TRPCError } from '@trpc/server';
+import { USER_FIELDS } from '../utils/constants';
 
 export const adminRouter = router({
   // ─── BROADCAST (Alerta Roja) ───
@@ -85,7 +86,7 @@ export const adminRouter = router({
         ));
       }
       const whereClause = filters.length > 0 ? and(...filters) : undefined;
-      return await db.select().from(users).where(whereClause).orderBy(sql`${users.createdAt} desc`);
+      return await db.select(USER_FIELDS).from(users).where(whereClause).orderBy(sql`${users.createdAt} desc`);
     }),
 
   updateUserMembership: adminProcedure
@@ -141,9 +142,9 @@ export const adminRouter = router({
       title: z.string(),
       message: z.string(),
       type: z.enum(['INFO', 'WARNING', 'EVENT']).default('WARNING'),
-      durationHours: z.number().default(24)
+      durationMinutes: z.number().default(30)
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       // Deactivate previous broadcasts
       await db.update(globalNotifications).set({ isActive: false });
 
@@ -152,8 +153,19 @@ export const adminRouter = router({
         message: input.message,
         type: input.type,
         isActive: true,
-        expiresAt: new Date(Date.now() + input.durationHours * 60 * 60 * 1000)
+        expiresAt: new Date(Date.now() + input.durationMinutes * 60 * 1000)
       });
+
+      // Emit real-time broadcast via Socket.IO
+      if (ctx.io) {
+        ctx.io.emit('system_broadcast', {
+          id: Date.now(),
+          title: input.title,
+          message: input.message,
+          type: input.type,
+        });
+      }
+
       return { success: true };
     }),
 
@@ -182,7 +194,7 @@ export const adminRouter = router({
         action: `Changed school for ${input.uid} to ${input.school}`,
       });
 
-      const [updatedUser] = await db.select().from(users).where(eq(users.uid, input.uid));
+      const [updatedUser] = await db.select(USER_FIELDS).from(users).where(eq(users.uid, input.uid));
       return { success: true, user: updatedUser };
     }),
 

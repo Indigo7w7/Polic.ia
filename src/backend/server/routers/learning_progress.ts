@@ -1,6 +1,6 @@
 import { router, protectedProcedure } from '../trpc';
 import { z } from 'zod';
-import { db, learningProgress, users } from '../../../database/db';
+import { db, learningProgress, users, contentFsrsMap, leitnerCards } from '../../../database/db';
 import { eq, and, desc } from 'drizzle-orm';
 
 export const learningProgressRouter = router({
@@ -65,6 +65,45 @@ export const learningProgressRouter = router({
                 lastActive: new Date()
               })
               .where(eq(users.uid, userId));
+          }
+        }
+
+        // 4. ECOSISTEMA V2: Propagación de flashcards FSRS
+        // Al completar la unidad, asignamos las tarjetas al usuario si es que no las tiene.
+        const mapEntries = await tx.select().from(contentFsrsMap).where(eq(contentFsrsMap.contentId, input.unitId));
+        if (mapEntries.length > 0) {
+          const existingCards = await tx.select()
+            .from(leitnerCards)
+            .where(
+              and(
+                eq(leitnerCards.userId, userId),
+                eq(leitnerCards.learningContentId, input.unitId)
+              )
+            );
+          const existingSet = new Set(existingCards.map(c => c.questionIndex));
+          
+          const newCards = [];
+          for (const map of mapEntries) {
+            if (map.questionIndex !== null && !existingSet.has(map.questionIndex)) {
+              newCards.push({
+                userId,
+                learningContentId: input.unitId,
+                questionIndex: map.questionIndex,
+                deckTag: map.deckTag,
+                state: 'new' as const,
+                stability: 0.1,
+                difficulty: 5.0,
+                reps: 0,
+                lapses: 0,
+                scheduledDays: 0,
+                elapsedDays: 0,
+                queue: 0,
+                mod: Date.now()
+              });
+            }
+          }
+          if (newCards.length > 0) {
+            await tx.insert(leitnerCards).values(newCards);
           }
         }
 

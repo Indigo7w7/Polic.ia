@@ -1,194 +1,248 @@
 import React from 'react';
 import { trpc } from '../../shared/utils/trpc';
 import { 
-  Trophy, Medal, Shield, Star, 
-  ChevronRight, ArrowLeft, Zap, User
+  ArrowLeft, ChevronDown, Shield, Sword, Trophy, 
+  Target, Zap, Users, Sparkles
 } from 'lucide-react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
-
-const getRankDetails = (honor: number, merit: number) => {
-  const total = (honor || 0) + (merit || 0);
-  if (total >= 5000) return { title: 'General de Policía', color: 'text-yellow-400', badge: <Star className="w-4 h-4" /> };
-  if (total >= 2500) return { title: 'Comisario Maestro', color: 'text-purple-400', badge: <Shield className="w-4 h-4" /> };
-  if (total >= 1000) return { title: 'Oficial de Élite', color: 'text-blue-400', badge: <Medal className="w-4 h-4" /> };
-  if (total >= 500) return { title: 'Suboficial Superior', color: 'text-emerald-400', badge: <Zap className="w-4 h-4" /> };
-  return { title: 'Recluta en Formación', color: 'text-slate-400', badge: <ChevronRight className="w-4 h-4" /> };
-};
+import { getMilitaryRank } from '../utils/ranks';
 
 export const Ranking: React.FC = () => {
   const navigate = useNavigate();
   const [schoolFilter, setSchoolFilter] = React.useState<'EO' | 'EESTP' | undefined>(undefined);
+  
   const rankingQuery = trpc.user.getRanking.useQuery({ school: schoolFilter });
+  const battleQuery = trpc.user.getSchoolBattleStats.useQuery(undefined, {
+    refetchInterval: 30000 // Actualizar batalla cada 30s
+  });
+
+  const topUsers = rankingQuery.data?.slice(0, 3) || [];
+  const listUsers = rankingQuery.data?.slice(3) || [];
+
+  const battleStats = battleQuery.data || [];
+  const eoStats = battleStats.find(s => s.school === 'EO') || { avgEfficacy: 0, totalHonor: 0, userCount: 0 };
+  const eestpStats = battleStats.find(s => s.school === 'EESTP') || { avgEfficacy: 0, totalHonor: 0, userCount: 0 };
+
+  // Calculate victory bar percentage (based on Efficacy as per "Lo Mejor")
+  const totalEfficacy = eoStats.avgEfficacy + eestpStats.avgEfficacy;
+  const eoPercent = totalEfficacy > 0 ? (eoStats.avgEfficacy / totalEfficacy) * 100 : 50;
 
   return (
-    <div className="min-h-screen bg-[#020617] text-slate-200 pb-20 font-sans">
-      <div className="max-w-5xl mx-auto px-6 pt-12 mb-8">
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-6 p-8 bg-slate-900/40 border border-slate-800 rounded-[2.5rem] relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/[0.03] rounded-full blur-[80px]" />
+    <div className="min-h-screen bg-[#020617] text-slate-200 font-sans relative overflow-x-hidden">
+      
+      {/* HERO SECTION */}
+      <div 
+        className="relative pt-12 pb-24 sm:pb-32 px-4 bg-cover bg-center min-h-[300px] sm:min-h-[400px]"
+        style={{ backgroundImage: "url('/portada-pnp.png')" }}
+      >
+        <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-[#020617]/70 to-[#020617]" />
+        
+        {/* Nav Header */}
+        <div className="max-w-6xl mx-auto flex items-center justify-between relative z-20 mb-8 sm:mb-12">
+          <button onClick={() => navigate('/')} className="p-3 bg-white/5 hover:bg-white/10 rounded-2xl backdrop-blur-md transition-all border border-white/5">
+            <ArrowLeft className="w-5 h-5 text-slate-400" />
+          </button>
           
-          <div className="flex items-center gap-6 relative z-10">
-            <button 
-              onClick={() => navigate('/')}
-              className="p-3 bg-slate-950 border border-white/5 rounded-2xl text-slate-500 hover:text-white transition-all hover:scale-105"
+          <div className="flex flex-col items-center">
+             <div className="flex items-center gap-2 mb-1">
+               <Trophy className="w-4 h-4 text-amber-500 animate-pulse" />
+               <span className="text-[10px] text-amber-500 font-black tracking-[0.4em] uppercase">Estatus Estratégico</span>
+             </div>
+             <h1 className="text-white font-black tracking-tighter text-2xl uppercase">Salón de Honor</h1>
+          </div>
+          
+          <div className="bg-slate-900/80 border border-white/10 rounded-2xl px-4 py-2 flex items-center gap-2 backdrop-blur-md">
+            <select 
+              className="bg-transparent text-white/90 text-[10px] font-black outline-none appearance-none cursor-pointer pr-1 uppercase tracking-widest"
+              value={schoolFilter || 'GLOBAL'}
+              onChange={(e) => setSchoolFilter(e.target.value === 'GLOBAL' ? undefined : e.target.value as any)}
             >
-              <ArrowLeft className="w-5 h-5" />
-            </button>
-            <div>
-              <div className="text-[10px] font-black text-blue-500 uppercase tracking-[0.3em] mb-1">Escalafón de Élite_</div>
-              <h1 className="text-3xl font-black text-white uppercase tracking-tighter flex items-center gap-3">
-                Salón del Honor <span className="text-[10px] bg-yellow-500 text-yellow-950 px-2 py-0.5 rounded-md self-center">PRO</span>
-              </h1>
-            </div>
+              <option value="GLOBAL">Fuerza Conjunta</option>
+              <option value="EO">Oficiales (EO)</option>
+              <option value="EESTP">Técnicos (EESTP)</option>
+            </select>
+            <ChevronDown className="w-3 h-3 text-amber-500" />
           </div>
+        </div>
 
-          <div className="flex items-center gap-4 relative z-10">
-            <div className="p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-2xl">
-              <Trophy className="w-8 h-8 text-yellow-500" />
-            </div>
-            <div className="text-left">
-              <div className="text-[8px] font-black text-slate-500 uppercase tracking-[0.2em]">Estatus de Élite</div>
-              <div className="text-xs font-black text-slate-300 uppercase tracking-widest mt-0.5">Vanguardia PNP</div>
-            </div>
+        {/* COMBAT BAR (EO vs EESTP) */}
+        {!schoolFilter && (
+          <div className="max-w-4xl mx-auto mb-16 relative z-20 px-4">
+             <div className="flex justify-between items-end mb-3">
+                <div className="text-left">
+                   <div className="flex items-center gap-2">
+                     <div className="w-8 h-8 bg-blue-600/20 border border-blue-500/30 rounded-lg flex items-center justify-center">
+                        <Shield className="w-4 h-4 text-blue-400" />
+                     </div>
+                     <span className="text-[11px] font-black text-white uppercase tracking-tighter">Oficiales (EO)</span>
+                   </div>
+                   <div className="text-xl font-black text-blue-500 mt-1">{eoStats.avgEfficacy}% <span className="text-[9px] text-slate-500 font-bold uppercase">Eficacia</span></div>
+                </div>
+                <div className="text-center pb-2">
+                   <Sword className="w-5 h-5 text-slate-600 rotate-45 mb-1 mx-auto" />
+                   <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest">Batalla Semanal</span>
+                </div>
+                <div className="text-right">
+                   <div className="flex items-center gap-2 justify-end">
+                     <span className="text-[11px] font-black text-white uppercase tracking-tighter">Técnicos (EESTP)</span>
+                     <div className="w-8 h-8 bg-emerald-600/20 border border-emerald-500/30 rounded-lg flex items-center justify-center">
+                        <Target className="w-4 h-4 text-emerald-400" />
+                     </div>
+                   </div>
+                   <div className="text-xl font-black text-emerald-500 mt-1">{eestpStats.avgEfficacy}% <span className="text-[9px] text-slate-500 font-bold uppercase">Eficacia</span></div>
+                </div>
+             </div>
+             
+             <div className="h-4 w-full bg-slate-900 rounded-full border border-white/5 overflow-hidden flex shadow-2xl">
+                <motion.div 
+                  initial={{ width: '50%' }}
+                  animate={{ width: `${eoPercent}%` }}
+                  className="h-full bg-gradient-to-r from-blue-700 to-blue-500 relative"
+                >
+                   <div className="absolute inset-0 bg-[linear-gradient(45deg,rgba(255,255,255,0.1)_25%,transparent_25%,transparent_50%,rgba(255,255,255,0.1)_50%,rgba(255,255,255,0.1)_75%,transparent_75%,transparent)] bg-[length:20px_20px]" />
+                </motion.div>
+                <div className="w-1 h-full bg-white relative z-10 shadow-[0_0_10px_white]" />
+                <motion.div 
+                  initial={{ width: '50%' }}
+                  animate={{ width: `${100 - eoPercent}%` }}
+                  className="h-full bg-gradient-to-l from-emerald-700 to-emerald-500"
+                />
+             </div>
+             
+             <div className="grid grid-cols-2 mt-4 text-[9px] font-black uppercase tracking-widest text-slate-500">
+                <div className="flex items-center gap-4">
+                   <span className="flex items-center gap-1"><Users className="w-3 h-3" /> {eoStats.userCount} Activos</span>
+                   <span className="flex items-center gap-1"><Zap className="w-3 h-3 text-amber-500" /> {eoStats.totalHonor} Honor</span>
+                </div>
+                <div className="flex items-center gap-4 justify-end">
+                   <span className="flex items-center gap-1"><Zap className="w-3 h-3 text-amber-500" /> {eestpStats.totalHonor} Honor</span>
+                   <span className="flex items-center gap-1"><Users className="w-3 h-3" /> {eestpStats.userCount} Activos</span>
+                </div>
+             </div>
           </div>
+        )}
+
+        {/* Podium */}
+        <div className="max-w-4xl mx-auto flex justify-center items-end gap-3 sm:gap-12 relative z-20 h-64 mt-8">
+           {rankingQuery.isLoading ? (
+             <div className="w-10 h-10 border-4 border-amber-500 border-t-transparent rounded-full animate-spin self-center" />
+           ) : (
+             <>
+               {topUsers[1] && <PodiumAvatar user={topUsers[1]} rank={2} />}
+               {topUsers[0] && <PodiumAvatar user={topUsers[0]} rank={1} isFirst />}
+               {topUsers[2] && <PodiumAvatar user={topUsers[2]} rank={3} />}
+             </>
+           )}
         </div>
       </div>
 
-      <main className="max-w-5xl mx-auto px-6 relative z-30">
-        {/* Filtros Tácticos */}
-        <div className="flex gap-2 p-1.5 bg-slate-900/60 backdrop-blur-md border border-slate-800 rounded-2xl mb-8 w-fit mx-auto sm:mx-0">
-          {[
-            { id: undefined, label: 'GENERAL', color: 'bg-blue-600' },
-            { id: 'EO', label: 'OFICIALES', color: 'bg-cyan-600' },
-            { id: 'EESTP', label: 'TÉCNICA', color: 'bg-emerald-600' }
-          ].map((f) => (
-            <button 
-              key={f.label}
-              onClick={() => setSchoolFilter(f.id as any)}
-              className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
-                schoolFilter === f.id 
-                  ? `${f.color} text-white shadow-lg shadow-blue-900/20 scale-105` 
-                  : 'text-slate-500 hover:text-slate-300'
-              }`}
-            >
-              {f.label}
-            </button>
-          ))}
+      {/* TACTICAL LIST */}
+      <div className="max-w-5xl mx-auto bg-[#0a0f1e]/90 backdrop-blur-3xl border border-white/5 rounded-t-[3rem] px-4 sm:px-12 pt-10 pb-32 -mt-10 relative z-30 shadow-[0_-20px_60px_rgba(0,0,0,0.6)] min-h-[50vh]">
+        <div className="flex flex-col gap-3">
+           {listUsers.map((user, idx) => {
+             const rankPos = idx + 4;
+             const totalPoints = (user.honorPoints || 0) + (user.meritPoints || 0);
+             const milRank = getMilitaryRank(totalPoints, user.school);
+             
+             return (
+               <motion.div 
+                 key={user.uid}
+                 initial={{ opacity: 0, x: -20 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} transition={{ delay: idx * 0.03 }}
+                 className="group flex items-center gap-4 p-4 rounded-3xl bg-white/[0.02] border border-white/[0.03] hover:bg-white/5 transition-all"
+               >
+                 <span className="text-xs font-black text-slate-600 w-6 text-center">{rankPos}</span>
+                 
+                 <div className="relative">
+                   <div className="w-12 h-12 rounded-2xl overflow-hidden shrink-0 border border-slate-800 shadow-md">
+                     {user.photoURL ? (
+                       <img src={user.photoURL} alt={user.name!} className="w-full h-full object-cover" />
+                     ) : (
+                       <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user.name}`} className="w-full h-full object-cover bg-slate-900" alt="" />
+                     )}
+                   </div>
+                   <div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-lg flex items-center justify-center border-2 border-[#0a0f1e] text-[8px] font-black ${user.school === 'EO' ? 'bg-blue-600 text-white' : 'bg-emerald-600 text-white'}`}>
+                     {user.school === 'EO' ? 'O' : 'T'}
+                   </div>
+                 </div>
+
+                 <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                       <h3 className="text-slate-200 font-bold text-sm truncate tracking-wide">{user.name}</h3>
+                       {user.membership === 'PRO' && <Sparkles className="w-3 h-3 text-amber-500 shrink-0" />}
+                    </div>
+                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-0.5">{milRank}</p>
+                 </div>
+
+                 <div className="text-right">
+                    <div className="flex items-center gap-1.5 justify-end mb-0.5">
+                       <Zap className="w-3.5 h-3.5 text-blue-400" />
+                       <span className="text-sm font-black text-white">{totalPoints}</span>
+                    </div>
+                    <div className="text-[9px] text-slate-500 font-bold tracking-widest uppercase">Puntos Honor</div>
+                 </div>
+               </motion.div>
+             );
+           })}
+
+           {listUsers.length === 0 && !rankingQuery.isLoading && (
+             <div className="text-center py-20 opacity-40">
+                <Target className="w-12 h-12 mx-auto mb-4 text-slate-600" />
+                <p className="text-xs font-black uppercase tracking-[0.3em]">Perímetro Limpio</p>
+             </div>
+           )}
         </div>
-
-        <div className="bg-slate-900/40 backdrop-blur-2xl border border-slate-800/50 rounded-[40px] overflow-hidden shadow-2xl">
-          {/* Podio de Honor (Top 3) */}
-          <div className="p-10 border-b border-slate-800/50 grid grid-cols-3 gap-4 items-end pb-14 bg-gradient-to-b from-blue-900/10 to-transparent">
-            {rankingQuery.data?.slice(0, 3).map((user, idx) => {
-              const order = [1, 0, 2]; // 2nd, 1st, 3rd position
-              const currentUser = rankingQuery.data?.[order[idx]];
-              if (!currentUser) return <div key={idx} />;
-              
-              const isFirst = order[idx] === 0;
-              const points = (currentUser.honorPoints || 0) + (currentUser.meritPoints || 0);
-
-              return (
-                <motion.div 
-                  key={currentUser.uid}
-                  initial={{ y: 30, opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  transition={{ delay: order[idx] * 0.15 }}
-                  className={`flex flex-col items-center space-y-4 ${isFirst ? 'scale-125 mb-6' : ''}`}
-                >
-                  <div className="relative">
-                    <div className={`w-16 h-16 sm:w-20 sm:h-20 rounded-[24px] border-4 rotate-3 overflow-hidden shadow-2xl transition-transform hover:rotate-0 ${
-                      isFirst ? 'border-yellow-500 bg-yellow-500/10' : order[idx] === 1 ? 'border-slate-300 bg-slate-300/10' : 'border-amber-700 bg-amber-700/10'
-                    }`}>
-                      <img 
-                        src={currentUser.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${currentUser.name}`} 
-                        alt="" 
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                    <div className={`absolute -bottom-3 -right-3 w-10 h-10 rounded-2xl flex items-center justify-center font-black border-4 rotate-12 ${
-                      isFirst ? 'bg-yellow-500 border-yellow-800 text-yellow-950 text-base' : 'bg-slate-800 border-slate-900 text-white text-sm'
-                    }`}>
-                      {order[idx] + 1}
-                    </div>
-                  </div>
-                  <div className="text-center px-2">
-                    <p className="text-[10px] font-black uppercase tracking-tighter truncate w-24 text-white">
-                      {currentUser.name?.split(' ')[0] || 'Oficial'}
-                    </p>
-                    <div className="flex items-center justify-center gap-1 mt-1">
-                      <Zap className="w-3 h-3 text-yellow-400 fill-yellow-400" />
-                      <p className="text-xs font-black text-blue-400">{points}</p>
-                    </div>
-                  </div>
-                </motion.div>
-              );
-            })}
-          </div>
-
-          {/* Listado de Escalafón */}
-          <div className="divide-y divide-slate-800/30">
-            {rankingQuery.isLoading ? (
-               <div className="p-20 text-center space-y-4">
-                 <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto" />
-                 <p className="text-slate-500 uppercase font-black text-[10px] tracking-[0.3em]">Sincronizando Base de Datos...</p>
-               </div>
-            ) : rankingQuery.data?.slice(3).map((user, idx) => {
-              const rank = getRankDetails(user.honorPoints || 0, user.meritPoints || 0);
-              const totalPoints = (user.honorPoints || 0) + (user.meritPoints || 0);
-              
-              return (
-                <motion.div 
-                  key={user.uid}
-                  initial={{ x: -20, opacity: 0 }}
-                  animate={{ x: 0, opacity: 1 }}
-                  transition={{ delay: idx * 0.03 }}
-                  className="p-5 flex items-center justify-between hover:bg-blue-600/5 transition-all group border-l-4 border-transparent hover:border-blue-500"
-                >
-                  <div className="flex items-center gap-5">
-                    <span className="text-sm font-black text-slate-700 w-6 italic">#{(idx + 4).toString().padStart(2, '0')}</span>
-                    <div className="relative group-hover:scale-110 transition-transform">
-                      <img 
-                        src={user.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.name}`} 
-                        alt="" 
-                        className="w-12 h-12 rounded-2xl border-2 border-slate-800 bg-slate-900"
-                      />
-                      <div className="absolute -top-2 -right-2 bg-slate-950 rounded-xl p-1 border border-slate-800 shadow-xl">
-                        {rank.badge}
-                      </div>
-                    </div>
-                    <div>
-                      <h4 className="text-sm font-black text-slate-200 group-hover:text-white transition-colors uppercase tracking-tight">{user.name}</h4>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-lg bg-white/5 ${rank.color}`}>
-                          {rank.title}
-                        </span>
-                        <span className="text-[8px] font-bold text-slate-600 uppercase tracking-widest">{user.school || 'POSTULANTE'}</span>
-                        <span className="text-[8px] font-black text-yellow-500/80 border border-yellow-500/30 px-1 rounded">PRO</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="flex items-center justify-end gap-1.5">
-                      <span className="text-xl font-black text-white italic">{totalPoints}</span>
-                      <Shield className="w-4 h-4 text-blue-500 fill-blue-500/20" />
-                    </div>
-                    <p className="text-[8px] font-bold text-slate-600 uppercase tracking-tighter">Mérito Consolidado</p>
-                  </div>
-                </motion.div>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="mt-12 flex flex-col items-center gap-4">
-           <div className="p-4 bg-blue-900/10 border border-blue-900/20 rounded-2xl text-center max-w-sm">
-             <p className="text-[10px] text-blue-400 font-bold leading-relaxed">
-               "El honor no se compra, se gana con cada simulacro, con cada lección y con cada acierto bajo presión."
-             </p>
-           </div>
-           <p className="text-[9px] text-slate-600 uppercase font-black tracking-[0.3em]">Polic.ia Security Verified</p>
-        </div>
-      </main>
+      </div>
     </div>
+  );
+};
+
+// PODIUM AVATAR COMPONENT
+const PodiumAvatar = ({ user, rank, isFirst = false }: { user: any, rank: number, isFirst?: boolean }) => {
+  const points = (user.honorPoints || 0) + (user.meritPoints || 0);
+  const milRank = getMilitaryRank(points, user.school);
+  const sizeClass = isFirst ? 'w-24 h-24 sm:w-[110px] sm:h-[110px]' : 'w-20 h-20 sm:w-[88px] sm:h-[88px]';
+  const colorClass = user.school === 'EO' ? 'border-blue-500 shadow-blue-500/20' : 'border-emerald-500 shadow-emerald-500/20';
+
+  return (
+    <motion.div 
+      initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: rank * 0.1, type: 'spring' }}
+      className={`relative flex flex-col items-center flex-1`}
+    >
+      <div className="relative mb-4">
+        <div className={`rounded-[2rem] border-4 overflow-hidden shadow-2xl transition-transform hover:scale-105 duration-500 ${sizeClass} ${colorClass} bg-slate-950`}>
+          {user.photoURL ? (
+            <img src={user.photoURL} alt={user.name} className="w-full h-full object-cover" />
+          ) : (
+            <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user.name}`} className="w-full h-full object-cover opacity-60" alt="" />
+          )}
+        </div>
+        
+        {/* Number Badge */}
+        <div className={`absolute -bottom-3 left-1/2 -translate-x-1/2 min-w-8 h-8 px-2 rounded-xl flex items-center justify-center font-black text-[10px] shadow-xl border-2 z-30 ${
+           rank === 1 ? 'bg-amber-500 border-amber-300 text-amber-950' : 
+           rank === 2 ? 'bg-slate-300 border-slate-100 text-slate-900' : 
+           'bg-orange-700 border-orange-500 text-orange-100'
+        }`}>
+          {rank === 1 ? <Trophy className="w-3.5 h-3.5" /> : rank}
+        </div>
+
+        {/* School Tag */}
+        <div className={`absolute top-0 right-0 p-1.5 rounded-bl-xl border-l border-b border-white/10 z-30 ${user.school === 'EO' ? 'bg-blue-600' : 'bg-emerald-600'}`}>
+           <Shield className="w-2.5 h-2.5 text-white" />
+        </div>
+      </div>
+
+      <div className="text-center max-w-[100px] sm:max-w-[120px]">
+        <h4 className={`font-black text-[11px] sm:text-[13px] uppercase tracking-tighter truncate ${rank === 1 ? 'text-white' : 'text-slate-400'}`}>
+          {user.name?.split(' ')[0]}
+        </h4>
+        <div className="text-[8px] font-black text-blue-500 uppercase tracking-widest mt-1 mb-2 leading-none">{milRank}</div>
+        <div className="inline-flex items-center gap-1.5 bg-white/5 px-2 py-1 rounded-full border border-white/5">
+           <Zap className="w-2.5 h-2.5 text-amber-500" />
+           <span className="text-[10px] font-black text-white">{points}</span>
+        </div>
+      </div>
+    </motion.div>
   );
 };

@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { httpBatchLink } from '@trpc/client';
 import { trpc } from '../shared/utils/trpc';
-import App from './App.tsx';
+import App from './App';
 import './index.css';
 
 import { auth } from '@/src/firebase';
@@ -14,9 +14,19 @@ function Root() {
   // 2. Production: always use the Railway backend URL directly (Firebase Hosting + Railway are separate domains)
   const apiUrl = import.meta.env.VITE_API_URL || 'https://backend-production-f0aa.up.railway.app/trpc';
   console.log(`%c[CONFIG] tRPC URL: ${apiUrl}`, 'color: #3b82f6; font-weight: bold;');
-  console.log(`%c[CONFIG] SIG: 04.01.H_MEGA_V12_PROD_FIX`, 'color: #10b981; font-weight: bold;');
+  console.log(`%c[CONFIG] SIG: 04.01.H_MEGA_V12_PROD_FIX_CORS_NUCLEAR`, 'color: #10b981; font-weight: bold;');
+  console.log(`%c[CONFIG] ROUTE_CHECK: /admin-login REGISTERED`, 'color: #f59e0b; font-weight: bold;');
   
-  const [queryClient] = useState(() => new QueryClient());
+  const [queryClient] = useState(() => new QueryClient({
+    defaultOptions: {
+      queries: {
+        staleTime: 30 * 1000, // 30 seconds (Data stays fresh longer for a premium snappy feel)
+        gcTime: 1000 * 60 * 60, // 1 hour (Cache remains in memory longer)
+        retry: 1,
+        refetchOnWindowFocus: false,
+      },
+    },
+  }));
   const [trpcClient] = useState(() =>
     trpc.createClient({
       links: [

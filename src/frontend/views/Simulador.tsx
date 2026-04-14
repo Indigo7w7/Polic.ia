@@ -4,11 +4,13 @@ import { useExamStore } from '../store/useExamStore';
 import { Card, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { TimerRing } from '../components/ui/TimerRing';
-import { ChevronRight, ChevronLeft, Send, ShieldAlert, Grid3X3, Skull, BrainCircuit, CheckCircle2 } from 'lucide-react';
+import { ChevronRight, ChevronLeft, Send, ShieldAlert, Grid3X3, Skull, BrainCircuit, CheckCircle2, Flag } from 'lucide-react';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { motion, AnimatePresence } from 'motion/react';
 import { useLocation } from 'react-router-dom';
 import { playUIClick } from '../utils/sounds';
+import { trpc } from '../../shared/utils/trpc';
+import { toast } from 'sonner';
 
 export const Simulador: React.FC = () => {
   const navigate = useNavigate();
@@ -20,11 +22,16 @@ export const Simulador: React.FC = () => {
     examenActivo,
     preguntas,
     respuestasUsuario,
+    preguntasMarcadas,
+    tiempoPorPregunta,
     tiempoRestante,
     registrarRespuesta,
+    toggleMarca,
+    registrarTiempo,
     recuperarMision,
     finalizarExamen,
     setTiempoRestante,
+    limpiarExamen,
   } = useExamStore();
 
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -32,40 +39,63 @@ export const Simulador: React.FC = () => {
   const [showMap, setShowMap] = useState(false);
   const [direction, setDirection] = useState<1 | -1>(1);
   const [showImmediateFeedback, setShowImmediateFeedback] = useState(false);
+  const [questionStartTime, setQuestionStartTime] = useState(Date.now());
 
-  // Reset feedback state when question changes
+  const saveProgressMutation = trpc.examProgress.saveProgress.useMutation();
+  const deleteProgressMutation = trpc.examProgress.deleteProgress.useMutation();
+  const loadProgressQuery = trpc.examProgress.loadProgress.useQuery(undefined, {
+    enabled: location.state?.checkResume === true,
+  });
+
+  // Reset feedback and start timer when question changes
   useEffect(() => {
     setShowImmediateFeedback(false);
+    setQuestionStartTime(Date.now());
   }, [currentQuestionIndex]);
 
   const TOTAL_TIME = 1800;
 
   const handleTimeUp = useCallback(() => {
     finalizarExamen();
-    localStorage.removeItem('cadetepro_mission_progress'); 
     navigate('/resultados', {
-      state: { answers: useExamStore.getState().respuestasUsuario, questions: preguntas, examLevelId },
+      state: { 
+        answers: useExamStore.getState().respuestasUsuario, 
+        questions: preguntas, 
+        examLevelId,
+        flaggedQuestions: useExamStore.getState().preguntasMarcadas,
+        timeSpentPerQuestion: useExamStore.getState().tiempoPorPregunta
+      },
     });
   }, [finalizarExamen, navigate, preguntas, examLevelId]);
 
   useEffect(() => {
-    const saved = localStorage.getItem('cadetepro_mission_progress');
-    if (saved) {
-      try {
-        const { answers, timeLeft, timestamp } = JSON.parse(saved);
-        if (Date.now() - timestamp < 7200000) {
-          recuperarMision(answers, timeLeft);
-        }
-      } catch (e) {
-        console.error('Error al recuperar misión');
-      }
+    if (loadProgressQuery.data && !examenActivo) {
+      recuperarMision(loadProgressQuery.data);
+      toast.success('Misión recuperada desde la base de datos central.');
     }
-  }, [recuperarMision]);
+  }, [loadProgressQuery.data, examenActivo, recuperarMision]);
+
+  // Persistencia Remota Continua (Antigravity Debounce)
+  useEffect(() => {
+    if (!examenActivo || Object.keys(respuestasUsuario).length === 0) return;
+    const saveTimer = setTimeout(() => {
+      saveProgressMutation.mutate({
+        examLevelId: examLevelId ? parseInt(examLevelId) : null,
+        isPracticeMode,
+        isMuerteSubita,
+        answers: respuestasUsuario,
+        flaggedQuestions: preguntasMarcadas,
+        timeSpentPerQuestion: tiempoPorPregunta,
+        timeLeft: tiempoRestante,
+      });
+    }, 5000); // Guardado automático cada 5 segs tras un cambio (reducimos abusos)
+    return () => clearTimeout(saveTimer);
+  }, [respuestasUsuario, preguntasMarcadas, examenActivo]);
 
   useEffect(() => {
     if (!examenActivo) return;
     const timer = setInterval(() => {
-      setTiempoRestante((prev) => {
+      setTiempoRestante((prev: number) => {
         if (prev <= 1) { clearInterval(timer); handleTimeUp(); return 0; }
         return prev - 1;
       });
@@ -73,18 +103,12 @@ export const Simulador: React.FC = () => {
     return () => clearInterval(timer);
   }, [examenActivo, setTiempoRestante, handleTimeUp]);
 
-  useEffect(() => {
-    if (examenActivo && Object.keys(respuestasUsuario).length > 0) {
-      localStorage.setItem('cadetepro_mission_progress', JSON.stringify({
-        answers: respuestasUsuario,
-        timeLeft: tiempoRestante,
-        timestamp: Date.now()
-      }));
-    }
-  }, [respuestasUsuario, tiempoRestante, examenActivo]);
-
   const goTo = (idx: number) => {
     playUIClick();
+    const timeSpent = Math.max(0, Math.floor((Date.now() - questionStartTime) / 1000));
+    if (timeSpent > 0 && preguntas[currentQuestionIndex]) {
+       registrarTiempo(preguntas[currentQuestionIndex].id, timeSpent);
+    }
     setDirection(idx > currentQuestionIndex ? 1 : -1);
     setCurrentQuestionIndex(idx);
     setShowMap(false);
@@ -95,12 +119,21 @@ export const Simulador: React.FC = () => {
       setShowExitModal(true);
     } else {
       finalizarExamen();
-      navigate('/resultados', { state: { answers: respuestasUsuario, questions: preguntas, examLevelId } });
+      navigate('/resultados', { 
+        state: { 
+          answers: respuestasUsuario, 
+          questions: preguntas, 
+          examLevelId,
+          flaggedQuestions: preguntasMarcadas,
+          timeSpentPerQuestion: tiempoPorPregunta
+        } 
+      });
     }
   };
 
   const confirmExit = () => {
-    finalizarExamen();
+    deleteProgressMutation.mutate();
+    limpiarExamen();
     navigate('/');
   };
 
@@ -114,9 +147,9 @@ export const Simulador: React.FC = () => {
         <Card className="max-w-md w-full text-center py-12 border-slate-800 bg-slate-900">
           <CardContent>
             <ShieldAlert className="w-16 h-16 text-cyan-500 mx-auto mb-4" />
-            <h2 className="text-xl font-bold mb-2 text-white">Cargando Batería Táctica</h2>
-            <p className="text-slate-400 mb-6">Preparando el entorno de misión de campo...</p>
-            <Button onClick={() => navigate('/')} className="bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-black">Abortar Misión</Button>
+            <h2 className="text-xl font-bold mb-2 text-white">Cargando examen</h2>
+            <p className="text-slate-400 mb-6">Preparando las preguntas del simulacro...</p>
+            <Button onClick={() => navigate('/')} className="bg-blue-600 hover:bg-blue-500 text-white font-black">Volver al inicio</Button>
           </CardContent>
         </Card>
       </div>
@@ -143,8 +176,8 @@ export const Simulador: React.FC = () => {
         isOpen={showExitModal}
         onClose={() => setShowExitModal(false)}
         onConfirm={confirmExit}
-        title="Misión Incompleta"
-        message={`Tienes ${preguntas.length - answeredCount} sectores sin asegurar. Si abortas ahora, se reportarán como fallidos.`}
+        title="Examen en progreso"
+        message={`Tienes ${preguntas.length - answeredCount} preguntas sin responder. Si sales ahora, se contarán como incorrectas.`}
       />
 
       {/* Question map overlay */}
@@ -178,18 +211,22 @@ export const Simulador: React.FC = () => {
                       className={`aspect-square rounded-lg text-xs font-bold transition-all ${
                         isCurrent
                           ? 'bg-cyan-600 text-slate-900 ring-2 ring-cyan-400 shadow-[0_0_10px_rgba(34,211,238,0.5)]'
-                          : answered
-                          ? 'bg-emerald-600/30 text-emerald-400 border border-emerald-600/40'
-                          : 'bg-slate-800 text-slate-500 hover:bg-slate-700'
+                          : preguntasMarcadas[q.id]
+                           ? 'bg-amber-500/20 text-amber-400 border border-amber-500'
+                           : answered
+                            ? 'bg-emerald-600/30 text-emerald-400 border border-emerald-600/40'
+                            : 'bg-slate-800 text-slate-500 hover:bg-slate-700'
                       }`}
                     >
                       {idx + 1}
+                      {preguntasMarcadas[q.id] && <Flag className="w-2.5 h-2.5 absolute -top-1 -right-1 text-amber-400 fill-amber-400" />}
                     </button>
                   );
                 })}
               </div>
-              <div className="mt-4 flex gap-4 text-[10px] text-slate-500 font-bold uppercase tracking-wider">
+              <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2 text-[10px] text-slate-500 font-bold uppercase tracking-wider justify-center">
                 <span className="flex items-center gap-1"><span className="w-3 h-3 bg-emerald-600/30 rounded inline-block" />Respondida</span>
+                <span className="flex items-center gap-1"><span className="w-3 h-3 bg-amber-500/20 border border-amber-500 rounded inline-block" />Dudosa</span>
                 <span className="flex items-center gap-1"><span className="w-3 h-3 bg-slate-800 rounded inline-block" />Pendiente</span>
               </div>
             </motion.div>
@@ -276,6 +313,17 @@ export const Simulador: React.FC = () => {
           >
             <div className="mb-6">
               <div className="inline-flex items-center gap-2 mb-4">
+                <button 
+                  onClick={() => toggleMarca(currentQuestion.id)}
+                  className={`px-3 py-1 text-[10px] font-black uppercase tracking-widest rounded-full border flex items-center gap-1 transition-all ${
+                    preguntasMarcadas[currentQuestion.id] 
+                      ? 'bg-amber-500/20 border-amber-500 text-amber-400' 
+                      : 'bg-slate-800/50 border-slate-700 text-slate-400 hover:text-white hover:bg-slate-700'
+                  }`}
+                >
+                  <Flag className={`w-3 h-3 ${preguntasMarcadas[currentQuestion.id] ? 'fill-amber-400' : ''}`} />
+                  {preguntasMarcadas[currentQuestion.id] ? 'Marcada para Intelección' : 'Marcar'}
+                </button>
                 <span className="px-3 py-1 bg-blue-500/10 text-blue-400 text-[10px] font-black uppercase tracking-widest rounded-full border border-blue-500/20">
                   {currentQuestion.area || 'General'}
                 </span>
@@ -296,14 +344,15 @@ export const Simulador: React.FC = () => {
                 )}
               </div>
               <h2 className="text-xl md:text-2xl font-bold text-slate-100 leading-tight">
-                {currentQuestion.texto}
+                {currentQuestion.text}
               </h2>
             </div>
 
             <div className="space-y-3">
-              {currentQuestion.options.map((opcion, idx) => {
+              {currentQuestion.options.slice(0, 4).map((opcion, idx) => {
                 const isSelected = selectedAnswerIndex === idx;
-                const isPractice = isPracticeMode || (examLevelId && parseInt(examLevelId) < 3);
+                // RIGOR TÁCTICO: Feedback cortado salvo simulacro local (Nivel 1 o Practice)
+                const isPractice = isPracticeMode || (examLevelId && parseInt(examLevelId) <= 1);
                 const showFeedback = (isPractice && selectedAnswerIndex !== undefined) || showImmediateFeedback;
                 const isCorrect = idx === currentQuestion.correctOptionIndex;
 
@@ -333,9 +382,20 @@ export const Simulador: React.FC = () => {
                   onClick={() => {
                     playUIClick();
                     registrarRespuesta(currentQuestion.id, idx);
+                    const timeSpent = Math.max(0, Math.floor((Date.now() - questionStartTime) / 1000));
+                    registrarTiempo(currentQuestion.id, timeSpent);
+                    setQuestionStartTime(Date.now()); // Restart local timer basically
+                    
                     if (isMuerteSubita && currentQuestion.correctOptionIndex !== idx) {
                       finalizarExamen();
-                      navigate('/resultados', { state: { answers: { ...respuestasUsuario, [currentQuestion.id]: idx }, questions: preguntas } });
+                      navigate('/resultados', { 
+                        state: { 
+                          answers: { ...respuestasUsuario, [currentQuestion.id]: idx }, 
+                          questions: preguntas,
+                          flaggedQuestions: preguntasMarcadas,
+                          timeSpentPerQuestion: { ...tiempoPorPregunta, [currentQuestion.id]: timeSpent }
+                        } 
+                      });
                     }
                   }}
                   className={`w-full text-left p-5 rounded-2xl border transition-all duration-200 flex items-center gap-4 min-h-[64px] ${btnClass}`}
@@ -348,7 +408,7 @@ export const Simulador: React.FC = () => {
               )})}
             </div>
             
-            {(isPracticeMode || (examLevelId && parseInt(examLevelId) < 3) || showImmediateFeedback) && selectedAnswerIndex !== undefined && (
+            {(isPracticeMode || (examLevelId && parseInt(examLevelId) <= 1) || showImmediateFeedback) && selectedAnswerIndex !== undefined && (
               <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mt-6 p-4 bg-slate-900/80 rounded-xl border border-slate-700 shadow-inner">
                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2 flex items-center gap-2">
                    <BrainCircuit className="w-4 h-4 text-amber-400" /> Reporte de Inteligencia

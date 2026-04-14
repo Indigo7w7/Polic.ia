@@ -105,7 +105,7 @@ export const MascotAdvisor: React.FC = () => {
   const shuffledQueueRef = useRef<MascotTip[]>(fisherYatesShuffle(MASCOT_TIPS));
   const [queueIndex, setQueueIndex] = useState(0);
 
-  const isHidden = location.pathname === '/login' || location.pathname === '/simulador' || location.pathname === '/yape-checkout';
+  const isHidden = location.pathname !== '/';
 
   // Auto-rotate every 5 minutes and show automatically
   useEffect(() => {
@@ -158,7 +158,7 @@ export const MascotAdvisor: React.FC = () => {
   if (isHidden) return null;
 
   return (
-    <div ref={mascotRef} className="fixed bottom-6 right-6 z-50 flex flex-col items-end pointer-events-none">
+    <div ref={mascotRef} className="fixed bottom-[6rem] lg:bottom-6 right-4 lg:right-6 z-[90] flex flex-col items-end pointer-events-none">
       <AnimatePresence>
         {isVisible && (
           <motion.div

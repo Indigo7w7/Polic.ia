@@ -12,7 +12,8 @@ import {
   ShieldAlert, 
   Target,
   Zap,
-  RotateCcw
+  RotateCcw,
+  Brain
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { playUIClick } from '../utils/sounds';
@@ -33,6 +34,9 @@ export const Reentrenamiento: React.FC = () => {
 
   const isPremium = isPremiumActive();
 
+  // ── Ecosistema: Conexión Reentrenamiento → FSRS ────────────────────────
+  const reviewCardMutation = trpc.leitner.reviewByQuestionId.useMutation();
+
   useEffect(() => {
     if (!isPremium) {
       toast.error('La Zona Anti-Fallo es exclusiva para usuarios PRO');
@@ -43,10 +47,19 @@ export const Reentrenamiento: React.FC = () => {
   const questions = failedQuestionsQuery.data || [];
   const currentQuestion = questions[currentIndex];
 
-  const handleAnswer = (optionIdx: number) => {
-    if (answers[currentQuestion.id] !== undefined) return; // Prevent re-answering
+  const handleAnswer = async (optionIdx: number) => {
+    if (answers[currentQuestion.id] !== undefined) return;
     playUIClick();
     setAnswers(prev => ({ ...prev, [currentQuestion.id]: optionIdx }));
+
+    const isCorrect = optionIdx === currentQuestion.correctOption;
+
+    // ── Ecosistema: Sincronizar con FSRS en background ─────────────────────────
+    // ease 3 = Bien (acertó), ease 1 = Olvidé (falló)
+    reviewCardMutation.mutate({
+      questionId: currentQuestion.id,
+      ease: isCorrect ? 3 : 1,
+    });
   };
 
   const next = () => {

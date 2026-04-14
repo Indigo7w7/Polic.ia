@@ -1,9 +1,11 @@
 import { router, protectedProcedure } from '../trpc';
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { db, users } from '../../../database/db';
 import { eq, sql } from 'drizzle-orm';
+import { getAIClient, AI_MODELS } from '../../utils/aiClient';
+import { logger } from '../utils/logger';
+import { USER_FIELDS } from '../utils/constants';
 
 // System prompt define la personalidad del "General"
 const SYSTEM_PROMPT = `
@@ -29,20 +31,29 @@ export const aiRouter = router({
       message: z.string(),
     }))
     .mutation(async ({ input, ctx }) => {
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Entorno IA no configurado por el comando central.' });
+      const genAI = getAIClient();
+      if (!genAI) {
+        throw new TRPCError({ 
+          code: 'INTERNAL_SERVER_ERROR', 
+          message: 'Entorno IA no configurado: Falta la llave de mando.' 
+        });
       }
 
-      // Check if user is PRO
-      const [user] = await db.select().from(users).where(eq(users.uid, ctx.userId));
+      // Check if user exists & is PRO
+      const [user] = await db.select(USER_FIELDS).from(users).where(eq(users.uid, ctx.userId));
+      
+      if (!user) {
+        logger.error(`[AI-CHAT] Profile not found: ${ctx.userId}`);
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'No se encontró tu perfil táctico.' });
+      }
+
       if (user.membership !== 'PRO') {
-         throw new TRPCError({ code: 'FORBIDDEN', message: 'El simulador de entrevista IA requiere rango PRO.' });
+         logger.warn(`[AI-CHAT] Blocked non-PRO user attempt: ${user.email}`);
+         throw new TRPCError({ code: 'FORBIDDEN', message: 'El simulador de entrevista personal requiere rango PRO.' });
       }
 
       try {
-        const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const model = genAI.getGenerativeModel({ model: AI_MODELS.FLASH });
 
         const chatSession = model.startChat({
           history: input.history,
@@ -52,7 +63,6 @@ export const aiRouter = router({
           },
         });
 
-        // Prepend system prompt if history is empty (first message)
         let actualMessage = input.message;
         if (input.history.length === 0) {
            actualMessage = `${SYSTEM_PROMPT}\n\n[INICIO DE ENTREVISTA]\nPostulante: ${input.message}`;
@@ -70,15 +80,13 @@ export const aiRouter = router({
 
         return { response };
       } catch (error: any) {
-        console.error('Gemini Error Details:', {
-          message: error.message,
-          stack: error.stack,
-          code: error.code,
-          status: error.status
+        logger.error('[AI-CHAT-CRITICAL]', {
+          uid: ctx.userId,
+          errorMessage: error.message,
         });
         throw new TRPCError({ 
           code: 'INTERNAL_SERVER_ERROR', 
-          message: `Fuerzas de la naturaleza interfirieron con la conexión IA: ${error.message || 'Error Desconocido'}` 
+          message: `Fuerzas de la naturaleza interfirieron: ${error.message || 'Error Desconocido'}` 
         });
       }
     }),

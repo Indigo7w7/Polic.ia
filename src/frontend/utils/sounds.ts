@@ -52,3 +52,31 @@ export const playUIClick = () => {
     // Silencio si falla AudioContext o el navegador restringe
   }
 };
+
+/**
+ * Sonido sintético de logro épico (arpegio ascendente)
+ */
+export const playEpicSuccess = () => {
+  try {
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const now = ctx.currentTime;
+    
+    // Arpegio ascendente: Do Mi Sol Do (C-E-G-C)
+    [440, 554.37, 659.25, 880].forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, now + idx * 0.1);
+      
+      gain.gain.setValueAtTime(0, now + idx * 0.1);
+      gain.gain.linearRampToValueAtTime(0.1, now + idx * 0.1 + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.1 + 0.4);
+      
+      osc.start(now + idx * 0.1);
+      osc.stop(now + idx * 0.1 + 0.5);
+    });
+  } catch (e) { /* fail silent */ }
+};

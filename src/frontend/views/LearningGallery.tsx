@@ -35,9 +35,23 @@ export const LearningGallery: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [viewerContent, setViewerContent] = useState<ContentItem | null>(null);
   const [isPerfectionMode, setIsPerfectionMode] = useState(false);
+  // ── Ecosistema: flashcards desde drill falladas ──────────────────────
+  const [failedDrillIds, setFailedDrillIds] = useState<number[]>([]);
+  const [showFlashcardBanner, setShowFlashcardBanner] = useState(false);
+  const [flashcardSaved, setFlashcardSaved] = useState(false);
 
   const areasQuery = trpc.learning.getAreas.useQuery(undefined, {
     staleTime: 1000 * 30,
+  });
+
+  // ── Ecosistema: mutation para guardar preguntas falladas como flashcards ──
+  const seedFlashcardsMutation = trpc.leitner.seedFromQuestions.useMutation({
+    onSuccess: (data) => {
+      toast.success(`⚡ ${data.created} flashcards guardadas en el Polígono. ${data.skipped > 0 ? `(${data.skipped} ya existían)` : ''}`);
+      setFlashcardSaved(true);
+      setTimeout(() => setShowFlashcardBanner(false), 3000);
+    },
+    onError: () => toast.error('Error al guardar flashcards'),
   });
 
   const contentQuery = trpc.learning.getContentByArea.useQuery(
@@ -114,6 +128,38 @@ export const LearningGallery: React.FC = () => {
         }}
       />
 
+      {/* ── ECOSISTEMA: BANNER GUARDAR FLASHCARDS ── */}
+      <AnimatePresence>
+        {showFlashcardBanner && !flashcardSaved && (
+          <motion.div
+            initial={{ opacity: 0, y: 80 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 80 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] w-full max-w-md px-4"
+          >
+            <div className="flex items-center gap-4 p-4 bg-slate-900 border border-blue-500/40 rounded-2xl shadow-2xl shadow-blue-900/40">
+              <div className="w-10 h-10 bg-blue-600/20 border border-blue-600/30 rounded-xl flex items-center justify-center shrink-0">
+                <Brain className="w-5 h-5 text-blue-400" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[10px] font-black uppercase tracking-widest text-blue-400">Guardar en Polígono FSRS</p>
+                <p className="text-xs text-slate-400">{failedDrillIds.length} preguntas falladas → flashcards</p>
+              </div>
+              <div className="flex gap-2 shrink-0">
+                <button
+                  onClick={() => seedFlashcardsMutation.mutate({ questionIds: failedDrillIds })}
+                  disabled={seedFlashcardsMutation.isPending}
+                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded-xl text-xs font-black text-white disabled:opacity-50 transition-all"
+                >
+                  {seedFlashcardsMutation.isPending ? '...' : '⚡ Guardar'}
+                </button>
+                <button onClick={() => setShowFlashcardBanner(false)} className="p-1.5 text-slate-600 hover:text-slate-400">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* ── CONTENT VIEWER MODAL ── */}
       <AnimatePresence>
         {viewerContent && (
@@ -137,11 +183,16 @@ export const LearningGallery: React.FC = () => {
                   title={viewerContent.title}
                   questions={viewerContent.questions as any[]}
                   isPerfectionMode={isPerfectionMode}
-                  onClose={() => {
+                  onClose={(failedIds?: number[]) => {
                     setViewerContent(null);
                     setIsPerfectionMode(false);
-                    // Refresh progress after completing a drill
                     progressQuery.refetch();
+                    // ── Ecosistema: si hay errores, ofrecer guardar como flashcards ──
+                    if (failedIds && failedIds.length > 0) {
+                      setFailedDrillIds(failedIds);
+                      setShowFlashcardBanner(true);
+                      setFlashcardSaved(false);
+                    }
                   }}
                 />
               ) : (
@@ -314,7 +365,7 @@ export const LearningGallery: React.FC = () => {
                 // BUG-02 FIX: pass isPremium so MissionMap enforces premium locks correctly
                 <MissionMap
                   areaName={selectedArea?.name || ''}
-                  units={contentQuery.data || []}
+                  units={(contentQuery.data || []) as any}
                   completedUnits={completedUnits}
                   isPremium={isPremium}
                   onSelectUnit={(unit) => {

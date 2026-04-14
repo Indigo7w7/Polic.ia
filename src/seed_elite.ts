@@ -1,4 +1,4 @@
-import { db, learningAreas, learningContent } from '../database/db';
+import { db, learningAreas, learningContent } from './database/db';
 
 async function seed() {
   console.log("Seeding Elite Content...");

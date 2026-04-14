@@ -6,8 +6,6 @@ import { Shield, GraduationCap, ChevronRight, Sparkles } from 'lucide-react';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
 
-import { auth } from '@/src/firebase';
-
 const schools: { id: ModalidadPostulacion; title: string; subtitle: string; welcome: string; icon: React.ReactNode; gradient: string; border: string; glow: string }[] = [
   {
     id: 'EO',
@@ -46,8 +44,7 @@ export const SchoolSelector: React.FC = () => {
     }
     
     // Admin Override: Admins don't need a school. Route them to portal.
-    const isOwner = auth.currentUser?.email?.toLowerCase().trim() === 'brizq02@gmail.com';
-    if (useUserStore.getState().role === 'admin' || isOwner) {
+    if (useUserStore.getState().role === 'admin') {
        navigate('/admin-portal', { replace: true });
     }
   }, [modalidad_postulacion, navigate]);
@@ -55,21 +52,24 @@ export const SchoolSelector: React.FC = () => {
   const handleSelect = async (modalidad: ModalidadPostulacion) => {
     if (!modalidad || modalidad_postulacion) return;
     
+    // Optimistic update
     setUserData({ modalidad_postulacion: modalidad });
 
     if (uid) {
       try {
         await selectSchool.mutateAsync({ uid, school: modalidad as 'EO' | 'EESTP' });
-        // MANDATORY: Force cache invalidation to prevent old null value from overwriting the store
+        // Force cache invalidation to prevent old null value from overwriting the store
         await utils.user.getProfile.invalidate({ uid });
-        console.log('[SYNC] Profile cache invalidated after school selection');
       } catch (e: any) {
-        console.error('Error saving modalidad:', e);
+        // Rollback optimistic update on failure
+        setUserData({ modalidad_postulacion: null });
         if (e.message?.includes('irreversible')) {
           toast.error('Ya has seleccionado una escuela anteriormente.');
-          navigate('/');
-          return;
+        } else {
+          toast.error('Error al guardar la selección. Intenta de nuevo.');
         }
+        navigate('/');
+        return;
       }
     }
 
@@ -113,7 +113,8 @@ export const SchoolSelector: React.FC = () => {
             Hola, <span className="text-blue-400">{displayName}</span>
           </h1>
           <p className="text-slate-300 text-sm max-w-sm mx-auto leading-relaxed">
-            Elige tu objetivo estratégico. Adaptaremos el entrenamiento a tu meta, o puedes explorar ambos caminos si aún no decides.
+            Elige tu objetivo estratégico. Esta selección es{' '}
+            <strong className="text-amber-400">permanente e irreversible</strong> — todo el sistema se calibrará exclusivamente para esa escuela.
           </p>
           <div className="bg-slate-800/50 border border-slate-700/50 p-4 rounded-xl text-left text-xs text-slate-400 space-y-2 max-w-sm mx-auto shadow-inner">
             <p><strong className="text-blue-400">EO (Oficiales):</strong> Exámenes con mayor profundidad teórica y de ciencias. Carrera de 5 años. Jerarquía de mando.</p>

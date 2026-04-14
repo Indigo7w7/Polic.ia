@@ -27,12 +27,15 @@ export interface UserState {
   honorPoints: number;
   meritPoints: number;
   currentStreak: number;
+  achievementsQueue: any[];
   setUserData: (data: Partial<UserState>) => void;
   activarPremium: (timestampExpiracion: string) => void;
   isPremiumActive: () => boolean;
   registrarExamen: (examId: string, score: number) => void;
   addHonorPoints: (pts: number) => void;
   addMeritPoints: (pts: number) => void;
+  pushAchievement: (achievement: any) => void;
+  popAchievement: () => void;
 }
 
 export const useUserStore = create<UserState>()(
@@ -54,6 +57,7 @@ export const useUserStore = create<UserState>()(
       honorPoints: 0,
       meritPoints: 0,
       currentStreak: 0,
+      achievementsQueue: [],
 
       setUserData: (data) => set((state) => ({ ...state, ...data })),
 
@@ -92,6 +96,17 @@ export const useUserStore = create<UserState>()(
         ...state,
         meritPoints: state.meritPoints + pts
       })),
+
+      pushAchievement: (achievement: any) => set((state) => ({
+        ...state,
+        meritPoints: state.meritPoints + (achievement.pointsReward || 0),
+        achievementsQueue: [...state.achievementsQueue, achievement]
+      })),
+
+      popAchievement: () => set((state) => ({
+        ...state,
+        achievementsQueue: state.achievementsQueue.slice(1)
+      })),
     }),
     {
       name: 'policia-pro-v2', // RENAME FOR FORCED RESET
@@ -103,6 +118,7 @@ export const useUserStore = create<UserState>()(
         examProgress: state.examProgress,
         honorPoints: state.honorPoints,
         meritPoints: state.meritPoints,
+        profileEdited: state.profileEdited,
         currentStreak: state.currentStreak,
       }),
     }

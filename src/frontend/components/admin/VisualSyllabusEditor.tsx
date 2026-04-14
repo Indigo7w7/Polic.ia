@@ -42,7 +42,16 @@ export const VisualSyllabusEditor = ({
   useEffect(() => {
     if (currentJson.data) {
       setAreaName(currentJson.data.areaName);
-      setTopics(currentJson.data.topics || []);
+      const mappedTopics = (currentJson.data.topics || []).map((t: any) => ({
+        name: t.name || 'SIN NOMBRE',
+        units: (t.units || []).map((u: any) => ({
+          title: u.title || '',
+          body: u.body || '',
+          schoolType: u.schoolType || 'BOTH',
+          questions: u.questions || []
+        }))
+      }));
+      setTopics(mappedTopics);
     }
   }, [currentJson.data]);
 

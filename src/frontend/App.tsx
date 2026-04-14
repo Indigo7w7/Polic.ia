@@ -1,46 +1,44 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
 import { BrowserRouter as Router, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense, lazy } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
 import { trpc } from '../shared/utils/trpc';
-import { auth } from '@/src/firebase';
+import { auth } from '../firebase';
 import { useUserStore } from './store/useUserStore';
-
-// BUG-07 FIX: centralize admin identity — single source of truth, easy to update
-const ADMIN_EMAILS = ['brizq02@gmail.com', 'br.mail.pnp@gmail.com'] as const;
-const isAdminEmail = (email: string | null | undefined): boolean =>
-  ADMIN_EMAILS.includes(email?.toLowerCase().trim() as any);
+import { AdminLogin } from './views/AdminLogin';
+import { RequireAuth } from './components/common/RequireAuth';
+import { RequireAdmin } from './components/common/RequireAdmin';
+import { PressureNotification } from './components/ui/PressureNotification';
+import { MascotAdvisor } from './components/MascotAdvisor';
+import { Toaster } from 'sonner';
+import { Shield, Loader2, AlertTriangle, X } from 'lucide-react';
+import { Sidebar } from './components/ui/Sidebar';
+import { TacticalErrorBoundary } from './components/common/TacticalErrorBoundary';
 
 // BUG-17 FIX: dev-only logger — zero output in production builds
 const devLog = (...args: unknown[]) => {
   if (import.meta.env.DEV) console.log(...args);
 };
-import { Dashboard } from './views/Dashboard';
-import { Simulador } from './views/Simulador';
-import { YapeCheckout } from './views/YapeCheckout';
-import { Resultados } from './views/Resultados';
-import { Flashcards } from './views/Flashcards';
-import { Ranking } from './views/Ranking';
-import { AdminCommandCenter } from './views/AdminCommandCenter';
-import { ProgressAudit } from './views/ProgressAudit';
-import { Profile } from './views/Profile';
-import { Login } from './views/Login';
-import { SchoolSelector } from './views/SchoolSelector';
-import { Reentrenamiento } from './views/Reentrenamiento';
-import { EntrevistaIA } from './views/EntrevistaIA';
-import { RequireAuth } from './components/common/RequireAuth';
-import { RequireAdmin } from './components/common/RequireAdmin';
-import { LeadMagnet } from './views/LeadMagnet';
-import { LearningGallery } from './views/LearningGallery';
-import { PressureNotification } from './components/ui/PressureNotification';
-import { MascotAdvisor } from './components/MascotAdvisor';
-import { Toaster } from 'sonner';
-import { Shield, Loader2, AlertTriangle, X } from 'lucide-react';
-import { ErrorBoundary } from './components/common/ErrorBoundary';
+
+// Lazy Loaded Routes (Performance Step 4)
+const Dashboard = lazy(() => import('./views/Dashboard').then(m => ({ default: m.Dashboard })));
+const Simulador = lazy(() => import('./views/Simulador').then(m => ({ default: m.Simulador })));
+const YapeCheckout = lazy(() => import('./views/YapeCheckout').then(m => ({ default: m.YapeCheckout })));
+const Resultados = lazy(() => import('./views/Resultados').then(m => ({ default: m.Resultados })));
+const Ranking = lazy(() => import('./views/Ranking').then(m => ({ default: m.Ranking })));
+const ProgressAudit = lazy(() => import('./views/ProgressAudit').then(m => ({ default: m.ProgressAudit })));
+const Login = lazy(() => import('./views/Login').then(m => ({ default: m.Login })));
+const SchoolSelector = lazy(() => import('./views/SchoolSelector').then(m => ({ default: m.SchoolSelector })));
+const Reentrenamiento = lazy(() => import('./views/Reentrenamiento').then(m => ({ default: m.Reentrenamiento })));
+const LeadMagnet = lazy(() => import('./views/LeadMagnet').then(m => ({ default: m.LeadMagnet })));
+const Flashcards = lazy(() => import('./views/Flashcards').then(m => ({ default: m.Flashcards })));
+const ScenariosView = lazy(() => import('./views/ScenariosView').then(m => ({ default: m.default })));
+const ScenarioChat = lazy(() => import('./components/scenarios/ScenarioChat').then(m => ({ default: m.default })));
+const ExamGeneratorView = lazy(() => import('./views/ExamGeneratorView').then(m => ({ default: m.default })));
+const AdminCommandCenter = lazy(() => import('./views/AdminCommandCenter').then(m => ({ default: m.AdminCommandCenter })));
+const LearningGallery = lazy(() => import('./views/LearningGallery').then(m => ({ default: m.LearningGallery })));
+const EntrevistaIA = lazy(() => import('./views/EntrevistaIA').then(m => ({ default: m.EntrevistaEnVivo })));
+const MedalGallery = lazy(() => import('./views/MedalGallery').then(m => ({ default: m.MedalGallery })));
+const Profile = lazy(() => import('./views/Profile').then(m => ({ default: m.Profile })));
 
 /** Full-screen loader shown while Firebase resolves auth state */
 const AuthLoader = () => (
@@ -64,12 +62,10 @@ const GlobalRedirector = () => {
   useEffect(() => {
     // 1. Administration Override (Portals)
     const adminRestrictedPaths = ['/', '/login', '/seleccionar-escuela'];
-    const rawEmail = auth.currentUser?.email;
-    const isSuperAdmin = isAdminEmail(rawEmail);
 
-    if (uid && (role === 'admin' || isSuperAdmin) && adminRestrictedPaths.includes(location.pathname)) {
-      devLog('[AUTH] High-Privilege access detected, routing to Command Center');
-      navigate('/admin-portal', { replace: true });
+    if (uid && role === 'admin' && adminRestrictedPaths.includes(location.pathname)) {
+      devLog('[AUTH] Admin access detected, routing to Command Center');
+      navigate('/admin-command-center', { replace: true });
       return;
     }
 
@@ -84,29 +80,29 @@ const GlobalRedirector = () => {
   return null;
 };
 
-// ─── GLOBAL ALERT LISTENER (para todos los usuarios) ──────────
 const GlobalAlertListener = () => {
   const { role } = useUserStore();
-  const [dismissed, setDismissed] = useState<number | null>(null);
-
-  // Public query — accessible to all authenticated users
   const broadcastQ = trpc.admin.getActiveBroadcast.useQuery(undefined, {
-    refetchInterval: 15000,
-    staleTime: 10000,
+    refetchInterval: 60000,
+    staleTime: 30000,
   });
 
   const alert = broadcastQ.data;
-  if (!alert || alert.id === dismissed || role === 'admin') return null;
+  const sessionKey = alert ? `broadcast_seen_${alert.id}` : null;
+  const alreadySeen = sessionKey ? sessionStorage.getItem(sessionKey) === 'true' : false;
+  const [dismissed, setDismissed] = useState(alreadySeen);
+
+  if (!alert || dismissed || role === 'admin') return null;
+
+  const handleDismiss = () => {
+    if (sessionKey) sessionStorage.setItem(sessionKey, 'true');
+    setDismissed(true);
+  };
 
   return (
     <div className="fixed inset-0 z-[9990] flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm">
       <div className="relative w-full max-w-lg bg-black border-2 border-red-500 rounded-xl overflow-hidden shadow-[0_0_80px_rgba(239,68,68,0.4)]">
-        {/* Pulsing red overlay */}
         <div className="absolute inset-0 pointer-events-none animate-pulse bg-red-950/15" />
-        {/* Scanlines */}
-        <div className="absolute inset-0 pointer-events-none opacity-10" style={{
-          backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(239,68,68,0.3) 2px, rgba(239,68,68,0.3) 4px)'
-        }} />
         <div className="relative p-6">
           <div className="flex items-center gap-3 mb-4">
             <div className="w-10 h-10 bg-red-600 rounded-full flex items-center justify-center animate-bounce">
@@ -125,7 +121,7 @@ const GlobalAlertListener = () => {
               TIPO: <span className="text-red-400 font-black">{alert.type}</span>
             </span>
             <button
-              onClick={() => setDismissed(alert.id)}
+              onClick={handleDismiss}
               className="flex items-center gap-2 px-5 py-2 bg-red-600 hover:bg-red-500 text-white font-black text-[11px] tracking-widest uppercase rounded-lg transition-colors"
             >
               <X className="w-4 h-4" /> ACUSADO RECIBO
@@ -139,9 +135,10 @@ const GlobalAlertListener = () => {
 
 function AppContent() {
   const { uid, role, setUserData } = useUserStore();
+  const location = useLocation();
   const [authResolved, setAuthResolved] = useState(false);
+  const [isAuthChecking, setIsAuthChecking] = useState(true);
 
-  // Sync with MySQL
   const profileQuery = trpc.user.getProfile.useQuery(
     { uid: uid || '' },
     { enabled: !!uid, refetchOnWindowFocus: false }
@@ -149,88 +146,57 @@ function AppContent() {
 
   useEffect(() => {
     if (profileQuery.data) {
-      console.log(`[PROFILE] Backend response user.school: ${profileQuery.data.school}`);
       const data = profileQuery.data;
       const currentState = useUserStore.getState();
-      
       setUserData({
         uid: data.uid,
         name: data.name || 'Postulante',
         photoURL: data.photoURL || null,
-        // Override DB with our bypass logic if already set
         role: data.role || 'user',
         status: data.status || 'ACTIVE',
         estado_financiero: data.membership || 'FREE',
         acceso_unificado: false,
-        // Local state ALWAYS wins for school selection to avoid reset loops
         modalidad_postulacion: currentState.modalidad_postulacion || (data.school as any) || null,
         fecha_expiracion_premium: data.premiumExpiration || null,
       });
+      setAuthResolved(true);
     }
   }, [profileQuery.data, setUserData]);
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
       if (user) {
-        const normalizedEmail = user.email?.toLowerCase().trim();
-        devLog(`[AUTH] Firebase Login: ${normalizedEmail}`);
-        devLog(`[AUTH] ID: ${user.uid}`);
-
         try {
           const idToken = await user.getIdToken(false);
           localStorage.setItem('authToken', idToken);
-        } catch (e) {
-          devLog('[AUTH] Could not get idToken:', e);
-        }
-
-        // BUG-07 FIX: use centralized helper instead of inline string comparison
-        const localRole = isAdminEmail(normalizedEmail) ? 'admin' : 'user';
-        if (localRole === 'admin') devLog('[AUTH] ADMIN access granted');
-
-        setUserData({
-          uid: user.uid,
-          role: localRole as 'admin' | 'user',
-          photoURL: user.photoURL,
-        });
+        } catch (e) { /* ignore */ }
+        setUserData({ uid: user.uid, role: 'user', photoURL: user.photoURL });
+        setIsAuthChecking(false);
       } else {
-        devLog('[AUTH] No Firebase user detected');
         localStorage.removeItem('authToken');
         setUserData({ uid: null, estado_financiero: 'FREE', status: 'ACTIVE', fecha_expiracion_premium: null, role: 'user', photoURL: null, modalidad_postulacion: null });
+        setIsAuthChecking(false);
         setAuthResolved(true);
       }
     });
-
     return () => unsubscribeAuth();
   }, [setUserData]);
 
-
   useEffect(() => {
-    // BUG-07 FIX: use centralized helper for admin check
-    const isSuperAdmin = isAdminEmail(auth.currentUser?.email);
-
-    if (profileQuery.status === 'success' || !uid) {
+    if (isAuthChecking) return;
+    if (!uid || profileQuery.status === 'error') {
       setAuthResolved(true);
-    } else if (profileQuery.status === 'error') {
-      devLog('[APP] Error al cargar el perfil desde el backend:', profileQuery.error);
-      setAuthResolved(true);
-      if (isSuperAdmin) {
-        setUserData({ role: 'admin' });
-      }
     }
-  }, [profileQuery.status, uid, profileQuery.error, setUserData]);
+  }, [profileQuery.status, uid, isAuthChecking]);
 
-  // Periodically update user's lastActive timestamp (Point 3: Every 3 min)
   const updateActivityMutation = trpc.user.updateLastSeen.useMutation();
   useEffect(() => {
     if (!uid) return;
-    const mutate = updateActivityMutation.mutateAsync;
     const interval = setInterval(() => {
-      // BUG-08 FIX: use stable ref inside closure, not the mutation object in deps
-      mutate({ uid }).catch(() => null);
-    }, 180000); // 3 minutes
+      updateActivityMutation.mutateAsync({ uid }).catch(() => null);
+    }, 180000);
     return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [uid]);
+  }, [uid, updateActivityMutation]);
 
   if (!authResolved) return <AuthLoader />;
 
@@ -241,42 +207,48 @@ function AppContent() {
       <Toaster position="top-center" theme="dark" richColors />
       <PressureNotification />
       {role !== 'admin' && <MascotAdvisor />}
-      <Routes>
-        {/* Public */}
-        <Route path="/login" element={<Login />} />
-        <Route path="/cebo" element={<LeadMagnet />} />
 
-        {/* Protected: any logged-in user */}
-        <Route path="/" element={<RequireAuth><Dashboard /></RequireAuth>} />
-        <Route path="/seleccionar-escuela" element={<RequireAuth><SchoolSelector /></RequireAuth>} />
-        <Route path="/yape-checkout" element={<RequireAuth><YapeCheckout /></RequireAuth>} />
-        <Route path="/resultados" element={<RequireAuth><Resultados /></RequireAuth>} />
-        <Route path="/simulador" element={<RequireAuth><Simulador /></RequireAuth>} />
-        <Route path="/galeria" element={<RequireAuth><LearningGallery /></RequireAuth>} />
-        <Route path="/ranking" element={<RequireAuth><Ranking /></RequireAuth>} />
-        <Route path="/reentrenamiento" element={<RequireAuth><Reentrenamiento /></RequireAuth>} />
-        <Route path="/entrevista" element={<RequireAuth><EntrevistaIA /></RequireAuth>} />
+      {uid && role !== 'admin' && !['/login', '/cebo', '/yape-checkout', '/seleccionar-escuela', '/entrevista'].includes(location.pathname) && !location.pathname.includes('/play/') && (
+         <Sidebar />
+      )}
 
-        {/* Protected: Premium only */}
-        <Route path="/poligono" element={<RequireAuth><Flashcards /></RequireAuth>} />
-        <Route path="/progreso" element={<RequireAuth><ProgressAudit /></RequireAuth>} />
-        <Route path="/perfil" element={<RequireAuth><Profile /></RequireAuth>} />
-
-        {/* Protected: Admin only */}
-        <Route path="/admin-portal"     element={<RequireAdmin><AdminCommandCenter /></RequireAdmin>} />
-        <Route path="/comando-central"  element={<RequireAdmin><AdminCommandCenter /></RequireAdmin>} />
-      </Routes>
-
+      <div className={(uid && role !== 'admin' && !['/login', '/cebo', '/entrevista'].includes(location.pathname) && !location.pathname.includes('/play/')) ? 'lg:pl-24 transition-all duration-300 min-h-screen' : 'transition-all duration-300 min-h-screen'}>
+        <Suspense fallback={<AuthLoader />}>
+          <Routes>
+            <Route path="/admin-login" element={<AdminLogin />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/cebo" element={<LeadMagnet />} />
+            <Route path="/" element={<RequireAuth><Dashboard /></RequireAuth>} />
+            <Route path="/seleccionar-escuela" element={<RequireAuth><SchoolSelector /></RequireAuth>} />
+            <Route path="/yape-checkout" element={<RequireAuth><YapeCheckout /></RequireAuth>} />
+            <Route path="/resultados" element={<RequireAuth><Resultados /></RequireAuth>} />
+            <Route path="/simulador" element={<RequireAuth><Simulador /></RequireAuth>} />
+            <Route path="/galeria" element={<RequireAuth><LearningGallery /></RequireAuth>} />
+            <Route path="/ranking" element={<RequireAuth><Ranking /></RequireAuth>} />
+            <Route path="/reentrenamiento" element={<RequireAuth><Reentrenamiento /></RequireAuth>} />
+            <Route path="/entrevista" element={<RequireAuth><EntrevistaIA /></RequireAuth>} />
+            <Route path="/medallas" element={<RequireAuth><MedalGallery /></RequireAuth>} />
+            <Route path="/poligono" element={<RequireAuth><Flashcards /></RequireAuth>} />
+            <Route path="/progreso" element={<RequireAuth><ProgressAudit /></RequireAuth>} />
+            <Route path="/perfil" element={<RequireAuth><Profile /></RequireAuth>} />
+            <Route path="/dashboard/scenarios" element={<RequireAuth><ScenariosView /></RequireAuth>} />
+            <Route path="/dashboard/scenarios/:scenarioId/play/:attemptId" element={<RequireAuth><ScenarioChat /></RequireAuth>} />
+            <Route path="/generator" element={<RequireAuth><ExamGeneratorView /></RequireAuth>} />
+            <Route path="/admin-portal" element={<RequireAdmin><AdminCommandCenter /></RequireAdmin>} />
+            <Route path="/admin-command-center" element={<RequireAdmin><AdminCommandCenter /></RequireAdmin>} />
+          </Routes>
+        </Suspense>
+      </div>
     </div>
   );
 }
 
 export default function App() {
   return (
-    <ErrorBoundary>
+    <TacticalErrorBoundary>
       <Router>
         <AppContent />
       </Router>
-    </ErrorBoundary>
+    </TacticalErrorBoundary>
   );
 }

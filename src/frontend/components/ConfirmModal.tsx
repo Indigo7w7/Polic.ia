@@ -27,7 +27,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({ isOpen, onClose, onC
           <Button variant="secondary" fullWidth onClick={onClose}>
             Cancelar
           </Button>
-          <Button variant="destructive" fullWidth onClick={onConfirm}>
+          <Button variant="primary" fullWidth onClick={onConfirm}>
             Abandonar
           </Button>
         </div>

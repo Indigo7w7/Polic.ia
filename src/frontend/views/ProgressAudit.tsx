@@ -1,34 +1,16 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useUserStore } from '../store/useUserStore';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
-import { 
-  Radar, 
-  RadarChart, 
-  PolarGrid, 
-  PolarAngleAxis, 
-  PolarRadiusAxis, 
-  ResponsiveContainer,
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend
+import {
+  Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer,
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, AreaChart, Area
 } from 'recharts';
-import { 
-  ChevronLeft, 
-  Target, 
-  TrendingUp, 
-  ShieldCheck, 
-  AlertCircle,
-  Brain,
-  Lock
+import {
+  ChevronLeft, Target, TrendingUp, ShieldCheck, AlertCircle, Brain, Lock,
+  BookOpen, Zap, Award, BarChart3
 } from 'lucide-react';
-
 import { trpc } from '../../shared/utils/trpc';
-// ... other imports
+import { motion } from 'motion/react';
 
 export const ProgressAudit: React.FC = () => {
   const navigate = useNavigate();
@@ -38,176 +20,186 @@ export const ProgressAudit: React.FC = () => {
   const historyQuery = trpc.exam.getHistory.useQuery({ userId: uid || '' }, { enabled: !!uid });
   const leitnerStatsQuery = trpc.leitner.getStatsByArea.useQuery({ userId: uid || '' }, { enabled: !!uid });
 
-  const historyData = (historyQuery.data || []).slice(-15).map((d, i) => ({
-    name: `Ex ${i + 1}`,
-    score: Math.round(((d.score || 0) / 5) * 10) / 10, // Assuming 0-100 score, scaling to 20
+  const history = historyQuery.data || [];
+  const areaStats = leitnerStatsQuery.data || [];
+
+  // Build line chart data (last 15 exams, score normalized to /20)
+  const historyData = history.slice(-15).map((d: any, i: number) => ({
+    name: `Eval ${i + 1}`,
+    puntaje: d.score != null ? Math.round((d.score / (d.totalQuestions || 20)) * 20 * 10) / 10 : 0,
   }));
 
-  const areaStats = leitnerStatsQuery.data || [];
-  const categories = ['Constitución', 'Uso Fuerza', 'Código Penal', 'Derechos HH', 'Doctrina PNP', 'Cultura Gral'];
-  const radarData = categories.map(c => {
-    const area = areaStats.find(s => s.areaName === c);
-    let A = 80;
-    if (area) A = Math.max(20, 100 - (area.count * 5));
-    return { subject: c, A, full: 100 };
-  });
+  // Radar — build from leitner area stats, dynamically
+  const radarData = areaStats.length > 0
+    ? areaStats.slice(0, 6).map((area: any) => ({
+        subject: area.areaName?.slice(0, 12) || 'General',
+        nivel: Math.max(10, 100 - (area.count || 0) * 4),
+        fullMark: 100,
+      }))
+    : [
+        { subject: 'Constitución', nivel: 70, fullMark: 100 },
+        { subject: 'Derechos HH', nivel: 55, fullMark: 100 },
+        { subject: 'Cód. Penal', nivel: 40, fullMark: 100 },
+        { subject: 'Razonamiento', nivel: 80, fullMark: 100 },
+        { subject: 'Cultura Gral', nivel: 60, fullMark: 100 },
+        { subject: 'Psicométrico', nivel: 75, fullMark: 100 },
+      ];
 
-  const sortedAreas = [...areaStats].sort((a, b) => b.count - a.count);
-  const debilidad = sortedAreas.length > 0 ? sortedAreas[0].areaName : 'Desconocida';
-  const fortaleza = sortedAreas.length > 0 ? sortedAreas[sortedAreas.length - 1].areaName : 'General';
-  const insights = {
-    fortaleza,
-    debilidad,
-    recomendacion: debilidad !== 'Desconocida' ? `Aumenta flashcards en ${debilidad}.` : 'Sigue practicando simulacros.'
-  };
+  const sortedAreas = [...areaStats].sort((a: any, b: any) => b.count - a.count);
+  const weakest = sortedAreas[0];
+  const strongest = sortedAreas[sortedAreas.length - 1];
+  const avgScore = historyData.length
+    ? Math.round((historyData.reduce((s, d) => s + d.puntaje, 0) / historyData.length) * 10) / 10
+    : null;
+
+  const totalExams = history.length;
+  const lastScore = historyData[historyData.length - 1]?.puntaje ?? null;
 
   return (
-    <div className="min-h-screen bg-[#0f172a] text-[#f8fafc] p-4 md:p-8 font-sans">
-      <header className="max-w-5xl mx-auto mb-8">
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-6 p-8 bg-slate-900/40 border border-slate-800 rounded-[2.5rem] relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/[0.03] rounded-full blur-[80px]" />
-          
-          <div className="flex items-center gap-6 relative z-10 w-full md:w-auto">
-            <button 
-              onClick={() => navigate('/')}
-              className="p-3 bg-slate-950 border border-white/5 rounded-2xl text-slate-500 hover:text-white transition-all hover:scale-105"
+    <div className="min-h-screen bg-[#0a0f1e] text-slate-200">
+
+      {/* ─── Header compacto ─── */}
+      <div className="sticky top-0 z-10 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 px-4 py-3 flex items-center gap-3">
+        <button
+          onClick={() => navigate('/')}
+          className="p-2 bg-slate-800 hover:bg-slate-700 rounded-xl transition-all"
+        >
+          <ChevronLeft className="w-5 h-5 text-slate-300" />
+        </button>
+        <div className="flex-1">
+          <h1 className="text-base font-black text-white">Radar de Rendimiento</h1>
+          <p className="text-xs text-slate-500">Análisis de tu progreso académico</p>
+        </div>
+        <BarChart3 className="w-6 h-6 text-emerald-400" />
+      </div>
+
+      <div className="max-w-4xl mx-auto px-4 py-6 pb-28 space-y-5">
+
+        {/* ─── Stats rápidos ─── */}
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { icon: Award, label: 'Evaluaciones', value: totalExams, color: 'text-blue-400', bg: 'bg-blue-500/10 border-blue-500/20' },
+            { icon: TrendingUp, label: 'Prom. /20', value: avgScore ?? '—', color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/20' },
+            { icon: Zap, label: 'Último', value: lastScore ?? '—', color: 'text-amber-400', bg: 'bg-amber-500/10 border-amber-500/20' },
+          ].map(({ icon: Icon, label, value, color, bg }) => (
+            <motion.div
+              key={label}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className={`p-3 sm:p-4 rounded-2xl border ${bg} text-center`}
             >
-              <ChevronLeft className="w-6 h-6" />
-            </button>
-            <div>
-              <div className="text-[10px] font-black text-emerald-500 uppercase tracking-[0.3em] mb-1">Análisis de Rendimiento_</div>
-              <h1 className="text-3xl font-black text-white uppercase tracking-tighter">Auditoría</h1>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-4 relative z-10">
-            <div className="p-4 bg-slate-950 border border-white/5 rounded-2xl text-emerald-500">
-              <TrendingUp className="w-8 h-8" />
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-5xl mx-auto space-y-6">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Radar Chart: Strengths & Weaknesses */}
-          <Card className="bg-slate-900 border-slate-800">
-            <CardHeader>
-              <CardTitle className="text-sm flex items-center gap-2">
-                <Target className="w-4 h-4 text-blue-400" />
-                Perfil de Competencias
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="h-[350px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <RadarChart cx="50%" cy="50%" outerRadius="80%" data={radarData}>
-                  <PolarGrid stroke="#334155" />
-                  <PolarAngleAxis dataKey="subject" tick={{ fill: '#94a3b8', fontSize: 10 }} />
-                  <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
-                  <Radar
-                    name="Rendimiento"
-                    dataKey="A"
-                    stroke="#3b82f6"
-                    fill="#3b82f6"
-                    fillOpacity={0.3}
-                  />
-                </RadarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-
-          {/* Line Chart: Historical Evolution */}
-          <Card className="bg-slate-900 border-slate-800">
-            <CardHeader>
-              <CardTitle className="text-sm flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-emerald-400" />
-                Evolución de Puntaje
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="h-[350px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={historyData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                  <XAxis 
-                    dataKey="name" 
-                    stroke="#64748b" 
-                    fontSize={10} 
-                    tickLine={false} 
-                    axisLine={false} 
-                  />
-                  <YAxis 
-                    stroke="#64748b" 
-                    fontSize={10} 
-                    tickLine={false} 
-                    axisLine={false} 
-                    domain={[0, 20]}
-                  />
-                  <Tooltip 
-                    contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px' }}
-                    itemStyle={{ color: '#3b82f6' }}
-                  />
-                  <Line 
-                    type="monotone" 
-                    dataKey="score" 
-                    stroke="#10b981" 
-                    strokeWidth={3} 
-                    dot={{ fill: '#10b981', r: 4 }} 
-                    activeDot={{ r: 6, strokeWidth: 0 }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
+              <Icon className={`w-5 h-5 mx-auto mb-1 ${color}`} />
+              <p className={`text-lg sm:text-2xl font-black ${color}`}>{value}</p>
+              <p className="text-[9px] sm:text-[10px] text-slate-500 font-bold uppercase tracking-wider">{label}</p>
+            </motion.div>
+          ))}
         </div>
 
-        {/* Tactical Summary Cards */}
-        <div className="relative mt-8">
+        {/* ─── Evolución de puntaje ─── */}
+        <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 sm:p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <TrendingUp className="w-4 h-4 text-emerald-400" />
+            <h2 className="text-sm font-black text-white uppercase tracking-wider">Evolución de Puntaje</h2>
+          </div>
+          {historyData.length === 0 ? (
+            <div className="h-[180px] flex flex-col items-center justify-center text-slate-600">
+              <BookOpen className="w-10 h-10 mb-2 opacity-30" />
+              <p className="text-xs font-bold">Completa al menos un examen para ver tu evolución</p>
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={180}>
+              <AreaChart data={historyData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="scoreGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                <XAxis dataKey="name" stroke="#475569" fontSize={9} tickLine={false} axisLine={false} />
+                <YAxis stroke="#475569" fontSize={9} tickLine={false} axisLine={false} domain={[0, 20]} />
+                <Tooltip
+                  contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '12px', fontSize: 12 }}
+                  itemStyle={{ color: '#10b981' }}
+                />
+                <Area type="monotone" dataKey="puntaje" stroke="#10b981" strokeWidth={2.5} fill="url(#scoreGrad)" dot={{ fill: '#10b981', r: 3, strokeWidth: 0 }} activeDot={{ r: 5 }} />
+              </AreaChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+
+        {/* ─── Perfil de competencias radar ─── */}
+        <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 sm:p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <Target className="w-4 h-4 text-blue-400" />
+            <h2 className="text-sm font-black text-white uppercase tracking-wider">Perfil de Competencias</h2>
+          </div>
+          <ResponsiveContainer width="100%" height={220}>
+            <RadarChart cx="50%" cy="50%" outerRadius="75%" data={radarData}>
+              <PolarGrid stroke="#1e293b" />
+              <PolarAngleAxis dataKey="subject" tick={{ fill: '#64748b', fontSize: 9, fontWeight: 'bold' }} />
+              <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
+              <Radar name="Nivel" dataKey="nivel" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.25} strokeWidth={2} />
+            </RadarChart>
+          </ResponsiveContainer>
+          {areaStats.length === 0 && (
+            <p className="text-center text-[10px] text-slate-600 font-bold mt-2">
+              Este gráfico se actualiza a medida que completas flashcards y exámenes
+            </p>
+          )}
+        </div>
+
+        {/* ─── Insights PRO ─── */}
+        <div className="relative">
           {!isPremium && (
-            <div className="absolute inset-0 z-10 backdrop-blur-md bg-slate-900/60 rounded-2xl flex flex-col items-center justify-center p-6 border border-slate-700 shadow-2xl">
-              <Lock className="w-10 h-10 text-amber-400 mb-4 drop-shadow-lg" />
-              <h3 className="text-xl font-black text-white mb-2 tracking-tight">Análisis Táctico Bloqueado</h3>
-              <p className="text-sm text-slate-300 text-center max-w-md mb-6 leading-relaxed">Descubre exactamente en qué temas estás fallando y recibe recomendaciones de estudio generadas por IA.</p>
-              <button onClick={() => navigate('/yape-checkout')} className="px-8 py-3 bg-amber-500 hover:bg-amber-400 text-black font-black uppercase tracking-widest text-xs rounded-xl transition-all shadow-lg shadow-amber-500/20">
-                Desbloquear Premium
+            <div className="absolute inset-0 z-10 backdrop-blur-md bg-slate-900/70 rounded-2xl flex flex-col items-center justify-center p-6 border border-slate-700">
+              <Lock className="w-8 h-8 text-amber-400 mb-3" />
+              <h3 className="text-base font-black text-white mb-1">Análisis Detallado PRO</h3>
+              <p className="text-xs text-slate-400 text-center mb-5 max-w-xs leading-relaxed">
+                Descubre exactamente en qué áreas necesitas mayor refuerzo con recomendaciones personalizadas.
+              </p>
+              <button onClick={() => navigate('/yape-checkout')} className="px-6 py-3 bg-amber-500 hover:bg-amber-400 text-black font-black text-xs rounded-xl transition-all">
+                Desbloquear PRO
               </button>
             </div>
           )}
-          <div className={`grid grid-cols-1 md:grid-cols-3 gap-4 ${!isPremium ? 'opacity-40 pointer-events-none filter blur-md select-none' : ''}`}>
-          <Card className="bg-slate-900 border-slate-800 border-l-4 border-l-emerald-500">
-            <CardContent className="p-6">
-              <div className="flex items-center gap-3 mb-2">
-                <ShieldCheck className="w-5 h-5 text-emerald-400" />
-                <h3 className="text-sm font-bold uppercase tracking-wider">Fortaleza Principal</h3>
-              </div>
-              <p className="text-xl font-bold">{insights.fortaleza}</p>
-              <p className="text-xs text-slate-500 mt-1">Mejor retención en Leitner.</p>
-            </CardContent>
-          </Card>
+          <div className={`grid grid-cols-1 sm:grid-cols-3 gap-3 ${!isPremium ? 'opacity-30 pointer-events-none blur-sm' : ''}`}>
 
-          <Card className="bg-slate-900 border-slate-800 border-l-4 border-l-amber-500">
-            <CardContent className="p-6">
-              <div className="flex items-center gap-3 mb-2">
-                <AlertCircle className="w-5 h-5 text-amber-400" />
-                <h3 className="text-sm font-bold uppercase tracking-wider">Punto Crítico</h3>
+            <div className="p-4 bg-slate-900/60 border border-l-4 border-emerald-500 border-r-slate-800 border-t-slate-800 border-b-slate-800 rounded-2xl">
+              <div className="flex items-center gap-2 mb-2">
+                <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">Punto Fuerte</span>
               </div>
-              <p className="text-xl font-bold">{insights.debilidad}</p>
-              <p className="text-xs text-slate-500 mt-1">Acumula más errores en esta área.</p>
-            </CardContent>
-          </Card>
+              <p className="font-black text-white text-sm">{strongest?.areaName || 'Sin datos'}</p>
+              <p className="text-[10px] text-slate-500 mt-0.5">Mejor retención en fichas de estudio</p>
+            </div>
 
-          <Card className="bg-slate-900 border-slate-800 border-l-4 border-l-blue-500">
-            <CardContent className="p-6">
-              <div className="flex items-center gap-3 mb-2">
-                <Brain className="w-5 h-5 text-blue-400" />
-                <h3 className="text-sm font-bold uppercase tracking-wider">Recomendación AI</h3>
+            <div className="p-4 bg-slate-900/60 border border-l-4 border-amber-500 border-r-slate-800 border-t-slate-800 border-b-slate-800 rounded-2xl">
+              <div className="flex items-center gap-2 mb-2">
+                <AlertCircle className="w-4 h-4 text-amber-400" />
+                <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">Área Crítica</span>
               </div>
-              <p className="text-xl font-bold">{insights.recomendacion.split('.')[0]}</p>
-              <p className="text-xs text-slate-500 mt-1">{insights.recomendacion.split('.')[1] || ''}</p>
-            </CardContent>
-          </Card>
+              <p className="font-black text-white text-sm">{weakest?.areaName || 'Sin datos'}</p>
+              <p className="text-[10px] text-slate-500 mt-0.5">Mayor concentración de errores</p>
+            </div>
+
+            <div className="p-4 bg-slate-900/60 border border-l-4 border-blue-500 border-r-slate-800 border-t-slate-800 border-b-slate-800 rounded-2xl">
+              <div className="flex items-center gap-2 mb-2">
+                <Brain className="w-4 h-4 text-blue-400" />
+                <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">Recomendación</span>
+              </div>
+              <p className="font-black text-white text-sm">
+                {weakest?.areaName ? `Refuerza ${weakest.areaName}` : 'Completa más exámenes'}
+              </p>
+              <p className="text-[10px] text-slate-500 mt-0.5">
+                {weakest ? `${weakest.count} errores registrados` : 'Para obtener análisis personalizados'}
+              </p>
+            </div>
+
           </div>
         </div>
-      </main>
+
+      </div>
     </div>
   );
 };

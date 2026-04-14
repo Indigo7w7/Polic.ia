@@ -14,6 +14,8 @@ interface LocationState {
   answers: Record<string, number>;
   questions: Question[];
   examLevelId?: string;
+  flaggedQuestions?: Record<string, boolean>;
+  timeSpentPerQuestion?: Record<string, number>;
 }
 
 export const Resultados: React.FC = () => {
@@ -23,6 +25,12 @@ export const Resultados: React.FC = () => {
   const isPremium = isPremiumActive();
   const submitAttempt = trpc.exam.submitAttempt.useMutation();
   const state = location.state as LocationState;
+  const { 
+    answers = {}, 
+    questions = [], 
+    flaggedQuestions = {}, 
+    timeSpentPerQuestion = {} 
+  } = state || {};
   const hasSaved = useRef(false);
   const [isSaving, setIsSaving] = useState(true);
 
@@ -37,7 +45,6 @@ export const Resultados: React.FC = () => {
       hasSaved.current = true;
 
       try {
-        const { answers, questions } = state;
         let correctCount = 0;
         const processedAnswers = questions.map((q) => {
           const userAnswer = answers[q.id];
@@ -65,6 +72,12 @@ export const Resultados: React.FC = () => {
           triggerTacticalVictory(response.meritPointsEarned > 100 ? 2 : 1);
         }
 
+        if (response.achievementsUnlocked && response.achievementsUnlocked.length > 0) {
+          response.achievementsUnlocked.forEach((ach: any) => {
+            useUserStore.getState().pushAchievement(ach);
+          });
+        }
+
         if (state.examLevelId) {
           registrarExamen(state.examLevelId, scorePercentage);
           if (scorePercentage >= 0.55) {
@@ -86,21 +99,33 @@ export const Resultados: React.FC = () => {
 
   if (!state) return null;
 
-  const { answers, questions } = state;
-  let correctCount = 0;
-  const failedQuestions: Question[] = [];
+  const { 
+    correctCount, 
+    questionsToReview, 
+    scorePercentage 
+  } = React.useMemo(() => {
+    let count = 0;
+    const reviewList: Question[] = [];
+    
+    questions.forEach((q) => {
+      const userAnswer = answers[q.id];
+      const isCorrect = userAnswer !== undefined && userAnswer === q.correctOptionIndex;
+      if (isCorrect) count++;
+      if (!isCorrect || flaggedQuestions[q.id]) {
+        reviewList.push(q);
+      }
+    });
 
-  questions.forEach((q) => {
-    const userAnswer = answers[q.id];
-    const isCorrect = userAnswer !== undefined && userAnswer === q.correctOptionIndex;
-    if (isCorrect) {
-      correctCount++;
-    } else {
-      failedQuestions.push(q);
-    }
-  });
+    const percentage = questions.length > 0 ? Math.round((count / questions.length) * 100) : 0;
+    
+    return { 
+      correctCount: count, 
+      questionsToReview: reviewList, 
+      scorePercentage: percentage 
+    };
+  }, [answers, questions, flaggedQuestions]);
 
-  const scorePercentage = questions.length > 0 ? Math.round((correctCount / questions.length) * 100) : 0;
+  const [showReview, setShowReview] = useState(false);
 
   return (
     <div className="min-h-screen bg-[#020617] text-slate-200 p-4 md:p-8 font-sans relative overflow-hidden">
@@ -132,54 +157,100 @@ export const Resultados: React.FC = () => {
         </header>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {[
-            { label: 'Precisión Académica', value: `${scorePercentage}%`, color: 'text-blue-400', icon: Target },
-            { label: 'Sectores Asegurados', value: correctCount, color: 'text-emerald-400', icon: CheckCircle2 },
-            { label: 'Bajas Tac/Errores', value: failedQuestions.length, color: 'text-red-400', icon: XCircle },
-          ].map((stat, i) => (
-            <Card key={i} className="bg-slate-900/40 border-slate-800 p-6 flex flex-col items-center justify-center relative overflow-hidden group">
-              <div className={`absolute top-0 left-0 w-1 h-full ${stat.color.replace('text', 'bg')} opacity-50`} />
-              <stat.icon className={`w-5 h-5 ${stat.color} mb-3`} />
-              <div className="text-3xl font-black text-white mb-1 font-mono tracking-tighter">{stat.value}</div>
-              <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">{stat.label}</p>
-            </Card>
-          ))}
-        </div>
+            {[
+              { label: 'Precisión Académica', value: `${scorePercentage}%`, color: 'text-blue-400', icon: Target },
+              { label: 'Sectores Asegurados', value: correctCount, color: 'text-emerald-400', icon: CheckCircle2 },
+              { label: 'Bajas Tac/Errores', value: questions.length - correctCount, color: 'text-red-400', icon: XCircle },
+            ].map((stat, i) => (
+              <Card key={i} className="bg-slate-900/40 border-slate-800 p-6 flex flex-col items-center justify-center relative overflow-hidden group">
+                <div className={`absolute top-0 left-0 w-1 h-full ${stat.color.replace('text', 'bg')} opacity-50`} />
+                <stat.icon className={`w-5 h-5 ${stat.color} mb-3`} />
+                <div className="text-3xl font-black text-white mb-1 font-mono tracking-tighter">{stat.value}</div>
+                <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">{stat.label}</p>
+              </Card>
+            ))}
+          </div>
 
-        {failedQuestions.length > 0 && (
-          <Card className="border-red-900/30 bg-red-950/10 mb-6">
+          <div className="flex justify-center mt-6">
+            <Button 
+               variant="outline" 
+               className="border-blue-500/30 text-blue-400 hover:bg-blue-500/10 gap-2 font-black uppercase tracking-widest text-xs h-12"
+               onClick={() => setShowReview(!showReview)}
+            >
+              <BrainCircuit className="w-4 h-4" />
+              {showReview ? 'Ocultar Análisis Cognitivo' : 'Ver Análisis Cognitivo (Revisión)'}
+            </Button>
+          </div>
+
+        {showReview && questionsToReview.length > 0 && (
+          <Card className="border-slate-800 bg-slate-900/60 mb-6 backdrop-blur-sm">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-red-400">
-                <BrainCircuit className="w-5 h-5" />
-                Pipeline de Errores Activado
+              <CardTitle className="flex items-center justify-between text-slate-200">
+                <div className="flex items-center gap-2">
+                  <BrainCircuit className="w-5 h-5 text-blue-400" />
+                  Archivo de Revisión Confidencial
+                </div>
+                <span className="text-xs font-mono text-slate-500 bg-slate-950 px-3 py-1 rounded bg-slate-950/50">
+                  {questionsToReview.length} entradas evaluadas
+                </span>
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-slate-300 mb-4">
-                Se han enviado {failedQuestions.length} preguntas al Polígono de Tiro Cognitivo (Algoritmo Leitner) para tu próximo repaso.
+              <p className="text-slate-400 mb-6 text-sm">
+                 Aquí se listan tus fallos y las preguntas que marcaste manualmente durante el simulacro. Todos tus fallos han sido exportados al simulador de repeticiones (FSRS).
               </p>
-              <div className="space-y-4">
-                {failedQuestions.map((q, idx) => (
-                  <div key={idx} className="p-4 bg-slate-900 rounded-lg border border-slate-800">
-                    <p className="font-medium text-slate-200 mb-2">{q.text}</p>
-                    {answers[q.id] === undefined && (
-                      <div className="mb-3 p-2 bg-amber-950/20 border border-amber-900/30 rounded text-xs text-amber-400 font-bold flex items-center gap-2">
-                        ⚠️ Pregunta omitida (En blanco) - Repasa este tema con urgencia.
+              <div className="space-y-6">
+                {questionsToReview.map((q, idx) => {
+                  const userAnswer = answers[q.id];
+                  const isCorrect = userAnswer !== undefined && userAnswer === q.correctOptionIndex;
+                  const isFlagged = flaggedQuestions[q.id];
+                  const timeSpent = timeSpentPerQuestion[q.id] || 0;
+
+                  return (
+                    <div key={idx} className="p-5 bg-slate-950 rounded-2xl border border-slate-800 shadow-inner">
+                      <div className="flex justify-between items-start gap-4 mb-4">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-2">
+                            {isFlagged && <span className="bg-amber-500/20 text-amber-400 text-[10px] font-black uppercase px-2 py-0.5 rounded border border-amber-500/30">Duda</span>}
+                            {!isCorrect && <span className="bg-red-500/20 text-red-400 text-[10px] font-black uppercase px-2 py-0.5 rounded border border-red-500/30">Fallo</span>}
+                            {isCorrect && isFlagged && <span className="bg-emerald-500/20 text-emerald-400 text-[10px] font-black uppercase px-2 py-0.5 rounded border border-emerald-500/30">Acierto</span>}
+                            <span className="text-slate-500 text-[10px] uppercase font-mono">Tiempo: {timeSpent}s</span>
+                          </div>
+                          <p className="font-semibold text-slate-200 leading-snug">{q.text}</p>
+                        </div>
                       </div>
-                    )}
-                    <div className="flex items-start gap-2 text-sm text-emerald-400 bg-emerald-950/30 p-3 rounded border border-emerald-900/50">
-                      <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" />
-                      <div>
-                        <span className="font-bold block mb-1">Respuesta Correcta:</span>
-                        {q.options[q.correctOptionIndex]}
+
+                      {userAnswer === undefined && (
+                        <div className="mb-4 p-3 bg-amber-950/20 border border-amber-900/30 rounded-lg text-xs text-amber-400 font-bold flex items-center gap-2">
+                          ⚠️ Pregunta en blanco. Nunca retrocedas ante la duda.
+                        </div>
+                      )}
+
+                      {!isCorrect && userAnswer !== undefined && (
+                        <div className="mb-3 flex items-start gap-3 text-sm text-red-400 bg-red-950/20 p-3 rounded-lg border border-red-900/30">
+                          <XCircle className="w-5 h-5 shrink-0" />
+                          <div>
+                            <span className="font-black text-[10px] uppercase tracking-wider block mb-1 opacity-70">Tu Respuesta</span>
+                            {q.options[userAnswer]}
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="flex items-start gap-3 text-sm text-emerald-400 bg-emerald-950/20 p-3 rounded-lg border border-emerald-900/30">
+                        <CheckCircle2 className="w-5 h-5 shrink-0" />
+                        <div>
+                          <span className="font-black text-[10px] uppercase tracking-wider block mb-1 opacity-70">Respuesta Oficial</span>
+                          {q.options[q.correctOptionIndex]}
+                        </div>
+                      </div>
+
+                      <div className="mt-4 text-sm text-slate-300 border-t border-slate-800/80 pt-4 bg-slate-900/20 rounded-lg p-3">
+                        <span className="font-black text-[10px] uppercase tracking-wider text-cyan-500 mb-1 block">Inteligencia Táctica (Justificación):</span>
+                        <div className="leading-relaxed">{q.justification}</div>
                       </div>
                     </div>
-                    <div className="mt-3 text-sm text-slate-400 border-t border-slate-800 pt-3">
-                      <span className="font-bold text-slate-300">Justificación: </span>
-                      {q.justification}
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </CardContent>
           </Card>

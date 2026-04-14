@@ -5,45 +5,47 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+let pool: mysql.Pool | null = null;
+
 const getPool = () => {
-  // 1. Prioritize Full URL (Handles Railway internal/external URLs correctly)
+  if (pool) return pool;
+
   const url = process.env.MYSQL_URL || process.env.DATABASE_URL;
   if (url) {
     console.log(`[DB] Connecting via explicitly provided URL`);
-    try {
-      return mysql.createPool(url);
-    } catch (err) {
-      console.error(`[DB] URL Parse Error: ${err instanceof Error ? err.message : String(err)}`);
-    }
-  }
-
-  // 2. Fallback to Individual Variables (with IPv4 forcing)
-  if (process.env.MYSQLHOST && process.env.MYSQLPASSWORD) {
-    console.log(`[DB] Using Individual Variables for: ${process.env.MYSQLHOST}`);
-    return mysql.createPool({
-      host: process.env.MYSQLHOST,
-      user: process.env.MYSQLUSER || 'root',
-      password: process.env.MYSQLPASSWORD,
-      database: process.env.MYSQLDATABASE || 'railway',
-      port: parseInt(process.env.MYSQLPORT || '3306'),
+    pool = mysql.createPool({
+      uri: url,
       waitForConnections: true,
-      connectionLimit: 10,
-      family: 4,
-    } as any);
+      connectionLimit: 50,
+      maxIdle: 10,
+      idleTimeout: 60000,
+      enableKeepAlive: true,
+      keepAliveInitialDelay: 0,
+    });
+    return pool;
   }
 
-  // 3. Local Fallback
-  console.log(`[DB] Falling back to Local/Default`);
-  return mysql.createPool({
-    host: process.env.DB_HOST || '127.0.0.1',
-    user: process.env.DB_USER || 'root',
-    password: process.env.DB_PASSWORD || '',
-    database: process.env.DB_NAME || 'polic_ia',
+  // Fallback to Individual Variables
+  const config = {
+    host: process.env.MYSQLHOST || process.env.DB_HOST || '127.0.0.1',
+    user: process.env.MYSQLUSER || process.env.DB_USER || 'root',
+    password: process.env.MYSQLPASSWORD || process.env.DB_PASSWORD || '',
+    database: process.env.MYSQLDATABASE || process.env.DB_NAME || 'polic_ia',
+    port: parseInt(process.env.MYSQLPORT || process.env.DB_PORT || '3306'),
+    waitForConnections: true,
+    connectionLimit: 50,
+    maxIdle: 10,
+    idleTimeout: 60000,
+    enableKeepAlive: true,
+    keepAliveInitialDelay: 0,
     family: 4,
-  } as any);
+  };
+
+  console.log(`[DB] Using config for: ${config.host}`);
+  pool = mysql.createPool(config as any);
+  return pool;
 };
 
 export const poolConnection = getPool();
-
 export const db = drizzle(poolConnection, { schema, mode: 'default' });
 export * from './schema';

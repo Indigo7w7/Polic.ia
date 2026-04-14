@@ -1,4 +1,4 @@
-import { db, learningAreas, learningContent } from './index';
+import { db, learningAreas, learningContent, achievements } from './index';
 
 async function seed() {
   console.log('🌱 Seeding database...');
@@ -81,7 +81,52 @@ async function seed() {
       await db.insert(learningContent).values(item as any);
       console.log(`✅ Content: ${item.title}`);
     } catch (err) {
-      console.error(`❌ Content failed: ${item.title}`);
+      // console.error(`❌ Content failed: ${item.title}`);
+    }
+  }
+
+  // 3. Seed Achievements
+  console.log('Inserting achievements...');
+  const achs = [
+    { 
+      code: 'FIRST_EXAM', 
+      title: 'Bautismo de Fuego', 
+      description: 'Completa tu primer simulacro de examen.', 
+      icon: 'Zap', 
+      pointsReward: 100, 
+      category: 'EXAM' 
+    },
+    { 
+      code: 'FLASH_50', 
+      title: 'Maestro de Flashcards', 
+      description: 'Realiza 50 repasos en el Polígono de Entrenamiento.', 
+      icon: 'Shield', 
+      pointsReward: 500, 
+      category: 'LEITNER' 
+    },
+    { 
+      code: 'ELITE_OFFICER', 
+      title: 'Oficial de Élite', 
+      description: 'Obtén una nota perfecta (20) en un simulacro oficial.', 
+      icon: 'Star', 
+      pointsReward: 1000, 
+      category: 'EXAM' 
+    },
+  ];
+
+  for (const a of achs) {
+    try {
+      // Use onDuplicateKeyUpdate to avoid crashes on re-seeding
+      await db.insert(achievements).values(a as any).onDuplicateKeyUpdate({ 
+        set: { 
+          title: a.title, 
+          description: a.description, 
+          pointsReward: a.pointsReward 
+        } 
+      });
+      console.log(`✅ Achievement: ${a.title}`);
+    } catch (err) {
+      console.error(`❌ Achievement failed: ${a.title}`, err);
     }
   }
 

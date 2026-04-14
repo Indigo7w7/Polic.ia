@@ -90,5 +90,39 @@ export const useExamManager = () => {
     }
   };
 
-  return { startingExam, startLevel, startAreaPractice };
+  const startInterleavedPractice = async (school?: 'EO' | 'EESTP' | 'BOTH') => {
+    setStartingExam('interleaved');
+    try {
+      const dbQuestions = await utils.exam.getQuestionsByFilter.fetch({
+        school,
+        limit: 50 // Limitando a 50 p/u simulacro corto
+      });
+
+      if (!dbQuestions || dbQuestions.length === 0) {
+        toast.error('No hay preguntas suficientes para entrelazado.');
+        return;
+      }
+
+      // Shuffle the questions (Interleaving)
+      const shuffled = dbQuestions.sort(() => 0.5 - Math.random());
+
+      const formattedQuestions = shuffled.map((q) => ({
+        id: q.id.toString(),
+        text: q.question,
+        options: q.options as string[],
+        correctOptionIndex: q.correctOption,
+        justification: "Repaso cruzado (Interleaving) - Galería de Cursos.",
+        area: "Mixto",
+      }));
+
+      useExamStore.getState().iniciarExamen(formattedQuestions, null, true, false);
+      navigate('/simulador', { state: { isPracticeMode: true } });
+    } catch (err) {
+      toast.error('Error al iniciar práctica entrelazada.');
+    } finally {
+      setStartingExam(null);
+    }
+  };
+
+  return { startingExam, startLevel, startAreaPractice, startInterleavedPractice };
 };

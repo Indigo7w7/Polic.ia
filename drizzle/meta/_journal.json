@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "mysql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1775575361299,
+      "tag": "0000_lying_salo",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1776124903459,
+      "tag": "0001_Phase2_Schema",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1776125816013,
+      "tag": "0002_Phase4_Epic1_Tables",
+      "breakpoints": true
+    }
+  ]
+}

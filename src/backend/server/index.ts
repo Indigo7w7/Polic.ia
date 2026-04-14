@@ -9,197 +9,137 @@ import { createContext } from './trpc';
 import './firebaseAdmin';
 import fs from 'fs';
 import path from 'path';
-import poolConnection from './firebaseAdmin';
+import zlib from 'zlib';
+import { db, leitnerCards, reviewLogs } from '../../database/db';
+import { eq } from 'drizzle-orm';
+import { createServer } from 'http';
+import { setupSocket } from './socket';
+import { logger } from './utils/logger';
 
 const app = express();
+const httpServer = createServer(app);
 const port = process.env.PORT || 3001;
 
-// ─── CONFIGURACIÓN CORS OFICIAL Y SEGURA ───
+// Initialize Socket.IO
+const io = setupSocket(httpServer);
+
+// ─── CONFIGURACIÓN CORS ROBUSTA ───
+const allowedOrigins = [
+  'https://polic-ia-7bf7e.web.app',
+  'https://polic-ia-7bf7e.firebaseapp.com',
+  'http://localhost:5173',
+  'http://localhost:3000'
+];
+
 app.use(cors({
-  origin: [
-    'https://polic-ia-7bf7e.web.app',
-    'https://polic-ia-7bf7e.firebaseapp.com',
-    'http://localhost:5173',
-    'http://localhost:3000'
-  ],
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.indexOf(origin) !== -1 || origin.includes('web.app') || origin.includes('firebaseapp.com')) {
+      callback(null, true);
+    } else {
+      callback(null, false);
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: [
-    'Content-Type', 
-    'Authorization', 
-    'X-TRPC-Source', 
-    'X-Requested-With', 
-    'Cache-Control', 
-    'Pragma', 
-    'Expires',
-    'trpc-batch-link',
-    'X-TRPC-Batch-Mode'
-  ],
-  optionsSuccessStatus: 200, // For legacy browsers and better preflight handling
-  preflightContinue: false
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-TRPC-Source', 'X-Requested-With', 'X-TRPC-Batch-Mode'],
+  preflightContinue: false,
+  optionsSuccessStatus: 204
 }));
 
-app.use(express.json());
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && (allowedOrigins.includes(origin) || origin.includes('web.app') || origin.includes('firebaseapp.com'))) {
+    res.header('Access-Control-Allow-Origin', origin);
+    res.header('Access-Control-Allow-Credentials', 'true');
+  }
+  
+  if (req.method === 'OPTIONS') {
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-TRPC-Source, X-Requested-With, X-TRPC-Batch-Mode');
+    return res.status(204).end();
+  }
+  
+  next();
+});
+
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // 1. Health check
 app.get('/health', (req, res) => {
   res.json({ 
     status: 'online', 
-    version: '04.01.H_MEGA_V12_PROD_FIX',
+    version: '04.01.H_MEGA_V12_PROD_FIX_CORS_V3',
     timestamp: new Date().toISOString()
   });
 });
 
-// 2. tRPC API
+// 2. tRPC API con mejor manejo de errores para el 500
 app.use(
   '/trpc',
   trpcExpress.createExpressMiddleware({
     router: appRouter,
-    createContext,
+    createContext: (opts) => createContext(opts, io),
+    onError: ({ path, error }) => {
+      console.error(`[tRPC-ERROR] Error en ${path}:`, error);
+      logger.error(`[tRPC-ERROR] ${path}`, { message: error.message, stack: error.stack });
+    }
   })
 );
 
-// 3. Static Files & SPA Routing
+// 3. Export REST Endpoint
+app.get('/api/export/deck', async (req, res) => {
+  try {
+    const userId = req.query.userId as string;
+    if (!userId) return res.status(400).json({ error: 'Falta userId' });
+    const cards = await db.select().from(leitnerCards).where(eq(leitnerCards.userId, userId));
+    const logs = await db.select().from(reviewLogs).where(eq(reviewLogs.userId, userId));
+    const exportData = { manifest: { version: 1, exportedAt: new Date().toISOString(), cardCount: cards.length, logCount: logs.length }, collection: cards, review_log: logs };
+    res.setHeader('Content-Type', 'application/gzip');
+    res.setHeader('Content-Disposition', 'attachment; filename="policia_deck.pkg"');
+    const gzip = zlib.createGzip();
+    gzip.pipe(res);
+    gzip.write(JSON.stringify(exportData));
+    gzip.end();
+  } catch (err: any) {
+    console.error('Error al exportar:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 4. Static Files & SPA Routing (Optimizado para evitar MIME type errors)
 const distPath = path.join(process.cwd(), 'dist');
 if (fs.existsSync(distPath)) {
+  // Servir assets con cache y tipos correctos
+  app.use('/assets', express.static(path.join(distPath, 'assets'), {
+    immutable: true,
+    maxAge: '1y',
+    fallthrough: false // Si no existe en assets, que no pase al wildcard
+  }));
+  
   app.use(express.static(distPath));
+  
   app.get('*', (req, res) => {
-    if (req.path.startsWith('/trpc') || req.path.startsWith('/health')) {
+    if (req.path.startsWith('/trpc') || req.path.startsWith('/health') || req.path.startsWith('/api')) {
        return res.status(404).json({ error: 'Route not found' });
     }
     res.sendFile(path.join(distPath, 'index.html'));
   });
 }
 
-async function ensureTables() {
-  console.log('[SYS] 🛠 Verificando integridad de tablas críticas...');
-  try {
-    // 1. Áreas de Aprendizaje
-    await poolConnection.query(`
-      CREATE TABLE IF NOT EXISTS learning_areas (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        name VARCHAR(100) NOT NULL,
-        icon VARCHAR(50)
-      ) ENGINE=InnoDB;
-    `);
-
-    // 2. Exámenes / Niveles
-    await poolConnection.query(`
-      CREATE TABLE IF NOT EXISTS exams (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        school ENUM('EO', 'EESTP') NOT NULL,
-        level INT NOT NULL,
-        title VARCHAR(255),
-        is_demo BOOLEAN DEFAULT FALSE NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      ) ENGINE=InnoDB;
-    `);
-
-    // 3. Cursos
-    await poolConnection.query(`
-      CREATE TABLE IF NOT EXISTS courses (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        title VARCHAR(255) NOT NULL,
-        description TEXT,
-        thumbnail_url VARCHAR(512),
-        level ENUM('BASICO', 'INTERMEDIO', 'AVANZADO') DEFAULT 'BASICO',
-        school_type ENUM('EO', 'EESTP', 'BOTH') DEFAULT 'BOTH',
-        is_published BOOLEAN DEFAULT FALSE NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      ) ENGINE=InnoDB;
-    `);
-
-    // 4. Materiales de Examen
-    await poolConnection.query(`
-      CREATE TABLE IF NOT EXISTS exam_materials (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        exam_id INT NOT NULL,
-        title VARCHAR(255) NOT NULL,
-        url VARCHAR(512) NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      ) ENGINE=InnoDB;
-    `);
-
-    // 5. Materiales de Curso
-    await poolConnection.query(`
-      CREATE TABLE IF NOT EXISTS course_materials (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        course_id INT NOT NULL,
-        title VARCHAR(255) NOT NULL,
-        type ENUM('PDF', 'VIDEO', 'EXAM', 'LINK', 'TEXT') NOT NULL,
-        content_url VARCHAR(512),
-        \`order\` INT DEFAULT 0,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      ) ENGINE=InnoDB;
-    `);
-
-    // 6. Contenido de Aprendizaje (Drills)
-    await poolConnection.query(`
-      CREATE TABLE IF NOT EXISTS learning_content (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        area_id INT,
-        title VARCHAR(255) NOT NULL,
-        body TEXT NOT NULL,
-        questions JSON,
-        level INT DEFAULT 1,
-        school_type ENUM('EO', 'EESTP', 'BOTH') DEFAULT 'BOTH',
-        FOREIGN KEY (area_id) REFERENCES learning_areas(id) ON DELETE CASCADE
-      ) ENGINE=InnoDB;
-    `);
-
-    // 7. Fallos de Drills (Para Modo Perfeccionamiento)
-    await poolConnection.query(`
-      CREATE TABLE IF NOT EXISTS failed_drills (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        user_id VARCHAR(255),
-        unit_id INT,
-        question_index INT NOT NULL,
-        attempts INT DEFAULT 1,
-        last_failed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        INDEX idx_failed_user_unit (user_id, unit_id),
-        INDEX idx_failed_last_date (last_failed_at),
-        FOREIGN KEY (unit_id) REFERENCES learning_content(id) ON DELETE CASCADE
-      ) ENGINE=InnoDB;
-    `);
-
-    // 8. Progreso de Aprendizaje (Para desbloqueo por mérito)
-    await poolConnection.query(`
-      CREATE TABLE IF NOT EXISTS learning_progress (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        user_id VARCHAR(255),
-        unit_id INT,
-        score INT DEFAULT 0,
-        completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        INDEX idx_progress_user (user_id),
-        INDEX idx_progress_unit (unit_id),
-        FOREIGN KEY (unit_id) REFERENCES learning_content(id) ON DELETE CASCADE
-      ) ENGINE=InnoDB;
-    `);
-    try {
-      await poolConnection.query("SELECT questions FROM learning_content LIMIT 1");
-    } catch (e) {
-      console.log('[SYS] 🔧 Sincronizando columna questions en learning_content...');
-      await poolConnection.query("ALTER TABLE learning_content ADD COLUMN questions JSON;");
-    }
-    
-    console.log('[SYS] ✅ Infraestructura Crítica Sincronizada (Drills Ready).');
-  } catch (err) {
-    console.error('[SYS] ❌ Error crítico al crear tablas:', err);
-  }
-}
-
 function startServer() {
-  ensureTables();
-  poolConnection.query('SELECT 1').catch(() => null);
-
-  app.listen(port, () => {
-    console.log(`[SYS] 🚀 Server ONLINE at port ${port}`);
-    console.log(`[SYS]    BUILD_SIG: 04.01.H_MEGA_V12_PROD_FIX`);
+  httpServer.listen(port, () => {
+    logger.info(`[SYS] 🚀 Server ONLINE at port ${port}`);
+    logger.info(`[SYS]    BUILD_SIG: 04.01.H_MEGA_V12_PROD_FIX_CORS_V3 (Socket.IO Enabled) `);
   });
 }
 
-// Global Exception Shields
-process.on('uncaughtException', (e) => console.error('[FATAL] Uncaught:', e));
-process.on('unhandledRejection', (r) => console.error('[FATAL] Unhandled:', r));
+process.on('uncaughtException', (e) => {
+  logger.error('[FATAL] Uncaught Exception:', { message: e.message, stack: e.stack });
+});
+
+process.on('unhandledRejection', (reason) => {
+  logger.error('[FATAL] Unhandled Rejection:', { reason });
+});
 
 startServer();

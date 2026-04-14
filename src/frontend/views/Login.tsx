@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
+import { GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult } from 'firebase/auth';
 import { trpc } from '../../shared/utils/trpc';
 import { auth } from '@/src/firebase';
-import { Shield, Eye, EyeOff, Loader2, AlertCircle, ChevronRight, Ghost } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useUserStore } from '../store/useUserStore';
 
@@ -20,45 +20,72 @@ export const Login: React.FC = () => {
   const navigate = useNavigate();
   const [googleLoading, setGoogleLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [currentImgIndex, setCurrentImgIndex] = useState(0);
 
-  useEffect(() => {
+  const images = useMemo(() => ['/p1.jpeg', '/p2.png', '/p3.png', '/p4.png'], []);
+
+  useEffect(() => { 
     setMounted(true);
-  }, []);
+    const interval = setInterval(() => {
+      setCurrentImgIndex((prev) => (prev + 1) % images.length);
+    }, 5000); 
+    return () => clearInterval(interval);
+  }, [images.length]);
 
   const loginMutation = trpc.auth.login.useMutation();
+  const publicStats = trpc.auth.getPublicStats.useQuery(undefined, {
+    refetchOnWindowFocus: false,
+    staleTime: 300000, // 5 min
+  });
 
   const syncUserToMySQL = async (uid: string, displayName: string | null, email: string | null, photoURL: string | null) => {
-    // Resolve final name: never send "Postulante" — use email prefix as fallback
     const finalName = (displayName && displayName.trim() && displayName !== 'Postulante')
       ? displayName.trim()
       : (email?.split('@')[0] || 'Usuario');
-
     try {
-      await loginMutation.mutateAsync({
-        email: email || '',
-        name: finalName,
-        photoURL: photoURL || undefined,
-      });
+      await loginMutation.mutateAsync({ email: email || '', name: finalName, photoURL: photoURL || undefined });
     } catch (e) {
-      console.error('Error syncing to MySQL:', e);
+      if (import.meta.env.DEV) console.error('Error syncing to MySQL:', e);
     }
   };
+
+  // Handle result from signInWithRedirect (Android / mobile flow)
+  useEffect(() => {
+    getRedirectResult(auth).then(async (result) => {
+      if (!result?.user) return;
+      const { user } = result;
+      let displayName = user.displayName;
+      if (!displayName) {
+        await user.reload();
+        displayName = auth.currentUser?.displayName || null;
+      }
+      await syncUserToMySQL(user.uid, displayName, user.email, user.photoURL);
+      toast.success(displayName ? `Bienvenido, ${displayName.split(' ')[0]}.` : 'Acceso concedido.');
+      navigate('/');
+    }).catch(() => {
+      // No redirect result — this is fine on desktop
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleGoogle = async () => {
     setGoogleLoading(true);
     try {
       const provider = new GoogleAuthProvider();
+      // Use redirect on mobile/Android (popups often fail in WebViews)
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      if (isMobile) {
+        await signInWithRedirect(auth, provider);
+        return; // Page will redirect — result handled in useEffect above
+      }
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
-
-      // Firebase sometimes resolves displayName async — wait up to 1s for it
       let displayName = user.displayName;
       if (!displayName) {
         await new Promise(res => setTimeout(res, 1000));
         await user.reload();
         displayName = auth.currentUser?.displayName || null;
       }
-
       await syncUserToMySQL(user.uid, displayName, user.email, user.photoURL);
       const greeting = displayName ? `Bienvenido, ${displayName.split(' ')[0]}.` : 'Acceso concedido.';
       toast.success(greeting);
@@ -70,134 +97,121 @@ export const Login: React.FC = () => {
     }
   };
 
-
   return (
-    <div className="min-h-screen bg-[#060d1a] flex items-center justify-center p-4 relative overflow-hidden font-sans">
-      {/* Animated grid background */}
-      <div className="absolute inset-0 opacity-[0.05]" style={{
-        backgroundImage: `linear-gradient(#2563eb 1px, transparent 1px), linear-gradient(90deg, #2563eb 1px, transparent 1px)`,
-        backgroundSize: '40px 40px'
-      }} />
-
-      {/* Scanline overlay */}
-      <div className="absolute inset-0 pointer-events-none opacity-20" style={{
-        background: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(59, 130, 246, 0.1) 2px, rgba(59, 130, 246, 0.1) 4px)'
-      }} />
-
-      {/* Tactical Glows */}
-      <div className="absolute -top-24 -left-24 w-96 h-96 bg-blue-600/20 rounded-full blur-[120px] animate-pulse" />
-      <div className="absolute -bottom-24 -right-24 w-96 h-96 bg-emerald-600/10 rounded-full blur-[120px] animate-pulse" style={{ animationDelay: '2s' }} />
-
-      <div
-        className="relative w-full max-w-sm"
-        style={{
-          opacity: mounted ? 1 : 0,
-          transform: mounted ? 'translateY(0)' : 'translateY(24px)',
-          transition: 'all 0.8s cubic-bezier(0.16, 1, 0.3, 1)',
+    <div className="min-h-screen flex overflow-hidden bg-[#060d1a]">
+      {/* ── MOBILE BACKGROUND (Guaranteed visibility) ── */}
+      <div 
+        className="lg:hidden absolute inset-0 bg-cover bg-center bg-no-repeat"
+        style={{ 
+          backgroundImage: 'url("/p3.png")',
+          backgroundColor: '#020617' 
         }}
       >
-        {/* Unit Identifier */}
-        <div className="flex justify-center mb-10">
-          <div className="group relative">
-            <div className="absolute inset-0 bg-blue-500/20 blur-xl rounded-full scale-150 animate-pulse" />
-            <div className="relative flex items-center gap-3 px-5 py-2.5 bg-slate-900/80 border border-blue-500/30 rounded-full backdrop-blur-md">
-              <div className="w-2 h-2 bg-blue-400 rounded-full shadow-[0_0_8px_rgba(96,165,250,0.8)] animate-pulse" />
-              <span className="text-[11px] font-black uppercase tracking-[0.4em] text-blue-100/70">
-                Acceso de Operativos
-              </span>
-            </div>
-          </div>
+        <div className="absolute inset-0 bg-[#020617]/80 backdrop-blur-[2px]" />
+      </div>
+
+      {/* ── LEFT: Hero image (Desktop only) ── */}
+      <div className="hidden lg:block relative w-1/2 overflow-hidden bg-slate-950">
+        {images.map((img, idx) => (
+          <img
+            key={img}
+            src={img}
+            className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-[1500ms] ${
+              idx === currentImgIndex ? 'opacity-100' : 'opacity-0'
+            }`}
+            alt=""
+          />
+        ))}
+        {/* gradient overlay */}
+        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-[#060d1a]/20 to-[#060d1a]" />
+        <div className="absolute inset-0 bg-gradient-to-t from-[#060d1a]/70 via-transparent to-transparent" />
+        {/* Branding overlay on image */}
+        <div className="absolute bottom-10 left-10 right-10">
+          <p className="text-[10px] font-black uppercase tracking-[0.5em] text-white/40 mb-3">
+            Plataforma Oficial · PNP 2026
+          </p>
+          <h2 className="text-4xl font-black text-white leading-tight">
+            Prepárate para<br />
+            <span className="text-blue-400">superar el proceso</span><br />
+            de admisión.
+          </h2>
         </div>
+      </div>
 
-        {/* Tactical Frame */}
-        <div className="bg-slate-900/90 border border-slate-800 rounded-3xl overflow-hidden shadow-[0_32px_64px_-12px_rgba(0,0,0,0.8)]">
-          {/* Top accent line */}
-          <div className="h-1.5 w-full bg-gradient-to-r from-transparent via-blue-500 to-transparent opacity-80" />
+      {/* ── RIGHT: Login panel ── */}
+      <div
+        className="relative flex-1 flex items-center justify-center p-8 lg:p-16"
+        style={{
+          opacity: mounted ? 1 : 0,
+          transform: mounted ? 'none' : 'translateY(16px)',
+          transition: 'all 0.7s cubic-bezier(0.16, 1, 0.3, 1)',
+        }}
+      >
 
-          <div className="p-10 pt-8">
-            {/* Header */}
-            <div className="text-center mb-10">
-              <div className="relative inline-block mb-6">
-                <div className="absolute inset-0 bg-blue-600 blur-2xl opacity-20 scale-150" />
-                <div className="relative w-20 h-20 bg-blue-600 rounded-2xl flex items-center justify-center shadow-[0_0_30px_rgba(37,99,235,0.4)] border border-blue-400/30">
-                  <Shield className="w-10 h-10 text-white stroke-[2.5]" />
-                  <div className="absolute -top-1 -right-1 w-5 h-5 bg-emerald-500 rounded-full border-[3px] border-slate-900 flex items-center justify-center">
-                    <div className="w-1.5 h-1.5 bg-white rounded-full" />
-                  </div>
-                </div>
-              </div>
-              <h1 className="text-4xl font-black tracking-tighter text-white mb-2 italic">
-                POLIC<span className="text-blue-500">.</span>ia
-              </h1>
-              <p className="text-blue-500 text-[10px] uppercase tracking-[0.4em] font-black">
-                SISTEMA DE ENTRENAMIENTO CADETE PRO
+        {/* Ambient glow */}
+        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-96 h-96 bg-blue-600/10 blur-[120px] rounded-full pointer-events-none" />
+
+        <div className="relative w-full max-sm:px-4 w-full max-w-sm space-y-12">
+          {/* Logo */}
+          <div className="text-center space-y-2">
+            <h1 className="text-6xl font-black tracking-tighter text-white">
+              POLIC<span className="text-blue-500">.</span>ia
+            </h1>
+            <p className="text-blue-400/80 text-[11px] uppercase tracking-[0.4em] font-bold">
+              Sistema de Preparación Académica
+            </p>
+          </div>
+
+          {/* Login Card */}
+          <div className="bg-white/[0.04] backdrop-blur-2xl border border-white/10 rounded-3xl p-8 shadow-[0_32px_64px_-12px_rgba(0,0,0,0.6)] space-y-8">
+            <div className="text-center">
+              <p className="text-slate-400 text-sm font-medium leading-relaxed">
+                Inicia sesión para acceder a tu plan de preparación personalizado.
               </p>
             </div>
 
-            {/* Login Action Area */}
-            <div className="space-y-8">
-              <div className="space-y-3">
-                <p className="text-slate-400 text-xs text-center font-medium leading-relaxed uppercase tracking-wider">
-                  Sincronización de Identidad mediante
-                </p>
-                <div className="h-px w-12 bg-blue-500/30 mx-auto" />
+            <button
+              onClick={handleGoogle}
+              disabled={googleLoading}
+              className="group relative w-full overflow-hidden"
+            >
+              <div className="absolute inset-0 bg-blue-500/20 blur-xl opacity-0 group-hover:opacity-100 transition-opacity" />
+              <div className="relative flex items-center justify-center gap-4 py-4 bg-white hover:bg-slate-50 rounded-2xl border-2 border-blue-500 transition-all duration-300 group-active:scale-[0.98]">
+                {googleLoading ? (
+                  <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
+                ) : (
+                  <div className="bg-white p-1 rounded-lg shadow-sm">
+                    <GoogleIcon />
+                  </div>
+                )}
+                <span className="text-slate-900 font-black text-sm uppercase tracking-[0.15em]">
+                  Continuar con Google
+                </span>
               </div>
-              
-              <button
-                onClick={handleGoogle}
-                disabled={googleLoading}
-                className="group relative w-full overflow-hidden"
-              >
-                {/* Button Outer Border / Shadow */}
-                <div className="absolute inset-0 bg-blue-500 opacity-20 blur-lg group-hover:opacity-40 transition-opacity" />
-                
-                <div className="relative flex items-center justify-center gap-4 py-4.5 bg-slate-100 group-hover:bg-white border-2 border-blue-500 rounded-2xl transition-all duration-300 transform group-active:scale-[0.98]">
-                  {googleLoading ? (
-                    <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
-                  ) : (
-                    <div className="bg-white p-1 rounded-lg">
-                      <GoogleIcon />
-                    </div>
-                  )}
-                  <span className="text-slate-900 font-black text-sm uppercase tracking-[0.15em]">
-                    Ingresar con Google
-                  </span>
-                </div>
-              </button>
+            </button>
 
-              <div className="text-center">
-                <p className="text-[9px] text-slate-500 uppercase font-black tracking-widest opacity-60">
-                  Encriptación de Grado Militar · AES-256
-                </p>
-              </div>
-            </div>
+            <p className="text-center text-[9px] text-slate-600 font-bold uppercase tracking-widest">
+              Acceso seguro · Encriptación TLS/AES-256
+            </p>
           </div>
 
-          {/* Tactical Bottom Bar */}
-          <div className="bg-slate-950/50 py-4 border-t border-slate-800/50 flex justify-center items-center gap-8">
-             <div className="flex items-center gap-1.5 opacity-40">
-                <div className="w-1 h-1 bg-blue-400 rounded-full" />
-                <span className="text-[8px] font-bold text-slate-400 tracking-tighter uppercase">PNP-OFFICIAL</span>
-             </div>
-             <div className="flex items-center gap-1.5 opacity-40">
-                <div className="w-1 h-1 bg-blue-400 rounded-full" />
-                <span className="text-[8px] font-bold text-slate-400 tracking-tighter uppercase">PROCESO-2026</span>
-             </div>
-          </div>
-        </div>
-
-        {/* Global Stats - Minimalist */}
-        <div className="mt-8 flex justify-between px-2">
-          {[
-            { val: '+5K', label: 'Efectivos' },
-            { val: '24/7', label: 'Operativo' },
-            { val: 'TLS', label: 'Secure' },
-          ].map((s) => (
-            <div key={s.label} className="flex flex-col items-center">
-              <span className="text-xs font-black text-slate-300">{s.val}</span>
-              <span className="text-[8px] text-slate-600 font-black uppercase tracking-[0.2em]">{s.label}</span>
+          {/* Bottom stats */}
+          <div className="flex justify-between px-4">
+            <div className="flex flex-col items-center">
+              <span className="text-sm font-black text-white">
+                {publicStats.data?.totalUsers ? `+${publicStats.data.totalUsers}` : '...'}
+              </span>
+              <span className="text-[8px] text-slate-600 font-bold uppercase tracking-widest">Postulantes</span>
             </div>
-          ))}
+            <div className="flex flex-col items-center">
+              <span className="text-sm font-black text-white">24/7</span>
+              <span className="text-[8px] text-slate-600 font-bold uppercase tracking-widest">Disponible</span>
+            </div>
+            <div className="flex flex-col items-center">
+              <span className="text-sm font-black text-white">2026</span>
+              <span className="text-[8px] text-slate-600 font-bold uppercase tracking-widest">Proceso</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
